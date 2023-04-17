@@ -26,6 +26,7 @@ classdef ODESys < handle
 
         importedDataPath = ""; % path to user imported data
         importedData = {}; % user-imported data
+
     end
 
     properties(Constant)
@@ -465,17 +466,27 @@ classdef ODESys < handle
         end
 
         % sys: ODESys class ref, name: string
-        function params = getGrthParamsByCompName(sys, name)
+        function params = getGrthParamsByCompName(sys,name)
             comp = sys.getCompByName(name);
             params = comp.getGrthParams();
-%             if any(strcmp(specNames, name))
-%                 spec = sys.species.(specName);
-%                 params = spec.getGrthParams();
-%             end
+        end
+
+        % sys: ODESys class ref
+        function params = getAllGrthParams(sys)
+            params = {};
+            comps = [sys.getSpecies('comp'),sys.getChemicals('comp')];
+            for k=1:1:length(comps)
+                for l=1:1:length(comps{k}.funcParams)
+                    for m=1:1:length(comps{k}.funcParams{l}.params)
+                        params{:,1} = [params{:,1},string(comps{k}.funcParams{l}.params{m}.sym)];
+                        params{:,2} = [params{:,2},comps{k}.funcParams{l}.params{m}.val];
+                    end
+                end
+            end
         end
 
         % sys: ODESys class ref, specName: string
-        function specNum = getSpeciesNumFromName(sys, specName)
+        function specNum = getSpeciesNumFromName(sys,specName)
             name = regexprep(specName, ' ', '_');
             specNum = sys.species.(name).number;
         end
