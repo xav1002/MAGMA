@@ -26,7 +26,7 @@ classdef ODESys < handle
 
         importedDataPath = ""; % path to user imported data
         importedData = {}; % user-imported data
-        regParamList = cell(1,2); % list of parameters for easy access
+        regParamList = {}; % list of parameters for easy access
     end
 
     properties(Constant)
@@ -904,15 +904,19 @@ classdef ODESys < handle
             if updateType == "Add"
                 for k=1:1:size(paramList,1)
                     if strcmp(paramList{k,3},paramSym)
-                        param = paramList{k,:};
+                        param = paramList(k,:);
                         break;
                     end
                 end
-                sys.regParamList(end+1,:) = [param{3},param{5}]
+                sys.regParamList{end+1,1} = param{3};
+                sys.regParamList{end,2} = param{5};
+                sys.regParamList{end,3} = param{2};
+                sys.regParamList{end,4} = compName;
+                sys.regParamList{end,5} = '~';                
             elseif updateType == "Remove"
                 for k=1:1:size(sys.regParamList,1)
                     if strcmp(sys.regParamList{k,1},paramSym)
-                        sys.regParamList(k,:) = []
+                        sys.regParamList(k,:) = [];
                         break;
                     end
                 end
