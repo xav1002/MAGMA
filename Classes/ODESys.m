@@ -26,7 +26,7 @@ classdef ODESys < handle
 
         importedDataPath = ""; % path to user imported data
         importedData = {}; % user-imported data
-
+        regParamList = cell(1,2); % list of parameters for easy access
     end
 
     properties(Constant)
@@ -888,13 +888,36 @@ classdef ODESys < handle
         % sys: ODESys class ref, filePath: string
         function setImportedData(sys,filePath,importedData)
             sys.importedDataPath = filePath;
-            sys.importedData= importedData;
+            sys.importedData = importedData;
         end
 
         % sys: ODESys class ref
         function [importedData,path] = getUserImportedData(sys)
             importedData = sys.importedData;
             path = sys.importedDataPath;
+        end
+
+        % sys: ODESys class ref, compName: string, paramSym: string, updateType: string
+        function params = updateRegParamList(sys,compName,paramSym,updateType)
+            comp = sys.getCompByName(compName);
+            paramList = comp.getGrthParams();
+            if updateType == "Add"
+                for k=1:1:size(paramList,1)
+                    if strcmp(paramList{k,3},paramSym)
+                        param = paramList{k,:};
+                        break;
+                    end
+                end
+                sys.regParamList(end+1,:) = [param{3},param{5}]
+            elseif updateType == "Remove"
+                for k=1:1:size(sys.regParamList,1)
+                    if strcmp(sys.regParamList{k,1},paramSym)
+                        sys.regParamList(k,:) = []
+                        break;
+                    end
+                end
+            end
+            params = sys.regParamList;
         end
     end
 
