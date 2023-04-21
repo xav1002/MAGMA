@@ -27,6 +27,8 @@ classdef ODESys < handle
         importedDataPath = ""; % path to user imported data
         importedData = {}; % user-imported data
         regParamList = {}; % list of parameters for easy access
+        matchedVarsList = {}; % list of parameters that are matched in regression
+        regDispDVList = string.empty; % list of DVs to be displayed in regression plot
     end
 
     properties(Constant)
@@ -909,9 +911,9 @@ classdef ODESys < handle
                     end
                 end
                 sys.regParamList{end+1,1} = param{3};
-                sys.regParamList{end,2} = param{5};
+                sys.regParamList{end,2} = compName;
                 sys.regParamList{end,3} = param{2};
-                sys.regParamList{end,4} = compName;
+                sys.regParamList{end,4} = param{5};
                 sys.regParamList{end,5} = '~';                
             elseif updateType == "Remove"
                 for k=1:1:size(sys.regParamList,1)
@@ -922,6 +924,58 @@ classdef ODESys < handle
                 end
             end
             params = sys.regParamList;
+        end
+
+        % sys: ODESys class ref, sysVar: string, importVar: string, importVarNum: num, match:
+        % boolean
+        function matchedVarList = updateVarMatch(sys,sysVar,importVar,importVarNum,match)
+            sysVarNames = string(sys.getModelVarNames());
+            sysVar = string(sysVar);
+            importVar = string(importVar);
+            sysVarNum = 1;
+            pairNum = 1;
+            if match
+                for k=1:1:length(sysVarNames)
+                    if sysVarNames{k} == sysVar
+                        sysVarNum = k; %#ok<NASGU>
+                        return
+                    end
+                end
+                newPair = struct('sysVarName',sysVar,'sysVarNum',sysVarNum,'importVarName',importVar,'importVarNum',importVarNum);
+                sys.matchedVarsList{end+1} = newPair;
+            else
+                for k=1:1:length(sys.matchedVarList)
+                    if sys.matchedVarsList{k}.sysVarName == sysVar && ...
+                            sys.matchedVarsList{k}.importVarName == importVar
+                        pairNum = k; %#ok<NASGU>
+                        return
+                    end
+                end
+                sys.matchedVarsList(pairNum) = [];
+            end
+            matchedVarList = cell(length(sys.matchedVarsList),2);
+            for k=1:1:length(sys.matchedVarsList)
+                matchedVarList{k,1} = char(sys.matchedVarsList{k}.sysVarName);
+                matchedVarList{k,2} = char(sys.matchedVarsList{k}.importVarName);
+            end
+        end
+
+        % sys: ODESys class ref, varName: string, add: boolean
+        function regDVLText = updateRegDispDV(sys,varName,add)
+            if add
+                if ~any(strcmp(sys.regDispDVList,varName))
+                    sys.regDispDVList(end+1) = varName;
+                end
+            else
+                sys.regDispDVList(find(sys.regDispDVList == varName)) = [];
+            end
+            regDVLText = "";
+            for k=1:1:length(sys.regDispDVList)
+                regDVLText = regDVLText + sys.regDispDVList(k);
+                if k ~= length(sys.regDispDVList)
+                    regDVLText = regDVLText + ", ";
+                end
+            end
         end
     end
 
