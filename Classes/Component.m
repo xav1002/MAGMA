@@ -329,8 +329,8 @@ classdef Component < handle
             funcNum = length(comp.funcParams);
         end
 
-        % comp: Component class ref, paramCt: numbers
-        function [govFunc,params] = compileGovFunc(comp,paramCt)
+        % comp: Component class ref, paramCt: numbers, regParamList: {}, regression: boolean
+        function [govFunc,params,matches] = compileGovFunc(comp,paramCt,regParamList,regression)
             % Need to make sure that each individual govFunc component is
             % isolated (so (C1+C2)*(C3+C4) ~= C1+C2*C3_C4)
             govFunc = "";
@@ -362,10 +362,24 @@ classdef Component < handle
 
             % replacing param syms in govFunc with p({gloNum})
             ct = 1;
-            for k=1:1:length(comp.funcParams{k})
-                for l=1:1:length(comp.funcParams{k}.params)
-                    govFunc = regexprep(govFunc,comp.funcParams{k}.params{l}.sym,"p("+(paramCt+ct)+")");
-                    ct = ct + 1;
+            if regression
+                matches = zeros(size(regParamList));
+                for k=1:1:length(comp.funcParams{k})
+                    for l=1:1:length(comp.funcParams{k}.params)
+                        match = strcmp(cellstr(regParamList),char(comp.funcParams{k}.params{l}.sym));
+                        if any(match)
+                            matches(match) = paramCt+ct; 
+                        end
+                        govFunc = regexprep(govFunc,comp.funcParams{k}.params{l}.sym,"param("+(paramCt+ct)+")");
+                        ct = ct + 1;
+                    end
+                end
+            else
+                for k=1:1:length(comp.funcParams{k})
+                    for l=1:1:length(comp.funcParams{k}.params)
+                        govFunc = regexprep(govFunc,comp.funcParams{k}.params{l}.sym,"param("+(paramCt+ct)+")");
+                        ct = ct + 1;
+                    end
                 end
             end
         end

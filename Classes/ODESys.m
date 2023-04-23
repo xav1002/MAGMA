@@ -19,7 +19,8 @@ classdef ODESys < handle
 
         degree = 0; % number of functions within the ODE system
         dydt = ""; % ODE system functions
-        p = []; % ODE system parameter values
+        param = []; % ODE system parameter values
+        matches = []; % used to find parameters that are being regressed
 
         sysVars = {}; % system variable names
         plots = {}; % plot objects
@@ -28,7 +29,7 @@ classdef ODESys < handle
         importedData = {}; % user-imported data
         regParamList = {}; % list of parameters for easy access
         matchedVarsList = {}; % list of parameters that are matched in regression
-        regDispDVList = string.empty; % list of DVs to be displayed in regression plot
+        regSpecs = statset; % struct for regression specifications
     end
 
     properties(Constant)
@@ -515,7 +516,7 @@ classdef ODESys < handle
         % need to add code to allow user to specify a t range and precision
         % of t
 
-        % sys: ODEsys class ref
+        % sys: ODEsys class ref, tRange: number[], tPtsNb: number
         function [tRes,yRes] = compileModel(sys,tRange,tPtsNb)
             % 1. loop through funcParams in each Component and assemble
             % functions into full governing function
@@ -534,7 +535,7 @@ classdef ODESys < handle
             sys.dydt = "@(t,y,p) [";
             comps = [sys.getSpecies('comp'),sys.getChemicals('comp')];
             for k=1:1:length(comps)
-                [govFunc, params] = comps{k}.compileGovFunc(length(sys.p));
+                [govFunc, params, ~] = comps{k}.compileGovFunc(length(sys.param),{},false);
                 for l=1:1:(length(sys.species)+length(sys.chemicals))
                     if l <= length(sys.species)
                         govFunc = regexprep(govFunc,"X"+l,"y("+l+")");
@@ -547,7 +548,7 @@ classdef ODESys < handle
                 else
                    sys.dydt = sys.dydt + govFunc + "]";
                 end
-                sys.p = [sys.p,params];
+                sys.param = [sys.param,params];
             end
             % converting to function_handle
             sys.dydt = str2func(sys.dydt');
@@ -556,6 +557,7 @@ classdef ODESys < handle
             % ### FIXME: need to be able to plot all system variables
             % ### FIXME: include all system variables in ODE system?
             % ### FIXME: test the plotting functionality
+            
             tSmooth = linspace(tRange(1),tPtsNb,tRange(end));
             sysVar = sys.getModelVarNames();
             for k=1:1:length(sys.plots)
@@ -670,18 +672,56 @@ classdef ODESys < handle
         function [tRes,yRes] = runModel(sys,t,y0)
             % iterating over BatchFunction with ode45
             opts = odeset('RelTol',1e-6,'AbsTol',1e-6);
-            [tRes,yRes] = ode45(@(t,y) sys.dydt(t,y,sys.p),t,y0,opts);
+            [tRes,yRes] = ode45(@(t,y) sys.dydt(t,y,sys.param),t,y0,opts);
+        end
+
+        % sys: ODESys class ref,
+        function regStats = compileRegression(sys)
+            sys.dydt = "@(t,y,p) [";
+            comps = [sys.getSpecies('comp'),sys.getChemicals('comp')];
+            for k=1:1:length(comps)
+                [govFunc, params, sys.matches] = comps{k}.compileGovFunc(length(sys.param),sys.regParamList(:,1),true);
+                for l=1:1:(length(sys.species)+length(sys.chemicals))
+                    if l <= length(sys.species)
+                        govFunc = regexprep(govFunc,"X"+l,"y("+l+")");
+                    else
+                        govFunc = regexprep(govFunc,"C"+(l-length(sys.species)),"y("+l+")");
+                    end
+                end
+                if k ~= length(comps)
+                    sys.dydt = sys.dydt + govFunc + ";";
+                else
+                   sys.dydt = sys.dydt + govFunc + "]";
+                end
+                sys.param = [sys.param,params];
+            end
+
+            % converting to function_handle
+            sys.dydt = str2func(sys.dydt');
+
+            IVs = [sys.importedData{:,1}];
+            importedVarIdx = [];
+            varSyms = getModelVarNames();
+            for k=1:1:length(sys.matchedVarsList)
+                matchIdx = strcmp(cellstr(varSyms{:,2}),sys.matchedVarsList{k}.sys);
+                if any(matchIdx)
+                    importedVarIdx(end+1) = find(matchIdx); %#ok<AGROW> 
+                end
+            end
+            DVs = [sys.importedData{:,importedVarIdx}];
+            % ### FIXME: upgrade later to allow automatic testing of
+            % various starting guesses for each parameter
+            beta0 = cell2mat(sys.regSpecs.paramIGs);
+            [beta,R,J,CovB,MSE,ErrorModelInfo] = nlinfit(IVs,DVs,sys.nLinRegHandler,beta0,sys.regSpecs)
         end
 
         % sys: ODESys class ref, param: number[], t: number[]
-        function yRes = nLinRegHandler(sys,param,t)
-            % find the parameters that are being regessed, set those
-            % parameters equal to param
-            for k=1:1:length(sys.p)
-                
+        function yRes = nLinRegHandler(sys,reg_param,t)
+            for k=1:1:length(sys.matches)
+                sys.param(sys.matches(k)) = reg_param(k);
             end
             opts = odeset('RelTol',1e-6,'AbsTol',1e-6);
-            [~,yRes] = ode45(@(t,y) sys.dydt(t,y,sys.p),t,y0,opts);
+            [~,yRes] = ode45(@(t,y) sys.dydt(t,y,sys.param),t,y0,opts);
         end
 
         % sys: ODESys class ref, plotName: string
@@ -926,6 +966,11 @@ classdef ODESys < handle
             params = sys.regParamList;
         end
 
+        % sys: ODESys class ref
+        function regParamList = getRegParamList(sys)
+            regParamList = sys.regParamList;
+        end
+
         % sys: ODESys class ref, sysVar: string, importVar: string, importVarNum: num, match:
         % boolean
         function matchedVarList = updateVarMatch(sys,sysVar,importVar,importVarNum,match)
@@ -976,6 +1021,16 @@ classdef ODESys < handle
                     regDVLText = regDVLText + ", ";
                 end
             end
+        end
+
+        % sys: ODESys class ref
+        function regSpecs = getRegSpecs(sys)
+            regSpecs = sys.regSpecs;
+        end
+
+        % sys: ODEsys class ref, regSpecs: statset
+        function setRegSpecs(sys,regSpecs)
+            sys.regSpecs = regSpecs;
         end
     end
 
