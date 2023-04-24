@@ -32,6 +32,7 @@ classdef ODESys < handle
         regSpecs = statset; % struct for regression specifications
         importedDataIdx = []; % for picking out which data to match in nlinfit
         regData = []; % storing regressed data
+        reg_param_ct = 1;
     end
 
     properties(Constant)
@@ -537,7 +538,7 @@ classdef ODESys < handle
             sys.dydt = "@(t,y,param) [";
             comps = [sys.getSpecies('comp'),sys.getChemicals('comp')];
             for k=1:1:length(comps)
-                [govFunc, params, ~] = comps{k}.compileGovFunc(length(sys.param),{},false);
+                [govFunc, params, ~] = comps{k}.compileGovFunc(length(sys.param),sys.reg_param_ct,{},false);
                 for l=1:1:(length(fieldnames(sys.species))+length(fieldnames(sys.chemicals)))
                     if l <= length(sys.species)
                         govFunc = regexprep(govFunc,"X"+l,"y("+l+")");
@@ -679,11 +680,12 @@ classdef ODESys < handle
 
         % sys: ODESys class ref,
         function regStats = compileRegression(sys)
-            sys.dydt = "@(t,y,param) [";
+            sys.dydt = "@(t,y,param,reg_param) [";
             sys.param = [];
+            sys.reg_param_ct = 1;
             comps = [sys.getSpecies('comp'),sys.getChemicals('comp')];
             for k=1:1:length(comps)
-                [govFunc, params, sys.matches] = comps{k}.compileGovFunc(length(sys.param),sys.regParamList(:,1),true);
+                [govFunc, params, sys.reg_param_ct] = comps{k}.compileGovFunc(length(sys.param),sys.reg_param_ct,sys.regParamList(:,1),true);
                 for l=1:1:(length(fieldnames(sys.species))+length(fieldnames(sys.chemicals)))
                     if l <= length(sys.species)
                         govFunc = regexprep(govFunc,"X"+l,"y("+l+")");
@@ -721,15 +723,16 @@ classdef ODESys < handle
             for m=1:1:(length(fieldnames(sys.species))+length(fieldnames(sys.chemicals)))
                 y0(m) = comps{m}.getInitConc(); %#ok<AGROW>
             end
+%             test3 = @(reg_param,t) sys.nLinRegHandler(reg_param,t,y0)
             [beta,R,J,CovB,MSE,ErrorModelInfo] = nlinfit(IVs,DVs,@(reg_param,t) sys.nLinRegHandler(reg_param,t,y0),beta0,sys.regSpecs);
             RMSE = sqrt(MSE);
             % ### FIXME: update type of NRMSE, NRMSE for each DV?
             NRMSE = RMSE./mean(DVs);
             % regressed function
-            for k=1:1:length(sys.matches)
-                sys.param(sys.matches(k)) = beta(k);
-            end
-            [tRes,yRes] = sys.runModel(IVs,y0);
+%             for k=1:1:length(sys.matches)
+%                 sys.param(sys.matches(k)) = beta(k);
+%             end
+            [tRes,yRes] = sys.runRegModel(IVs,y0,beta);
             sys.regData = [tRes,yRes];
             regStats = struct('importedDataIdx',sys.importedDataIdx, ...
                 'beta',beta,'R',R,'J',J,'CovB',CovB,'MSE',MSE,'RMSE',RMSE,'NRMSE',NRMSE, ...
@@ -738,15 +741,19 @@ classdef ODESys < handle
 
         % sys: ODESys class ref, param: number[], t: number[]
         function yRes = nLinRegHandler(sys,reg_param,t,y0)
-            for k=1:1:length(sys.matches)
-                sys.param(sys.matches(k)) = reg_param(k);
-            end
             opts = odeset('RelTol',1e-6,'AbsTol',1e-6);
-            [~,yRes_all] = ode45(@(t,y) sys.dydt(t,y,sys.param),t,y0,opts);
+            [~,yRes_all] = ode45(@(t,y) sys.dydt(t,y,sys.param,reg_param),t,y0,opts);
             yRes = [];
             for k=1:1:length(sys.importedDataIdx)
                 yRes(:,k) = yRes_all(:,sys.importedDataIdx(k)); %#ok<AGROW> 
             end
+        end
+
+        % sys: ODESys class ref, t: number[]
+        function [tRes,yRes] = runRegModel(sys,t,y0,reg_param)
+            % iterating over BatchFunction with ode45
+            opts = odeset('RelTol',1e-6,'AbsTol',1e-6);
+            [tRes,yRes] = ode45(@(t,y) sys.dydt(t,y,sys.param,reg_param),t,y0,opts);
         end
 
         % sys: ODESys class ref, plotName: string
@@ -1032,10 +1039,12 @@ classdef ODESys < handle
 
         % sys: ODESys class ref, DVIdx: number, varName: string
         function [plotRegData,plotImportData] = updateRegPlotDV(sys,DVIdx)
-            plotRegData = sys.regData(:,1);
+            plotRegData = [];
+            plotRegData(:,1) = sys.regData(:,1);
             plotRegData(:,2) = sys.regData(:,DVIdx+1);
-            plotImportData = [sys.importedData{:,1}];
-            plotImportData(:,2) = [sys.importedData{:,sys.importDataIdx(DVIdx)}];
+            plotImportData = [];
+            plotImportData(:,1) = [sys.importedData{:,1}];
+            plotImportData(:,2) = [sys.importedData{:,sys.importedDataIdx(DVIdx)+1}];
         end
 
         % sys: ODESys class ref

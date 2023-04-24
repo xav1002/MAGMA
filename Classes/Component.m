@@ -330,7 +330,7 @@ classdef Component < handle
         end
 
         % comp: Component class ref, paramCt: numbers, regParamList: {}, regression: boolean
-        function [govFunc,params,matches] = compileGovFunc(comp,paramCt,regParamList,regression)
+        function [govFunc,params,reg_param_ct] = compileGovFunc(comp,param_ct,reg_param_ct,regParamList,regression)
             % Need to make sure that each individual govFunc component is
             % isolated (so (C1+C2)*(C3+C4) ~= C1+C2*C3_C4)
             govFunc = "";
@@ -363,21 +363,22 @@ classdef Component < handle
             % replacing param syms in govFunc with p({gloNum})
             ct = 1;
             if regression
-                matches = zeros(size(regParamList));
                 for k=1:1:length(comp.funcParams{k})
                     for l=1:1:length(comp.funcParams{k}.params)
                         match = strcmp(cellstr(regParamList),char(comp.funcParams{k}.params{l}.sym));
                         if any(match)
-                            matches(match) = paramCt+ct; 
+                            govFunc = regexprep(govFunc,comp.funcParams{k}.params{l}.sym,"reg_param("+(reg_param_ct)+")");
+                            reg_param_ct = reg_param_ct + 1;
+                        else
+                            govFunc = regexprep(govFunc,comp.funcParams{k}.params{l}.sym,"param("+(param_ct+ct)+")");
+                            ct = ct + 1;
                         end
-                        govFunc = regexprep(govFunc,comp.funcParams{k}.params{l}.sym,"param("+(paramCt+ct)+")");
-                        ct = ct + 1;
                     end
                 end
             else
                 for k=1:1:length(comp.funcParams{k})
                     for l=1:1:length(comp.funcParams{k}.params)
-                        govFunc = regexprep(govFunc,comp.funcParams{k}.params{l}.sym,"param("+(paramCt+ct)+")");
+                        govFunc = regexprep(govFunc,comp.funcParams{k}.params{l}.sym,"param("+(param_ct+ct)+")");
                         ct = ct + 1;
                     end
                 end
