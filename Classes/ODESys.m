@@ -30,6 +30,8 @@ classdef ODESys < handle
         regParamList = {}; % list of parameters for easy access
         matchedVarsList = {}; % list of parameters that are matched in regression
         regSpecs = statset; % struct for regression specifications
+        importedDataIdx = []; % for picking out which data to match in nlinfit
+        regData = []; % storing regressed data
     end
 
     properties(Constant)
@@ -532,11 +534,11 @@ classdef ODESys < handle
             % ### FIXME: need to explicitly add multiplication symbol
             % between multiplicative terms
 
-            sys.dydt = "@(t,y,p) [";
+            sys.dydt = "@(t,y,param) [";
             comps = [sys.getSpecies('comp'),sys.getChemicals('comp')];
             for k=1:1:length(comps)
                 [govFunc, params, ~] = comps{k}.compileGovFunc(length(sys.param),{},false);
-                for l=1:1:(length(sys.species)+length(sys.chemicals))
+                for l=1:1:(length(fieldnames(sys.species))+length(fieldnames(sys.chemicals)))
                     if l <= length(sys.species)
                         govFunc = regexprep(govFunc,"X"+l,"y("+l+")");
                     else
@@ -583,7 +585,7 @@ classdef ODESys < handle
                                 for n=1:1:length(y0_span_arr{2})
                                     y0 = [];
                                     comps = [sys.getSpecies('comp'),sys.getChemicals('comp')];
-                                    for o=1:1:(length(sys.species)+length(sys.chemicals))
+                                    for o=1:1:(length(fieldnames(sys.species))+length(fieldnames(sys.chemicals)))
                                         if o == y0_var_num{1}
                                             y0(o) = y0_span_arr{1}{m}; %#ok<AGROW> 
                                         elseif o == y0_var_num{2}
@@ -599,7 +601,7 @@ classdef ODESys < handle
                         else
                             y0 = [];
                             comps = [sys.getSpecies('comp'),sys.getChemicals('comp')];
-                            for m=1:1:(length(sys.species)+length(sys.chemicals))
+                            for m=1:1:(length(fieldnames(sys.species))+length(fieldnames(sys.chemicals)))
                                 y0(m) = comps{m}.getInitConc(); %#ok<AGROW>
                             end
                             [tRes,yRes] = sys.runModel(tSmooth,y0);
@@ -677,11 +679,12 @@ classdef ODESys < handle
 
         % sys: ODESys class ref,
         function regStats = compileRegression(sys)
-            sys.dydt = "@(t,y,p) [";
+            sys.dydt = "@(t,y,param) [";
+            sys.param = [];
             comps = [sys.getSpecies('comp'),sys.getChemicals('comp')];
             for k=1:1:length(comps)
                 [govFunc, params, sys.matches] = comps{k}.compileGovFunc(length(sys.param),sys.regParamList(:,1),true);
-                for l=1:1:(length(sys.species)+length(sys.chemicals))
+                for l=1:1:(length(fieldnames(sys.species))+length(fieldnames(sys.chemicals)))
                     if l <= length(sys.species)
                         govFunc = regexprep(govFunc,"X"+l,"y("+l+")");
                     else
@@ -700,28 +703,50 @@ classdef ODESys < handle
             sys.dydt = str2func(sys.dydt');
 
             IVs = [sys.importedData{:,1}];
-            importedVarIdx = [];
-            varSyms = getModelVarNames();
+            sys.importedDataIdx = [];
+            varSyms = sys.getModelVarNames();
             for k=1:1:length(sys.matchedVarsList)
-                matchIdx = strcmp(cellstr(varSyms{:,2}),sys.matchedVarsList{k}.sys);
+                matchIdx = strcmp(cellstr(varSyms(:,2)),sys.matchedVarsList{k}.sysVarName);
                 if any(matchIdx)
-                    importedVarIdx(end+1) = find(matchIdx); %#ok<AGROW> 
+                    sys.importedDataIdx(end+1) = find(matchIdx);
                 end
             end
-            DVs = [sys.importedData{:,importedVarIdx}];
+            DVs = [sys.importedData{:,2:end}];
             % ### FIXME: upgrade later to allow automatic testing of
             % various starting guesses for each parameter
             beta0 = cell2mat(sys.regSpecs.paramIGs);
-            [beta,R,J,CovB,MSE,ErrorModelInfo] = nlinfit(IVs,DVs,sys.nLinRegHandler,beta0,sys.regSpecs)
+
+            y0 = [];
+            comps = [sys.getSpecies('comp'),sys.getChemicals('comp')];
+            for m=1:1:(length(fieldnames(sys.species))+length(fieldnames(sys.chemicals)))
+                y0(m) = comps{m}.getInitConc(); %#ok<AGROW>
+            end
+            [beta,R,J,CovB,MSE,ErrorModelInfo] = nlinfit(IVs,DVs,@(reg_param,t) sys.nLinRegHandler(reg_param,t,y0),beta0,sys.regSpecs);
+            RMSE = sqrt(MSE);
+            % ### FIXME: update type of NRMSE, NRMSE for each DV?
+            NRMSE = RMSE./mean(DVs);
+            % regressed function
+            for k=1:1:length(sys.matches)
+                sys.param(sys.matches(k)) = beta(k);
+            end
+            [tRes,yRes] = sys.runModel(IVs,y0);
+            sys.regData = [tRes,yRes];
+            regStats = struct('importedDataIdx',sys.importedDataIdx, ...
+                'beta',beta,'R',R,'J',J,'CovB',CovB,'MSE',MSE,'RMSE',RMSE,'NRMSE',NRMSE, ...
+                'ErrorModelInfo',ErrorModelInfo,'IVs',IVs,'DVs',DVs,'tRes',tRes,'yRes',yRes);
         end
 
         % sys: ODESys class ref, param: number[], t: number[]
-        function yRes = nLinRegHandler(sys,reg_param,t)
+        function yRes = nLinRegHandler(sys,reg_param,t,y0)
             for k=1:1:length(sys.matches)
                 sys.param(sys.matches(k)) = reg_param(k);
             end
             opts = odeset('RelTol',1e-6,'AbsTol',1e-6);
-            [~,yRes] = ode45(@(t,y) sys.dydt(t,y,sys.param),t,y0,opts);
+            [~,yRes_all] = ode45(@(t,y) sys.dydt(t,y,sys.param),t,y0,opts);
+            yRes = [];
+            for k=1:1:length(sys.importedDataIdx)
+                yRes(:,k) = yRes_all(:,sys.importedDataIdx(k)); %#ok<AGROW> 
+            end
         end
 
         % sys: ODESys class ref, plotName: string
@@ -973,7 +998,7 @@ classdef ODESys < handle
 
         % sys: ODESys class ref, sysVar: string, importVar: string, importVarNum: num, match:
         % boolean
-        function matchedVarList = updateVarMatch(sys,sysVar,importVar,importVarNum,match)
+        function matchedVarsList = updateVarMatch(sys,sysVar,importVar,importVarNum,match)
             sysVarNames = string(sys.getModelVarNames());
             sysVar = string(sysVar);
             importVar = string(importVar);
@@ -989,7 +1014,7 @@ classdef ODESys < handle
                 newPair = struct('sysVarName',sysVar,'sysVarNum',sysVarNum,'importVarName',importVar,'importVarNum',importVarNum);
                 sys.matchedVarsList{end+1} = newPair;
             else
-                for k=1:1:length(sys.matchedVarList)
+                for k=1:1:length(sys.matchedVarsList)
                     if sys.matchedVarsList{k}.sysVarName == sysVar && ...
                             sys.matchedVarsList{k}.importVarName == importVar
                         pairNum = k; %#ok<NASGU>
@@ -998,29 +1023,19 @@ classdef ODESys < handle
                 end
                 sys.matchedVarsList(pairNum) = [];
             end
-            matchedVarList = cell(length(sys.matchedVarsList),2);
-            for k=1:1:length(sys.matchedVarsList)
-                matchedVarList{k,1} = char(sys.matchedVarsList{k}.sysVarName);
-                matchedVarList{k,2} = char(sys.matchedVarsList{k}.importVarName);
+            matchedVarsList = cell(length(sys.matchedVarsList),2);
+            for k=1:1:size(sys.matchedVarsList,2)
+                matchedVarsList{k,1} = char(sys.matchedVarsList{k}.sysVarName);
+                matchedVarsList{k,2} = char(sys.matchedVarsList{k}.importVarName);
             end
         end
 
-        % sys: ODESys class ref, varName: string, add: boolean
-        function regDVLText = updateRegDispDV(sys,varName,add)
-            if add
-                if ~any(strcmp(sys.regDispDVList,varName))
-                    sys.regDispDVList(end+1) = varName;
-                end
-            else
-                sys.regDispDVList(find(sys.regDispDVList == varName)) = [];
-            end
-            regDVLText = "";
-            for k=1:1:length(sys.regDispDVList)
-                regDVLText = regDVLText + sys.regDispDVList(k);
-                if k ~= length(sys.regDispDVList)
-                    regDVLText = regDVLText + ", ";
-                end
-            end
+        % sys: ODESys class ref, DVIdx: number, varName: string
+        function [plotRegData,plotImportData] = updateRegPlotDV(sys,DVIdx)
+            plotRegData = sys.regData(:,1);
+            plotRegData(:,2) = sys.regData(:,DVIdx+1);
+            plotImportData = [sys.importedData{:,1}];
+            plotImportData(:,2) = [sys.importedData{:,sys.importDataIdx(DVIdx)}];
         end
 
         % sys: ODESys class ref

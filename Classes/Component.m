@@ -316,7 +316,7 @@ classdef Component < handle
         function funcVal = getFuncValByName(comp,funcName)
             % ### FIXME
             for k=1:1:length(comp.funcParams)
-                comp.funcParams{k}
+%                 comp.funcParams{k}
                 if strcmp(comp.funcParams{k}.funcName, funcName)
                     funcVal = comp.funcParams{k}.funcVal;
                     return;
