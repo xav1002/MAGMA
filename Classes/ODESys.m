@@ -141,7 +141,7 @@ classdef ODESys < handle
         function sys = removeChemical(sys, name)
             % creates Chemical field name, removes from ODESys Map
             chemName = replace(regexprep(regexprep(replace(regexprep(name,' ','_'),'^','_'),'+','p'),'-','n'),'.','_');
-            sys.species = rmfield(sys.chemicals, chemName);
+            sys.chemicals = rmfield(sys.chemicals, chemName);
         end
 
         % sys: ODESys class ref, name: string
@@ -975,24 +975,44 @@ classdef ODESys < handle
         function params = updateRegParamList(sys,compName,paramSym,updateType)
             comp = sys.getCompByName(compName);
             paramList = comp.getGrthParams();
+            cancel = false;
             if updateType == "Add"
-                for k=1:1:size(paramList,1)
-                    if strcmp(paramList{k,3},paramSym)
-                        param = paramList(k,:);
-                        break;
+                for k=1:1:size(sys.regParamList)
+                    if strcmp(sys.regParamList{k},paramSym)
+                        cancel = true;
                     end
                 end
-                sys.regParamList{end+1,1} = param{3};
-                sys.regParamList{end,2} = compName;
-                sys.regParamList{end,3} = param{2};
-                sys.regParamList{end,4} = param{5};
-                sys.regParamList{end,5} = '~';                
+                
+                if ~cancel
+                    for k=1:1:size(paramList,1)
+                        if strcmp(paramList{k,3},paramSym)
+                            param = paramList(k,:); %#ok<PROPLC> 
+                            break;
+                        end
+                    end
+                    sys.regParamList{end+1,1} = param{3}; %#ok<PROPLC> 
+                    sys.regParamList{end,2} = compName;
+                    sys.regParamList{end,3} = param{2}; %#ok<PROPLC> 
+                    sys.regParamList{end,4} = param{5}; %#ok<PROPLC> 
+                    sys.regParamList{end,5} = '~';    
+                end
             elseif updateType == "Remove"
                 for k=1:1:size(sys.regParamList,1)
                     if strcmp(sys.regParamList{k,1},paramSym)
                         sys.regParamList(k,:) = [];
                         break;
                     end
+                end
+            end
+            params = sys.regParamList;
+        end
+
+        % sys: ODESys, compName: string
+        function params = removeRegParamByComp(sys,compName)
+            for k=1:1:size(sys.regParamList,1)
+                if strcmp(sys.regParamList{k,2},compName)
+                    sys.regParamList(k,:) = [];
+                    break;
                 end
             end
             params = sys.regParamList;
@@ -1011,21 +1031,30 @@ classdef ODESys < handle
             importVar = string(importVar);
             sysVarNum = 1;
             pairNum = 1;
-            if match
-                for k=1:1:length(sysVarNames)
-                    if sysVarNames{k} == sysVar
-                        sysVarNum = k; %#ok<NASGU>
-                        return
+            cancel = false;
+            if match % only works if both variables aren't already taken
+                for k=1:1:length(sys.matchedVarsList)
+                    if sysVar == sys.matchedVarsList{k}.sysVarName || importVar == sys.matchedVarsList{k}.importVarName
+                        cancel = true;
+                        break;
                     end
                 end
-                newPair = struct('sysVarName',sysVar,'sysVarNum',sysVarNum,'importVarName',importVar,'importVarNum',importVarNum);
-                sys.matchedVarsList{end+1} = newPair;
+                if ~cancel
+                    for k=1:1:length(sysVarNames)
+                        if sysVarNames{k} == sysVar
+                            sysVarNum = k;
+                            break;
+                        end
+                    end
+                    newPair = struct('sysVarName',sysVar,'sysVarNum',sysVarNum,'importVarName',importVar,'importVarNum',importVarNum);
+                    sys.matchedVarsList{end+1} = newPair;
+                end
             else
                 for k=1:1:length(sys.matchedVarsList)
                     if sys.matchedVarsList{k}.sysVarName == sysVar && ...
                             sys.matchedVarsList{k}.importVarName == importVar
-                        pairNum = k; %#ok<NASGU>
-                        return
+                        pairNum = k;
+                        break;
                     end
                 end
                 sys.matchedVarsList(pairNum) = [];
