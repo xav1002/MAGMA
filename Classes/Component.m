@@ -77,14 +77,6 @@ classdef Component < handle
         % funcCombo: string, funcType: string, paramStr: string{},
         % varNames: {}
         function comp = setModel(comp, funcVal, funcName, funcCombo, funcType, paramStr, varNames, editing, refFuncName)
-            % loop
-            % replace(paramNames(i), "p("+i+")")
-
-            % ### FIXME: fix editing saving
-
-            % 1. Check if func exists
-%             funcExists = comp.checkForDuplicateFunc(funcVal, funcName, funcCombo, funcType);
-
             if editing
                 disp('Func Does Exist')
                 idx = comp.getFuncIdx(refFuncName);
@@ -258,7 +250,7 @@ classdef Component < handle
                     return;
                 end
             end
-            disp("No Function Found, comps.m, line 223");
+            disp("No Function Found, Component.m, line 223");
         end
 
         % comp: comps class ref

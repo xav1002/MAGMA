@@ -1,3 +1,3 @@
-function res = Recursive_Frac(frac)
-    
+function res = Recursive_Frac(frac,varargin)
+    test = varargin{1}
 end

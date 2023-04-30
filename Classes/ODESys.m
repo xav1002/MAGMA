@@ -441,13 +441,20 @@ classdef ODESys < handle
         % Temperature: T
         % Environment Volume: V
         % Environment Surface Area: SA
-        function vars = getModelVarNames(sys)
+        function vars = getModelVarNames(sys,varargin)
             % compiling all parameters from Environment and Species and
             % Chemical concentrations to push into Model Param Table
             specs = struct2cell(sys.species);
             chems = struct2cell(sys.chemicals);
             env = sys.environs.(sys.activeEnv);
-            vars = cell(length(specs)+length(chems)+length(env.getParamNames()),2); % 5 is from # of Environment properties
+
+            onlySpecsChem = false;
+            if ~isempty(varargin)
+                onlySpecsChem = varargin{1};
+                vars = cell(length(specs)+length(chems),2); % 5 is from # of Environment properties
+            else
+                vars = cell(length(specs)+length(chems)+length(env.getParamNames()),2); % 5 is from # of Environment properties
+            end
 
             % Species Concentrations
             if length(specs) > 0 %#ok<ISMT> 
@@ -463,11 +470,13 @@ classdef ODESys < handle
                     vars{i+length(specs),2} = ['C',num2str(i)];
                 end
             end
-            % Environmental parameters
-            envParams = env.getParamNames();
-            for i=1:1:length(envParams{1})
-                vars{i+length(specs)+length(chems),1} = envParams{1}{i};
-                vars{i+length(specs)+length(chems),2} = envParams{2}{i};
+            if ~onlySpecsChem
+                % Environmental parameters
+                envParams = env.getParamNames();
+                for i=1:1:length(envParams{1})
+                    vars{i+length(specs)+length(chems),1} = envParams{1}{i};
+                    vars{i+length(specs)+length(chems),2} = envParams{2}{i};
+                end
             end
         end
 
@@ -665,7 +674,7 @@ classdef ODESys < handle
                         close;
                     end
                     if plot_obj.getPlotProp("download") == true
-                        plot_obj.download(fig);
+                        plot_obj.downloadPlot(fig);
                     end
                 end
             end
@@ -768,13 +777,14 @@ classdef ODESys < handle
 
         % sys: ODESys class ref
         function [plot,axes] = createNewPlot(sys)
-            sys.plots{end+1} = Plot("Plot "+(length(sys.plots)+1),sys.getModelVarNames());
+            sys.plots{end+1} = Plot("Plot "+(length(sys.plots)+1),sys.getModelVarNames(),sys.getModelVarNames(true));
             plot = sys.plots{end}.getAllPlotProps();
             axes = sys.plots{end}.getAllAxProps();
         end
 
         % sys: ODESys class ref
         function [plot,axes] = removePlot(sys,plotName,lastItem)
+            sys.plots
             if lastItem
                 sys.plots(1) = [];
                 plot = {};
@@ -846,7 +856,7 @@ classdef ODESys < handle
 
         % sys: ODESys class ref, plotName: string, axesDir: string, title:
         % string
-        function updateAxTitle(sys,plotName,axesDir,title)
+        function axes = updateAxTitle(sys,plotName,axesDir,title)
             plot = sys.getPlotByName(plotName);
             if axesDir == "X"
                 axesDir = 1;
@@ -856,16 +866,25 @@ classdef ODESys < handle
                 axesDir = 3;
             end
             plot.updateAx(axesDir,"title",title);
+            axes = plot.getAllAxProps();
         end
         
         % sys: ODESys class ref, plotName: string, axesDir: string,
         % varName: string, addVar: boolean
         function varText = updateAxVars(sys,plotName,axesDir,varName,addVar)
             plot = sys.getPlotByName(plotName);
+            splitRes = split(varName,'_');
+            if length(splitRes) > 1
+                varIsIC = true;
+            else
+                varIsIC = false;
+            end
+
             if plot.getPlotProp("axesNb") == 2
                 if axesDir == "X"
                     axesDir = 1;
                     plot.updateAx(axesDir,"varNames",varName);
+                    plot.updateAx(axesDir,"varIsIC",varIsIC);
                 elseif axesDir == "Y"
                     axesDir = 2;
                     if addVar
@@ -883,9 +902,11 @@ classdef ODESys < handle
                 if axesDir == "X"
                     axesDir = 1;
                     plot.updateAx(axesDir,"varNames",varName);
+                    plot.updateAx(axesDir,"varIsIC",varIsIC);
                 elseif axesDir == "Y"
                     axesDir = 2;
                     plot.updateAx(axesDir,"varNames",varName);
+                    plot.updateAx(axesDir,"varIsIC",varIsIC);
                 elseif axesDir == "Z"
                     axesDir = 3;
                     if addVar

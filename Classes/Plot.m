@@ -20,7 +20,7 @@ classdef Plot < handle
 
     methods
         % title: string, varNames: string[]
-        function plot = Plot(title,varNames)
+        function plot = Plot(title,varNames,DVNames)
             plot.title = title;
             for k=1:1:2
                 % ### FIXME
@@ -33,9 +33,20 @@ classdef Plot < handle
                     title = "Y Axis Title";
                     isDV = true;
                 end
-                varNames(:,2)
-                plot.axes{k} = plot.createNewAxes(k,title,string(varNames(k,2)),string(varNames(:,2)),"min("+varNames(k,2)+")","max("+varNames(k,2)+")", ...
-                    true,{0},0,0,50,isDV,false); % ### FIXME
+%                 DVNames
+%                 varNames
+                ICNames = string.empty(0,1);
+                for l=1:1:length(DVNames)
+                    ICNames(l,1) = string(DVNames(l,2))+"_{Init-Cond}";
+                end
+                mins = string.empty(0,1);
+                maxes = string.empty(0,1);
+                for l=1:1:size(varNames,1)
+                    mins(l,1) = "min("+string(varNames(l,2))+")";
+                    maxes(l,1) = "max("+string(varNames(l,2))+")";
+                end
+                plot.axes{k} = plot.createNewAxes(k,title,string(varNames(k,2)),string(varNames(:,2)),mins(k,1),maxes(k,1), ...
+                    true,{0},0,0,50,isDV,false,ICNames,mins,maxes); % ### FIXME
             end
         end
 
@@ -90,22 +101,23 @@ classdef Plot < handle
 
         % plot: Plot class ref
         function removeZAxis(plot)
-            plot.axes{3} = [];
+            plot.axes(3) = [];
             plot.updateAx(2,"isDV",true);
         end
 
         % plot: Plot class ref
         function addZAxis(plot)
             varNames = plot.axes{1}.varNameOpts;
-            plot.axes{3} = plot.createNewAxes(3,"Z-Axis Title",varNames{3},{varNames},"min("+varNames{3}+")","max("+varNames{3}+")", ...
-                true,1,0,0,50,true,false);
+            ICNames = plot.axes{1}.ICNames;
+            plot.axes{3} = plot.createNewAxes(3,"Z-Axis Title",varNames(3),varNames,"min("+varNames(3)+")","max("+varNames(3)+")", ...
+                true,1,0,0,50,true,false,ICNames);
             plot.updateAx(2,"isDV",false);
         end
 
         % plot: Plot class ref, axisName: string
         function axisData = getAxisICEvalData(plot,axisName)
             for k=1:1:length(plot.axes)
-                if plot.axes{k}.title == axisName
+                if strcmp(string(plot.axes{k}.title),string(axisName))
                     axis = plot.axes{k};
                 end
             end
@@ -120,7 +132,7 @@ classdef Plot < handle
         % loEvalLim: string | number, upEvalLim: string | number, nbEvalPts: number
         function setAxisICEvalData(plot,axisName,evaltVal,loEvalLim,upEvalLim,nbEvalPts)
             for k=1:1:length(plot.axes)
-                if plot.axes{k}.title == axisName
+                if strcmp(string(plot.axes{k}.title),string(axisName))
                     axis = plot.axes{k};
                 end
             end
@@ -135,7 +147,7 @@ classdef Plot < handle
         function varData = getVarICEvalData(plot,axisName,varName)
             needDefineEvalt = true;
             for k=1:1:length(plot.axes)
-                if plot.axes{k}.title == axisName
+                if strcmp(string(plot.axes{k}.title),string(axisName))
                     axis = plot.axes{k};
                 end
                 if plot.axes{k}.isDV == false && plot.axes{k}.varIsIC == false
@@ -143,7 +155,7 @@ classdef Plot < handle
                 end
             end
             for k=1:1:length(axis.varNames)
-                if axis.varNames{k} == varName
+                if strcmp(string(axis.varNames{k}),string(varName))
                     varIdx = k;
                 end
             end
@@ -167,12 +179,12 @@ classdef Plot < handle
         % loEvalLim: string | number, upEvalLim: string | number, nbEvalPts: number
         function setVarICEvalData(plot,axisName,varName,evaltVal,loEvalLim,upEvalLim,nbEvalPts)
             for k=1:1:length(plot.axes)
-                if plot.axes{k}.title == axisName
+                if strcmp(string(plot.axes{k}.title),string(axisName))
                     axis = plot.axes{k};
                 end
             end
             for k=1:1:length(axis.varNames)
-                if axis.varNames{k} == varName
+                if strcmp(string(axis.varNames{k}),string(varName))
                     varIdx = k;
                 end
             end
@@ -199,7 +211,7 @@ classdef Plot < handle
         % string, loDispLim: number, upDispLim: number, useDefR: boolean,
         % lowEvalLim: number, upEvalLim: number, nbEvalPts: number, isDV:
         % boolean
-        function newAxes = createNewAxes(dir,title,varName,varNameOpts,loDispLim,upDispLim,useDefR,evaltVal,loEvalLim,upEvalLim,nbEvalPts,isDV,varIsIC)
+        function newAxes = createNewAxes(dir,title,varName,varNameOpts,loDispLim,upDispLim,useDefR,evaltVal,loEvalLim,upEvalLim,nbEvalPts,isDV,varIsIC,ICNames,mins,maxes)
             newAxes = struct( ...
                 'dir',dir, ...
                 'title',title, ...
@@ -213,7 +225,10 @@ classdef Plot < handle
                 'upEvalLim',upEvalLim, ...
                 'nbEvalPts',nbEvalPts, ...
                 'isDV',isDV, ...
-                'varIsIC',varIsIC ...
+                'varIsIC',varIsIC, ...
+                'ICNames',ICNames, ...
+                'mins',mins, ...
+                'maxes',maxes ...
             );
         end
 
@@ -244,6 +259,9 @@ classdef Plot < handle
                 "nbEvalPts", ...
                 "isDV", ...
                 "varIsIC", ...
+                "ICNames", ...
+                "mins", ...
+                "maxes", ...
             ];
         end
     end
