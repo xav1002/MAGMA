@@ -544,9 +544,16 @@ classdef ODESys < handle
             % ### FIXME: need to explicitly add multiplication symbol
             % between multiplicative terms
 
-            sys.dydt = "@(t,y,param) [";
-            comps = [sys.getSpecies('comp'),sys.getChemicals('comp')];
+            sys.dydt = "@(t,y,p) [";
+            sys.param = [];
+            comps = [sys.getSpecies('comp');sys.getChemicals('comp')];
             for k=1:1:length(comps)
+                % add logic to compile component gov funcs in order that
+                % allows for growth-associated product funcs to be a
+                % function of biomass funcs, and substrate funcs to be a
+                % function of biomass and product funcs
+                % ### FIXME: requires special logic/restrictions in the
+                % governing function portion
                 [govFunc, params, ~] = comps{k}.compileGovFunc(length(sys.param),sys.reg_param_ct,{},false);
                 for l=1:1:(length(fieldnames(sys.species))+length(fieldnames(sys.chemicals)))
                     if l <= length(sys.species)
@@ -563,6 +570,7 @@ classdef ODESys < handle
                 sys.param = [sys.param,params];
             end
             % converting to function_handle
+            sys.dydt
             sys.dydt = str2func(sys.dydt');
 
             % running model for each plot
@@ -576,7 +584,7 @@ classdef ODESys < handle
                 plot_obj = sys.plots{k};
                 axes = plot_obj.axes;
                 if plot_obj.getPlotProp("display") == true || plot_obj.getPlotProp("download") == true
-                    for l=1:1:length(axes)
+                    for l=1:1:length(axes)-1
                         if axes{k}.varIsIC
                             % run computation for each plot
                             y0_span_arr = {0,0};
@@ -610,7 +618,7 @@ classdef ODESys < handle
                             end
                         else
                             y0 = [];
-                            comps = [sys.getSpecies('comp'),sys.getChemicals('comp')];
+                            comps = [sys.getSpecies('comp');sys.getChemicals('comp')];
                             for m=1:1:(length(fieldnames(sys.species))+length(fieldnames(sys.chemicals)))
                                 y0(m) = comps{m}.getInitConc(); %#ok<AGROW>
                             end
@@ -689,7 +697,7 @@ classdef ODESys < handle
 
         % sys: ODESys class ref,
         function regStats = compileRegression(sys)
-            sys.dydt = "@(t,y,param,reg_param) [";
+            sys.dydt = "@(t,y,p,r) [";
             sys.param = [];
             sys.reg_param_ct = 1;
             comps = [sys.getSpecies('comp'),sys.getChemicals('comp')];

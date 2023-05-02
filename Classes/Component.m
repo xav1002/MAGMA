@@ -359,10 +359,14 @@ classdef Component < handle
                     for l=1:1:length(comp.funcParams{k}.params)
                         match = strcmp(cellstr(regParamList),char(comp.funcParams{k}.params{l}.sym));
                         if any(match)
-                            govFunc = regexprep(govFunc,comp.funcParams{k}.params{l}.sym,"reg_param("+(reg_param_ct)+")");
+                            govFunc = split(govFunc,"#");
+                            govFunc = govFunc(strlength(govFunc) > 1);
+                            govFunc = regexprep(govFunc,comp.funcParams{k}.params{l}.sym,"#r#("+(reg_param_ct)+")");
                             reg_param_ct = reg_param_ct + 1;
                         else
-                            govFunc = regexprep(govFunc,comp.funcParams{k}.params{l}.sym,"param("+(param_ct+ct)+")");
+                            govFunc = split(govFunc,"#");
+                            govFunc = govFunc(strlength(govFunc) > 1);
+                            govFunc = regexprep(govFunc,comp.funcParams{k}.params{l}.sym,"#p#("+(param_ct+ct)+")");
                             ct = ct + 1;
                         end
                     end
@@ -370,11 +374,14 @@ classdef Component < handle
             else
                 for k=1:1:length(comp.funcParams{k})
                     for l=1:1:length(comp.funcParams{k}.params)
-                        govFunc = regexprep(govFunc,comp.funcParams{k}.params{l}.sym,"param("+(param_ct+ct)+")");
+                        govFunc = split(govFunc,"#");
+                        govFunc = govFunc(strlength(govFunc) > 1);
+                        govFunc = regexprep(govFunc,comp.funcParams{k}.params{l}.sym,"p("+(param_ct+ct)+")");
                         ct = ct + 1;
                     end
                 end
             end
+            govFunc = strrep(govFunc,"#","");
         end
     end
 
