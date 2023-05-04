@@ -20,6 +20,7 @@ classdef ODESys < handle
         degree = 0; % number of functions within the ODE system
         dydt = ""; % ODE system functions
         param = []; % ODE system parameter values
+        subfuncs = {};
         matches = []; % used to find parameters that are being regressed
 
         sysVars = {}; % system variable names
@@ -117,15 +118,15 @@ classdef ODESys < handle
             envName = regexprep(regexprep(regexprep(regexprep(name, ' ', '_'), '(',''), ')',''), '-','_');
             env = sys.environs.(envName);
             switch field
-                case "Incident Light"
+                case "Incident Light (I)"
                     env.setLightFunc(val);
-                case "Temperature"
+                case "Temperature (T)"
                     env.setTempFunc(val);
-                case "Culture Volume"
+                case "Initial Culture Volume (V)"
                     env.setCulVol(val);
-                case "Culture Surface Area"
+                case "Culture Surface Area (SA)"
                     env.setCulSA(val);
-                case "Model Time"
+                case "Model Time (t)"
                     env.setModelTime(val);
             end
         end
@@ -158,16 +159,9 @@ classdef ODESys < handle
             sys.activeEnv = envName;
         end
 
-        % sys: ODESys class ref, funcAsStr: Boolean
-        function [paramVals, paramUnits] = getCurrentEnvironParams(sys, funcAsStr)
+        % sys: ODESys class ref
+        function [paramVals, paramUnits] = getCurrentEnvironParams(sys)
             paramVals = sys.environs.(sys.activeEnv).getParamVals();
-            if funcAsStr
-                for i=1:1:length(paramVals)
-                    if isa(paramVals{i},"function_handle")
-                        paramVals{i} = func2str(paramVals{i});
-                    end
-                end
-            end
             custDefault = EnvDefaults();
             units = custDefault.Units;
             paramUnits = {units.lightFunc;units.tempFunc;units.culVol;units.culSA;units.modelTime};
@@ -547,6 +541,8 @@ classdef ODESys < handle
             sys.dydt = "@(t,y,p) [";
             sys.param = [];
             comps = [sys.getSpecies('comp');sys.getChemicals('comp')];
+            sysVar = sys.getModelVarNames();
+            specChemCt = length(fieldnames(sys.species))+length(fieldnames(sys.chemicals));
             for k=1:1:length(comps)
                 % add logic to compile component gov funcs in order that
                 % allows for growth-associated product funcs to be a
@@ -555,22 +551,29 @@ classdef ODESys < handle
                 % ### FIXME: requires special logic/restrictions in the
                 % governing function portion
                 [govFunc, params, ~] = comps{k}.compileGovFunc(length(sys.param),sys.reg_param_ct,{},false);
-                for l=1:1:(length(fieldnames(sys.species))+length(fieldnames(sys.chemicals)))
+                for l=1:1:specChemCt
                     if l <= length(sys.species)
                         govFunc = regexprep(govFunc,"X"+l,"y("+l+")");
                     else
                         govFunc = regexprep(govFunc,"C"+(l-length(sys.species)),"y("+l+")");
                     end
+                    for m=1:1:length(sysVar{end-4:end,1})
+                        govFunc = regexprep(govFunc,sysVar{end-5+m,2},"y("+specChemCt+m+")");
+                    end
                 end
-                if k ~= length(comps)
-                    sys.dydt = sys.dydt + govFunc + ";";
-                else
-                   sys.dydt = sys.dydt + govFunc + "]";
-                end
+                sys.dydt = sys.dydt + govFunc + ";";
                 sys.param = [sys.param,params];
             end
+
+            for k=1:1:length(sys.subfuncs)
+                sys.dydt = sys.dydt + sys.subfuncs.getSubFuncVal() + ";";
+                sys.param = [sys.param,sys.subfuncs.getSubFuncParamVals()];
+            end
+            sys.dydt = char(sys.dydt);
+            sys.dydt(end) = ']';
+            sys.dydt = string(sys.dydt);
+
             % converting to function_handle
-            sys.dydt
             sys.dydt = str2func(sys.dydt');
 
             % running model for each plot
@@ -579,7 +582,6 @@ classdef ODESys < handle
             % ### FIXME: test the plotting functionality
             
             tSmooth = linspace(tRange(1),tPtsNb,tRange(end));
-            sysVar = sys.getModelVarNames();
             for k=1:1:length(sys.plots)
                 plot_obj = sys.plots{k};
                 axes = plot_obj.axes;
@@ -700,32 +702,40 @@ classdef ODESys < handle
             sys.dydt = "@(t,y,p,r) [";
             sys.param = [];
             sys.reg_param_ct = 1;
+            sysVar = sys.getModelVarNames();
+            specChemCt = length(fieldnames(sys.species))+length(fieldnames(sys.chemicals));
             comps = [sys.getSpecies('comp'),sys.getChemicals('comp')];
             for k=1:1:length(comps)
                 [govFunc, params, sys.reg_param_ct] = comps{k}.compileGovFunc(length(sys.param),sys.reg_param_ct,sys.regParamList(:,1),true);
-                for l=1:1:(length(fieldnames(sys.species))+length(fieldnames(sys.chemicals)))
+                for l=1:1:specChemCt
                     if l <= length(sys.species)
                         govFunc = regexprep(govFunc,"X"+l,"y("+l+")");
                     else
                         govFunc = regexprep(govFunc,"C"+(l-length(sys.species)),"y("+l+")");
                     end
+                    for m=1:1:length(sysVar{end-4:end,1})
+                        govFunc = regexprep(govFunc,sysVar{end-5+m,2},"y("+specChemCt+m+")");
+                    end
                 end
-                if k ~= length(comps)
-                    sys.dydt = sys.dydt + govFunc + ";";
-                else
-                   sys.dydt = sys.dydt + govFunc + "]";
-                end
+                sys.dydt = sys.dydt + govFunc + ";";
                 sys.param = [sys.param,params];
             end
+
+            for k=1:1:length(sys.subfuncs)
+                sys.dydt = sys.dydt + sys.subfuncs.getSubFuncVal() + ";";
+                sys.param = [sys.param,sys.subfuncs.getSubFuncParamVals()];
+            end
+            sys.dydt = char(sys.dydt);
+            sys.dydt(end) = ']';
+            sys.dydt = string(sys.dydt);
 
             % converting to function_handle
             sys.dydt = str2func(sys.dydt');
 
             IVs = [sys.importedData{:,1}];
             sys.importedDataIdx = [];
-            varSyms = sys.getModelVarNames();
             for k=1:1:length(sys.matchedVarsList)
-                matchIdx = strcmp(cellstr(varSyms(:,2)),sys.matchedVarsList{k}.sysVarName);
+                matchIdx = strcmp(cellstr(sysVar(:,2)),sys.matchedVarsList{k}.sysVarName);
                 if any(matchIdx)
                     sys.importedDataIdx(end+1) = find(matchIdx);
                 end
@@ -771,6 +781,16 @@ classdef ODESys < handle
             % iterating over BatchFunction with ode45
             opts = odeset('RelTol',1e-6,'AbsTol',1e-6);
             [tRes,yRes] = ode45(@(t,y) sys.dydt(t,y,sys.param,reg_param),t,y0,opts);
+        end
+
+        % sys: ODESys class ref
+        function createEnvironParamSubFunc(sys)
+            
+        end
+
+        % sys: ODESys class ref, funcVal: string, funcName: string
+        function updateEnvironParamSubFuncs(sys)
+            
         end
 
         % sys: ODESys class ref, plotName: string

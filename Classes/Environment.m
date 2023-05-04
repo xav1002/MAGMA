@@ -17,28 +17,12 @@ classdef Environment < handle
         end
         % env: Environment class ref, funcStr: string
         function env = setLightFunc(env, funcStr)
-            % converts user's input string (without anonymous notation) to
-            % function_handle
-            if isa(funcStr,"string")
-                funcStr = string(funcStr);
-                func = str2func(strcat('@(t) ',funcStr));
-            else
-                func = funcStr;
-            end
-            env.lightFunc = func;
+            env.lightFunc = funcStr;
         end
 
         % env: Environment class ref, funcStr: string
         function env = setTempFunc(env, funcStr)
-            % converts user's input string (without anonymous notation) to
-            % function_handle
-            if isa(funcStr,"string")
-                funcStr = string(funcStr);
-                func = str2func(strcat('@(t) ',funcStr));
-            else
-                func = funcStr;
-            end
-            env.tempFunc = func;
+            env.tempFunc = funcStr;
         end
 
         % env: Environment class ref, val: number
@@ -62,7 +46,6 @@ classdef Environment < handle
             if ~any(envDef.Names == name)
                 name = "Custom_Env";
             end
-            disp(name)
             env.setLightFunc(envDef.(name).lightFunc);
             env.setTempFunc(envDef.(name).tempFunc);
             env.setCulVol(envDef.(name).culVol);
@@ -79,7 +62,7 @@ classdef Environment < handle
     methods (Static)
         % env: Environment class ref
         function paramNames = getParamNames()
-            paramNames = {{'Time';'Incident Light';'Temperature';'Culture Volume';'Culture Surface Area'}, ...
+            paramNames = {{'Model Runtime (t)';'Incident Light (I)';'Temperature (T)';'Culture Volume (V)';'Culture Surface Area (SA)'}, ...
                 {'t';'I';'T';'V';'SA'}};
         end
     end

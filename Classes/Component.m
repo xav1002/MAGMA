@@ -12,6 +12,8 @@ classdef Component < handle
         sym = "";
         type = "";
 
+        h_const = 1; % Henry's Law Constant
+
         %% funcParams Item Data Structure
         %   funcVal: string
         %   funcName: string
@@ -29,13 +31,6 @@ classdef Component < handle
         %       upperVal: number
         %       lowerVal: number
 
-        %% Transport Struct Data Structure
-        % trans:
-        %   params: number[]
-        %   modelType: number that corresponds to the specified transport
-        %       model
-
-        rateEq = 1; % overall dX/dt function for comps, all relevant growth and transport terms will be compiled into this function
     end
 
     methods
