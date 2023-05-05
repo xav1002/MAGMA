@@ -129,6 +129,8 @@ classdef ODESys < handle
                 case "Model Time (t)"
                     env.setModelTime(val);
             end
+
+            sys.updateEnvSubFuncs(val,field);
         end
 
         % sys: ODESys class ref, name: string
@@ -157,6 +159,9 @@ classdef ODESys < handle
             % creates Environment field name
             envName = regexprep(regexprep(regexprep(regexprep(name, ' ', '_'), '(',''), ')',''), '-','_');
             sys.activeEnv = envName;
+
+            % ### FIXME: add code here to update the EnvSubFuncs based on
+            % active environment
         end
 
         % sys: ODESys class ref
@@ -566,7 +571,7 @@ classdef ODESys < handle
             end
 
             for k=1:1:length(sys.subfuncs)
-                sys.dydt = sys.dydt + sys.subfuncs.getSubFuncVal() + ";";
+                sys.dydt = sys.dydt + string(diff(str2sym(string(sys.subfuncs.getSubFuncVal())))) + ";";
                 sys.param = [sys.param,sys.subfuncs.getSubFuncParamVals()];
             end
             sys.dydt = char(sys.dydt);
@@ -621,8 +626,24 @@ classdef ODESys < handle
                         else
                             y0 = [];
                             comps = [sys.getSpecies('comp');sys.getChemicals('comp')];
-                            for m=1:1:(length(fieldnames(sys.species))+length(fieldnames(sys.chemicals)))
-                                y0(m) = comps{m}.getInitConc(); %#ok<AGROW>
+                            for m=1:1:(length(comps)+length(sys.subfuncs))
+                                if m <= (length(fieldnames(sys.species))+length(fieldnames(sys.chemicals)))
+                                    y0(m) = comps{m}.getInitConc(); %#ok<AGROW>
+                                else
+                                    % ### FIXME: need to be able to take in
+                                    % initial conditions of system
+                                    % variables and helper functions
+                                    %   For now, just make it able to take
+                                    %   in time or no inputs to function
+                                    funcStr = sys.subfunc{m-length(comps)}.getSubFuncVal();
+                                    if contains(funcStr,"t")
+                                        func = str2func("@(t)"+sys.subfunc{m-length(comps)}.getSubFuncVal());
+                                        y0(m) = func(0); %#ok<AGROW> 
+                                    else
+                                        func = str2func(funcStr);
+                                        y0(m) = func(); %#ok<AGROW> 
+                                    end
+                                end
                             end
                             [tRes,yRes] = sys.runModel(tSmooth,y0);
                             res{1,1} = [yRes,tRes];
@@ -784,13 +805,32 @@ classdef ODESys < handle
         end
 
         % sys: ODESys class ref
-        function createEnvironParamSubFunc(sys)
-            
+        function createEnvSubFuncs(sys)
+            envParamNames = sys.activeEnv.getParamNames();
+            envParamVals = sys.activeEnv.getParamVals();
+            for k=1:1:size(envParamNames,1)
+                sys.subfuncs{k} = SubFunc(envParamVals{k},envParamNames{k,1},0,0);
+                sys.subfuncs{k}.updateParams(envParamNames{k,2},envParamNames{k,2},1,"");
+            end
         end
 
         % sys: ODESys class ref, funcVal: string, funcName: string
-        function updateEnvironParamSubFuncs(sys)
-            
+        function updateEnvSubFuncs(sys,funcVal,funcName)
+            for k=1:1:length(sys.subfuncs)
+                if sys.subfuncs{k}.getSubFuncName() == funcName
+                    sys.subfuncs{k}.setSubFuncVal(funcVal);
+                end
+            end
+        end
+
+        % sys: ODESys class ref, funcName: string, paramName: string,
+        % paramSym: string, paramVal: number, paramUnit: string
+        function updateEnvSubFuncParam(sys,funcName,paramName,paramSym,paramVal,paramUnit)
+            for k=1:1:length(sys.subfuncs)
+                if sys.subfuncs{k}.getSubFuncName() == funcName
+                    sys.subfuncs{k}.updateParams(paramName,paramSym,paramVal,paramUnit);
+                end
+            end
         end
 
         % sys: ODESys class ref, plotName: string

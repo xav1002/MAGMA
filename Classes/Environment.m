@@ -2,11 +2,11 @@ classdef Environment < handle
     properties
         name = '';
 
-        lightFunc = @(t) 1; % function for incident light over time, ppf
-        tempFunc = @(t) 1; % function for temperature over time, C
-        culVol = 1; % volume of growth culture, L
-        culSA = 1; % surface area of growth culture, m^2
-        modelTime = 1; % time duration of model, hr
+        lightFunc = ""; % function for incident light over time, ppf
+        tempFunc = ""; % function for temperature over time, C
+        culVol = ""; % volume of growth culture, L
+        culSA = ""; % surface area of growth culture, m^2
+        modelTime = ""; % time duration of model, hr
     end
 
     methods
