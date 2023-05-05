@@ -2,11 +2,7 @@ classdef Environment < handle
     properties
         name = '';
 
-        lightFunc = ""; % function for incident light over time, ppf
-        tempFunc = ""; % function for temperature over time, C
-        culVol = ""; % volume of growth culture, L
-        culSA = ""; % surface area of growth culture, m^2
-        modelTime = ""; % time duration of model, hr
+        subfuncs = {};
     end
 
     methods
@@ -15,29 +11,30 @@ classdef Environment < handle
 
             env.setDefault(name);
         end
+
+        % env: Environment class ref, val: number
+        function env = setModelTime(env, val)
+            env.subfuncs{1}.setSubFuncVal(val);
+        end
+
         % env: Environment class ref, funcStr: string
         function env = setLightFunc(env, funcStr)
-            env.lightFunc = funcStr;
+            env.subfuncs{2}.setSubFuncVal(funcStr);
         end
 
         % env: Environment class ref, funcStr: string
         function env = setTempFunc(env, funcStr)
-            env.tempFunc = funcStr;
+            env.subfuncs{3}.setSubFuncVal(funcStr);
         end
 
         % env: Environment class ref, val: number
         function env = setCulVol(env, val)
-            env.culVol = val;
+            env.subfuncs{4}.setSubFuncVal(val);
         end
 
         % env: Environment class ref, val: number
         function env = setCulSA(env, val)
-            env.culSA = val;
-        end
-
-        % env: Environment class ref, val: number
-        function env = setModelTime(env, val)
-            env.modelTime = val;
+            env.subfuncs{5}.setSubFuncVal(val);
         end
 
         % env: Environment class ref, name: string
@@ -46,24 +43,29 @@ classdef Environment < handle
             if ~any(envDef.Names == name)
                 name = "Custom_Env";
             end
-            env.setLightFunc(envDef.(name).lightFunc);
-            env.setTempFunc(envDef.(name).tempFunc);
-            env.setCulVol(envDef.(name).culVol);
-            env.setCulSA(envDef.(name).culSA);
-            env.setModelTime(envDef.(name).modelTime);
+            envParamVals = {};
+            envParamVals{1} = envDef.(name).modelTime;
+            envParamVals{2} = envDef.(name).lightFunc;
+            envParamVals{3} = envDef.(name).tempFunc;
+            envParamVals{4} = envDef.(name).culVol;
+            envParamVals{5} = envDef.(name).culSA;
+            envParamNames = env.getParamNames();
+            for k=1:1:size(envParamNames,1)
+                env.subfuncs{k} = SubFunc(envParamVals{k},envParamNames{k,1},0,0);
+                env.subfuncs{k}.updateParams(envParamNames{k,2},envParamNames{k,2},1,"");
+            end
         end
 
         % env: Environment class ref
         function paramVals = getParamVals(env)
-            paramVals = {env.lightFunc;env.tempFunc;env.culVol;env.culSA;env.modelTime};
+            paramVals = {env.subfuncs{1}.getSubFuncVal();env.subfuncs{2}.getSubFuncVal();env.subfuncs{3}.getSubFuncVal();env.subfuncs{4}.getSubFuncVal();env.subfuncs{5}.getSubFuncVal()};
         end
     end
 
     methods (Static)
         % env: Environment class ref
         function paramNames = getParamNames()
-            paramNames = {{'Model Runtime (t)';'Incident Light (I)';'Temperature (T)';'Culture Volume (V)';'Culture Surface Area (SA)'}, ...
-                {'t';'I';'T';'V';'SA'}};
+            paramNames = {'Model Runtime (t)','Incident Light (I)','Temperature (T)','Culture Volume (V)','Culture Surface Area (SA)';'t','I','T','V','SA'}';
         end
     end
 end

@@ -350,33 +350,46 @@ classdef Component < handle
             % replacing param syms in govFunc with p({gloNum})
             ct = 1;
             if regression
-                for k=1:1:length(comp.funcParams{k})
+                for k=1:1:length(comp.funcParams)
                     for l=1:1:length(comp.funcParams{k}.params)
                         match = strcmp(cellstr(regParamList),char(comp.funcParams{k}.params{l}.sym));
                         if any(match)
                             govFunc = split(govFunc,"#");
-                            govFunc = govFunc(strlength(govFunc) > 1);
-                            govFunc = regexprep(govFunc,comp.funcParams{k}.params{l}.sym,"#r#("+(reg_param_ct)+")");
-                            reg_param_ct = reg_param_ct + 1;
+                            for m=1:1:length(comp.funcParams{k}.params)
+                                for n=1:1:length(govFunc)
+                                    if strlength(govFunc(n)) > 1
+                                        govFunc(n) = regexprep(govFunc(n),comp.funcParams{k}.params{m}.sym,"r("+(param_ct+ct)+")");
+                                    end
+                                end
+                                reg_param_ct = reg_param_ct + 1;
+                            end
                         else
                             govFunc = split(govFunc,"#");
-                            govFunc = govFunc(strlength(govFunc) > 1);
-                            govFunc = regexprep(govFunc,comp.funcParams{k}.params{l}.sym,"#p#("+(param_ct+ct)+")");
-                            ct = ct + 1;
+                            for m=1:1:length(comp.funcParams{k}.params)
+                                for n=1:1:length(govFunc)
+                                    if strlength(govFunc(n)) > 1
+                                        govFunc(n) = regexprep(govFunc(n),comp.funcParams{k}.params{m}.sym,"p("+(param_ct+ct)+")");
+                                    end
+                                end
+                                ct = ct + 1;
+                            end
                         end
                     end
                 end
             else
-                for k=1:1:length(comp.funcParams{k})
+                for k=1:1:length(comp.funcParams)
+                    govFunc = split(govFunc,"#");
                     for l=1:1:length(comp.funcParams{k}.params)
-                        govFunc = split(govFunc,"#");
-                        govFunc = govFunc(strlength(govFunc) > 1);
-                        govFunc = regexprep(govFunc,comp.funcParams{k}.params{l}.sym,"p("+(param_ct+ct)+")");
+                        for m=1:1:length(govFunc)
+                            if strlength(govFunc(m)) > 1
+                                govFunc(m) = regexprep(govFunc(m),comp.funcParams{k}.params{l}.sym,"p("+(param_ct+ct)+")");
+                            end
+                        end
                         ct = ct + 1;
                     end
                 end
             end
-            govFunc = strrep(govFunc,"#","");
+            govFunc = strrep(strrep(strjoin(govFunc),"#","")," ","");
         end
     end
 
