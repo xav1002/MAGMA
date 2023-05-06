@@ -51,8 +51,8 @@ classdef Environment < handle
             envParamVals{5} = envDef.(name).culSA;
             envParamNames = env.getParamNames();
             for k=1:1:size(envParamNames,1)
-                env.subfuncs{k} = SubFunc(envParamVals{k},envParamNames{k,1},0,0);
-                env.subfuncs{k}.updateParams(envParamNames{k,2},envParamNames{k,2},1,"");
+                env.subfuncs{k} = SubFunc(envParamVals{k},envParamNames{k,1},envParamNames{k,2},0,0);
+%                 env.subfuncs{k}.updateParams(envParamNames{k,2},envParamNames{k,2},1,"");
             end
         end
 

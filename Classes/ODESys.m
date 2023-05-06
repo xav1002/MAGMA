@@ -20,7 +20,8 @@ classdef ODESys < handle
         degree = 0; % number of functions within the ODE system
         dydt = ""; % ODE system functions
         param = []; % ODE system parameter values
-        subfuncs = {}; % ODE system subfuncs for passing into ode45
+        f = {}; % ODE system subfuncs for passing into ode45
+        helperFuncs = {}; % ODE system helper functions
         matches = []; % used to find parameters that are being regressed
 
         sysVars = {}; % system variable names
@@ -544,7 +545,7 @@ classdef ODESys < handle
             % ### FIXME: need to explicitly add multiplication symbol
             % between multiplicative terms
 
-            sys.dydt = "@(t,y,p) [";
+            sys.dydt = "@(t,y,p,f) [";
             sys.param = [];
             comps = [sys.getSpecies('comp');sys.getChemicals('comp')];
             sysVar = sys.getModelVarNames();
@@ -562,9 +563,14 @@ classdef ODESys < handle
                     else
                         govFunc = regexprep(govFunc,"C"+(l-length(sys.getSpecies('comp'))),"y("+l+")");
                     end
-                    for m=1:1:length(sysVar(end-4:end,1))
-                        govFunc = regexprep(govFunc,sysVar{end-5+m,2},"y("+(length(comps)+m)+")");
+                end
+                for l=1:1:length(sys.environs.(sys.activeEnv).subfuncs)
+                    if ~strcmp(sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"t")
+                        govFunc = regexprep(govFunc,sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"f{"+l+"}(y,t,p)");
                     end
+                end
+                for l=1:1:length(sys.helperFuncs)
+                    govFunc = regexprep(govFunc,sys.helperFuncs{l}.getSubFuncSym(),"f{"+(l+length(sys.environs.(sys.activeEnv).subfuncs))+"}(y,t,p,f)");
                 end
 
                 if k ~= length(comps)
@@ -575,33 +581,74 @@ classdef ODESys < handle
                 sys.param = [sys.param,params];
             end
 
-%             for k=1:1:length(sys.environs.(sys.activeEnv).subfuncs)
-%                 funcText = string(sys.environs.(sys.activeEnv).subfuncs{k}.getSubFuncVal());
-%                 args = string(symvar(str2sym(funcText)));
-%                 syms = sys.environs.(sys.activeEnv).subfuncs{k}.getSubFuncParamSyms();
-%                 for l=1:1:length(syms)
-%                     funcText = split(funcText,"#");
-%                     govFunc = govFunc(strlength(govFunc) > 1);
-%                     govFunc = regexprep(govFunc,comp.funcParams{k}.params{l}.sym,"#p#("+(param_ct+ct)+")");
-%                     ct = ct + 1;
-%                     subfuncText = regexprep(funcText,syms(l),"#p#("+(length(sys.param)+1)+")");
-%                 end
-%                 funcArgText = "@(";
-%                 for l=1:1:length(args)
-%                     if l ~= length(args)
-%                         funcArgText = funcArgText + args(l) + ",";
-%                     else
-%                         funcArgText = funcArgText + args(l) + ")";
-%                     end
-%                 end
-%                 sys.subfuncs{k} = str2func(funcArgText+funcText);
-%                 sys.param = [sys.param,sys.environs.(sys.activeEnv).subfuncs.getSubFuncParamVals()];
-%                 if k ~= length(sys.subfuncs)
-%                     sys.fText = sys.fText + ";";
-%                 else
-%                     sys.fText = sys.fText + "]";
-%                 end
-%             end
+            % creating functions for environmental conditions
+            env_param_ct = 1;
+            for k=1:1:length(sys.environs.(sys.activeEnv).subfuncs)
+                % ### FIXME: add feature to define helpers with another
+                % helper (this is very complicated, for now just don't let
+                % helpers be defined by helpers)
+                govFunc = string(sys.environs.(sys.activeEnv).subfuncs{k}.getSubFuncVal());
+                for l=1:1:length(comps)
+                    if l <= length(sys.getSpecies('comp'))
+                        govFunc = regexprep(govFunc,"X"+l,"y("+l+")");
+                    else
+                        govFunc = regexprep(govFunc,"C"+(l-length(sys.getSpecies('comp'))),"y("+l+")");
+                    end
+                end
+                for l=1:1:length(sys.environs.(sys.activeEnv).subfuncs)
+                    if ~strcmp(sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"t")
+                        govFunc = regexprep(govFunc,sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"f{"+l+"}(y,t,p)");
+                    end
+                end
+                syms = sys.environs.(sys.activeEnv).subfuncs{k}.getSubFuncParamSyms();
+                govFunc = split(govFunc,"#");
+                for l=1:1:length(syms)
+                    for m=1:1:length(govFunc)
+                        if strlength(govFunc(m)) > 1
+                            govFunc(m) = regexprep(govFunc(m),syms(l),"p("+(length(sys.params)+env_param_ct)+")");
+                        end
+                    end
+                    env_param_ct = env_param_ct + 1;
+                end
+                govFunc = strrep(strrep(strjoin(govFunc),"#","")," ","");
+                funcArgText = "@(y,t,p)";
+                sys.f{k} = str2func(funcArgText+govFunc);
+                sys.param = [sys.param,sys.environs.(sys.activeEnv).subfuncs{k}.getSubFuncParamVals()];
+            end
+            sys.f{2}
+
+            % creating functions for helper functions
+            helper_param_ct = 1;
+            for k=1:1:length(sys.helperFuncs)
+                % ### FIXME: add feature to define helpers with another
+                % helper (this is very complicated, for now just don't let
+                % helpers be defined by helpers)
+                govFunc = string(sys.helperFuncs{k}.getSubFuncVal());
+                for l=1:1:length(comps)
+                    if l <= length(sys.getSpecies('comp'))
+                        govFunc = regexprep(govFunc,"X"+l,"y("+l+")");
+                    else
+                        govFunc = regexprep(govFunc,"C"+(l-length(sys.getSpecies('comp'))),"y("+l+")");
+                    end
+                end
+                for l=1:1:length(sys.helperFuncs)
+                    govFunc = regexprep(govFunc,sys.helperFuncs{l}.getSubFuncSym(),"f{"+l+"}(y,t,p,f)");
+                end
+                syms = sys.helperFuncs{k}.getSubFuncParamSyms();
+                govFunc = split(govFunc,"#");
+                for l=1:1:length(syms)
+                    for m=1:1:length(govFunc)
+                        if strlength(govFunc(m)) > 1
+                            govFunc(m) = regexprep(govFunc(m),syms(l),"p("+(length(sys.params)+helper_param_ct)+")");
+                        end
+                    end
+                    helper_param_ct = helper_param_ct + 1;
+                end
+                govFunc = strrep(strrep(strjoin(govFunc),"#","")," ","");
+                funcArgText = "@(y,t,p,f)";
+                sys.f{k} = str2func(funcArgText+govFunc);
+                sys.param = [sys.param,sys.helperFuncs{k}.getSubFuncParamVals()];
+            end
 
             % converting to function_handle
             sys.dydt = str2func(sys.dydt');
@@ -652,24 +699,8 @@ classdef ODESys < handle
                         else
                             y0 = [];
                             comps = [sys.getSpecies('comp');sys.getChemicals('comp')];
-                            for m=1:1:(length(comps)+length(sys.subfuncs))
-                                if m <= (length(fieldnames(sys.species))+length(fieldnames(sys.chemicals)))
-                                    y0(m) = comps{m}.getInitConc(); %#ok<AGROW>
-                                else
-                                    % ### FIXME: need to be able to take in
-                                    % initial conditions of system
-                                    % variables and helper functions
-                                    %   For now, just make it able to take
-                                    %   in time or no inputs to function
-                                    funcStr = sys.subfunc{m-length(comps)}.getSubFuncVal();
-                                    if contains(funcStr,"t")
-                                        func = str2func("@(t)"+sys.subfunc{m-length(comps)}.getSubFuncVal());
-                                        y0(m) = func(0); %#ok<AGROW> 
-                                    else
-                                        func = str2func(funcStr);
-                                        y0(m) = func(); %#ok<AGROW> 
-                                    end
-                                end
+                            for m=1:1:length(comps)
+                                y0(m) = comps{m}.getInitConc(); %#ok<AGROW>
                             end
                             [tRes,yRes] = sys.runModel(tSmooth,y0);
                             res{1,1} = [yRes,tRes];
@@ -741,7 +772,7 @@ classdef ODESys < handle
         function [tRes,yRes] = runModel(sys,t,y0)
             % iterating over BatchFunction with ode45
             opts = odeset('RelTol',1e-6,'AbsTol',1e-6);
-            [tRes,yRes] = ode45(@(t,y) sys.dydt(t,y,sys.param),t,y0,opts);
+            [tRes,yRes] = ode45(@(t,y) sys.dydt(t,y,sys.param,sys.f),t,y0,opts);
         end
 
         % sys: ODESys class ref,
@@ -767,9 +798,9 @@ classdef ODESys < handle
                 sys.param = [sys.param,params];
             end
 
-            for k=1:1:length(sys.subfuncs)
-                sys.dydt = sys.dydt + sys.subfuncs.getSubFuncVal() + ";";
-                sys.param = [sys.param,sys.subfuncs.getSubFuncParamVals()];
+            for k=1:1:length(sys.f)
+                sys.dydt = sys.dydt + sys.f.getSubFuncVal() + ";";
+                sys.param = [sys.param,sys.f.getSubFuncParamVals()];
             end
             sys.dydt = char(sys.dydt);
             sys.dydt(end) = ']';

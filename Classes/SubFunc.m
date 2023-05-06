@@ -2,14 +2,16 @@ classdef SubFunc < handle
     properties
         funcVal = "";
         funcName = "";
+        funcSym = "";
         params = {};
         lims = struct('lowerLim',0,'upperLim',0);
     end
 
     methods
-        function subf = SubFunc(funcVal,funcName,upperLim,lowerLim)
+        function subf = SubFunc(funcVal,funcName,funcSym,upperLim,lowerLim)
             subf.funcVal = funcVal;
             subf.funcName = funcName;
+            subf.funcSym = funcSym;
             subf.lims.lowerLim = lowerLim;
             subf.lims.upperLim = upperLim;
         end
@@ -56,6 +58,11 @@ classdef SubFunc < handle
         end
 
         % subf: SubFunc class ref
+        function subfuncSym = getSubFuncSym(subf)
+            subfuncSym = subf.funcSym;
+        end
+
+        % subf: SubFunc class ref
         function paramNames = getSubFuncParamSyms(subf)
             paramNames = string.empty;
             for k=1:1:length(paramNames)
@@ -75,7 +82,11 @@ classdef SubFunc < handle
         function setSubFuncVal(subf,funcVal)
             subf.funcVal = funcVal;
         end
-    end
+
+        % subf: SubFunc class ref, funcVal: string
+        function setSubFuncSym(subf,funcSym)
+            subf.funcSym = funcSym;
+        end    end
 
     methods (Static)
 
