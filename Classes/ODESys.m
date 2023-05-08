@@ -17,6 +17,7 @@ classdef ODESys < handle
 
         editing = false; % used for tracking changes in component/function editing
 
+
         degree = 0; % number of functions within the ODE system
         dydt = ""; % ODE system functions
         param = []; % ODE system parameter values
@@ -46,11 +47,11 @@ classdef ODESys < handle
             disp('ODESys init');
 
             % set default values
-            sys.environs.Photo_Bioreactor_PBR = Environment("Photo_Bioreactor_PBR");
-            sys.environs.Eutrophic_Lake = Environment("Eutrophic_Lake");
-            sys.environs.Test_Tube = Environment("Test_Tube");
-            sys.environs.Shaking_Flask = Environment("Shaking_Flask");
-            sys.environs.Outdoor_Tank = Environment("Outdoor_Tank");
+            sys.environs.Photo_Bioreactor_PBR = Environment("Photo_Bioreactor_PBR",sys.getModelVarNames());
+            sys.environs.Eutrophic_Lake = Environment("Eutrophic_Lake",sys.getModelVarNames());
+            sys.environs.Test_Tube = Environment("Test_Tube",sys.getModelVarNames());
+            sys.environs.Shaking_Flask = Environment("Shaking_Flask",sys.getModelVarNames());
+            sys.environs.Outdoor_Tank = Environment("Outdoor_Tank",sys.getModelVarNames());
         end
 
         % sys: ODSSys class ref, key: string, val: cell array of
@@ -87,7 +88,7 @@ classdef ODESys < handle
             % creates Environment field name, adds from ODESys Map
             envName = regexprep(regexprep(regexprep(regexprep(name, ' ', '_'), '(',''), ')',''), '-','_');
             % adds new Environment
-            sys.environs.(envName) = Environment(name);
+            sys.environs.(envName) = Environment(name,sys.getModelVarNames());
         end
 
         % sys: ODESys class ref, name: string, field: string, val: number | string
@@ -115,7 +116,7 @@ classdef ODESys < handle
 
         % sys: ODESys class ref, name: string, field: string, val: number |
         % string
-        function sys = updateEnvironment(sys, name, field, val)
+        function updateEnvironment(sys, name, field, val)
             envName = regexprep(regexprep(regexprep(regexprep(name, ' ', '_'), '(',''), ')',''), '-','_');
             env = sys.environs.(envName);
             switch field
@@ -166,9 +167,9 @@ classdef ODESys < handle
         end
 
         % sys: ODESys class ref
-        function [paramVals, paramUnits] = getCurrentEnvironParams(sys)
-            sys.activeEnv
+        function [paramVals, paramUnits, funcHandles] = getCurrentEnvironParams(sys)
             paramVals = sys.environs.(sys.activeEnv).getParamVals();
+            funcHandles = sys.environs.(sys.activeEnv).getParamFuncHandles(sys.getModelVarNames());
             custDefault = EnvDefaults();
             units = custDefault.Units;
             paramUnits = {units.lightFunc;units.tempFunc;units.culVol;units.culSA;units.modelTime};
@@ -286,6 +287,62 @@ classdef ODESys < handle
             comp.removeModel(sys.currentFuncVal,sys.currentFuncName,sys.currentFuncCombo,sys.currentFuncType);
         end
 
+        % sys: ODESys class ref, funcName: string, funcSym: string,
+        % funcVal: string, add: boolean
+        function addRemoveHelperFuncs(sys,funcName,funcSym,funcVal,add)
+            if add
+                sys.helperFuncs{end+1} = SubFunc(funcVal,funcName,funcSym,0,0);
+                sys.helperFuncs{end}.initParams(sys.getModelVarNames());
+            else
+                for k=1:1:length(sys.helperFuncs)
+                    if strcmp(sys.helperFuncs{k}.getSubFuncName(),funcName) && ... 
+                            strcmp(sys.helperFuncs{k}.getSubFuncSym(),funcSym)
+                        sys.helperFuncs(k) = [];
+                        break;
+                    end
+                end
+            end
+        end
+        
+        % sys: ODESys class ref, prop: string, funcName: string,
+        % funcSym: string,  funcVal: string
+        function updateHelperFuncs(sys,prop,funcName,funcSym,funcVal)
+            switch prop
+                case "name"
+                    for k=1:1:length(sys.helperFuncs)
+                        if strcmp(sys.helperFuncs{k}.getSubFuncSym(),funcSym) && ...
+                                strcmp(sys.helperFuncs{k}.getSubFuncVal(),funcVal)
+                            sys.helperFuncs{k}.setSubFuncName(funcName);
+                        end
+                    end
+                case "sym"
+                    for k=1:1:length(sys.helperFuncs)
+                        if strcmp(sys.helperFuncs{k}.getSubFuncName(),funcName) && ...
+                                strcmp(sys.helperFuncs{k}.getSubFuncVal(),funcVal)
+                            sys.helperFuncs{k}.setSubFuncSym(funcSym);
+                        end
+                    end
+                case "val"
+                    for k=1:1:length(sys.helperFuncs)
+                        if strcmp(sys.helperFuncs{k}.getSubFuncName(),funcName) && ...
+                                strcmp(sys.helperFuncs{k}.getSubFuncSym(),funcSym)
+                            sys.helperFuncs{k}.setSubFuncVal(funcVal);
+                        end
+                    end
+            end
+        end
+
+        % sys: ODESys class ref, funcName: string
+        function [funcSym,funcVal] = getHelperFunc(sys,funcName)
+            for k=1:1:length(sys.helperFuncs)
+                if strcmp(sys.helperFuncs{k}.getSubFuncName,funcName)
+                    funcSym = sys.helperFunc{k}.getSubFuncSym();
+                    funcVal = sys.helperFunc{k}.getSubFuncVal();
+                    break;
+                end
+            end
+        end
+
         % sys: ODESys class ref, compName: string
         function funcs = getCompFuncNames(sys,compName,funcCombo)
             % get comp name
@@ -386,9 +443,26 @@ classdef ODESys < handle
         % sys: ODESys class ref, compName: string, paramSym: string,
         % newVal: number, newUnit: string, newParamName: string, funcName:
         % string
-        function sys = updateParam(sys, compName, paramSym, newVal, newUnit, newParamName, funcName)
+        function updateCompParam(sys, compName, paramSym, newVal, newUnit, newParamName, funcName)
             comp = sys.getCompByName(compName);
             comp.updateParam(paramSym, newVal, newUnit, newParamName, funcName);
+        end
+
+        % sys: ODESys class ref, envFuncName: string, paramSym: string,
+        % newVal: number, newUnit: string, newParamName: string
+        function updateEnvFuncParam(sys,envFuncName,paramSym,newVal,newUnit,newParamName)
+            sys.environs.(sys.activeEnv).updateEnvFuncParams(envFuncName,paramSym,newVal,newUnit,newParamName);
+        end
+
+        % sys: ODESys class ref, helperFuncName: string, paramSym: string,
+        % newVal: number, newUnit: string, newParamName: string
+        function updateHelperFuncParam(sys,helperFuncName,paramSym,newVal,newUnit,newParamName)
+            for func = sys.helperFuncs
+                if strcmp(func.getSubFuncName(),helperFuncName)
+                    func.updateParams(newParamName,paramSym,newVal,newUnit);
+                    break;
+                end
+            end
         end
 
         % sys: ODESys class ref, prop: char, val: string
@@ -434,6 +508,19 @@ classdef ODESys < handle
         end
 
         % sys: ODESys class ref
+        function names = getEnvFuncNames(sys)
+            names = sys.environs.(sys.activeEnv).getParamNames();
+        end
+
+        % sys: ODESys class ref
+        function names = getHelperFuncNames(sys)
+            names = string.empty(0,1);
+            for func = sys.helperFuncs
+                names(k,1) = func.getSubFuncName();
+            end
+        end
+
+        % sys: ODESys class ref
         % Model Param Nomenclature:
         % Species concentrations: X1, X2, ... , Xn
         % Chemical concentrations: C1, C2, ... , Cn
@@ -447,14 +534,13 @@ classdef ODESys < handle
             % Chemical concentrations to push into Model Param Table
             specs = struct2cell(sys.species);
             chems = struct2cell(sys.chemicals);
-            env = sys.environs.(sys.activeEnv);
 
             onlySpecsChem = false;
             if ~isempty(varargin)
                 onlySpecsChem = varargin{1};
                 vars = cell(length(specs)+length(chems),2); % 5 is from # of Environment properties
             else
-                vars = cell(length(specs)+length(chems)+length(env.getParamNames()),2); % 5 is from # of Environment properties
+                vars = cell(length(specs)+length(chems)+length(Environment.getParamNames()),2); % 5 is from # of Environment properties
             end
 
             % Species Concentrations
@@ -473,10 +559,15 @@ classdef ODESys < handle
             end
             if ~onlySpecsChem
                 % Environmental parameters
-                envParams = env.getParamNames();
+                envParams = Environment.getParamNames();
                 for i=1:1:size(envParams,1)
                     vars{i+length(specs)+length(chems),1} = envParams{i,1};
                     vars{i+length(specs)+length(chems),2} = envParams{i,2};
+                end
+
+                for k=1:1:length(sys.helperFuncs)
+                    vars{k+length(specs)+length(chems)+size(envParams,1),1} = sys.helperFuncs{k}.getSubFuncName();
+                    vars{k+length(specs)+length(chems)+size(envParams,1),2} = sys.helperFuncs{k}.getSubFuncSym();
                 end
             end
         end
@@ -485,6 +576,27 @@ classdef ODESys < handle
         function params = getGrthParamsByCompName(sys,name)
             comp = sys.getCompByName(name);
             params = comp.getGrthParams();
+        end
+
+        % sys: ODESys class ref, envFuncName: string
+        function params = getGrthParamsByEnvFuncName(sys,envFuncName)
+            params = sys.environs.(sys.activeEnv).getGrthParamsByEnvFuncName(envFuncName);
+        end
+
+        % sys: ODESys class ref, helperFuncName: string
+        function params = getGrthParamsByHelperFuncName(sys,helperFuncName)
+            for func = sys.helperFuncs
+                if strcmp(func.getSubFuncName(),helperFuncName)
+                    paramNames = func.getSubFuncParamNames();
+                    paramSyms = func.getSubFuncParamSyms();
+                    paramVals = func.getSubFuncParamVals();
+                    paramUnits = func.getSubFuncParamUnits();
+                    paramNums = 1:1:length(paramNames);
+                    paramFuncNames = double.empty(0,1);
+                    for k=paramNums, paramFuncNames(k,1) = envFuncName; end
+                    params = {paramNums,paramNames,paramSyms,paramNames,paramVals,paramUnits};
+                end
+            end
         end
 
         % sys: ODESys class ref
@@ -615,7 +727,6 @@ classdef ODESys < handle
                 sys.f{k} = str2func(funcArgText+govFunc);
                 sys.param = [sys.param,sys.environs.(sys.activeEnv).subfuncs{k}.getSubFuncParamVals()];
             end
-            sys.f{2}
 
             % creating functions for helper functions
             helper_param_ct = 1;
@@ -865,6 +976,7 @@ classdef ODESys < handle
             for k=1:1:length(sys.environs.(sys.activeEnv).subfuncs)
                 if strcmp(sys.environs.(sys.activeEnv).subfuncs{k}.getSubFuncName(),funcName)
                     sys.environs.(sys.activeEnv).subfuncs{k}.setSubFuncVal(funcVal);
+                    sys.environs.(sys.activeEnv).subfuncs{k}.findParamsInFunc(sys.getModelVarNames());
                 end
             end
         end

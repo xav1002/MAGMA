@@ -16,6 +16,20 @@ classdef SubFunc < handle
             subf.lims.upperLim = upperLim;
         end
 
+        % subf: SubFunc class ref, sysVars: string[]
+        function initParams(subf,sysVars)
+            vars = string(symvar(str2sym(subf.funcVal)));
+            sysVars(:,2)
+            if ~isempty(vars)
+                funcParams = setxor(intersect(sysVars(:,2),vars),vars);
+            else
+                funcParams = [];
+            end
+            for k=1:1:length(funcParams)
+                subf.updateParams(funcParams(k),funcParams(k),1,"");
+            end
+        end
+
         % subf: SubFunc class ref, name: string, sym: string, val: string, unit: string
         function updateParams(subf,name,sym,val,unit)
             newParam = struct('name',"",'sym',"",'val',"",'unit',"");
@@ -41,15 +55,21 @@ classdef SubFunc < handle
             end
         end
 
+        % subf: SubFunc class ref, varSyms: string[]
+        function findParamsInFunc(subf,varSyms)
+            vars = string(symvar(str2sym(subf.funcVal)));
+            paramSyms = setxor(intersect(varSyms(:,2),vars),vars);
+            for k=1:1:length(paramSyms)
+                % ### FIXME: add functionality to allow user to come back
+                % to update envFunc after defining the parameters' values
+                subf.updateParams(paramSyms(k),paramSyms(k),1,"");
+            end
+        end
+
         % subf: SubFunc class ref, lowerLim: number, upperLim: number
         function updateLims(subf,lowerLim,upperLim)
             subf.lims.lowerLim = lowerLim;
             subf.lims.upperLim = upperLim;
-        end
-
-        % subf: SubFunc class ref
-        function subfunc = getSubFuncVal(subf)
-            subfunc = subf.funcVal;
         end
 
         % subf: SubFunc class ref
@@ -63,10 +83,23 @@ classdef SubFunc < handle
         end
 
         % subf: SubFunc class ref
+        function subfunc = getSubFuncVal(subf)
+            subfunc = subf.funcVal;
+        end
+
+        % subf: SubFunc class ref
+        function paramNames = getSubFuncParamNames(subf)
+            paramNames = string.empty(1,0);
+            for k=1:1:length(subf.params)
+                paramNames(k) = subf.params{k}.name;
+            end
+        end
+
+        % subf: SubFunc class ref
         function paramNames = getSubFuncParamSyms(subf)
-            paramNames = string.empty;
-            for k=1:1:length(paramNames)
-                paramNames(k) = subf.params.sym;
+            paramNames = string.empty(1,0);
+            for k=1:1:length(subf.params)
+                paramNames(k) = subf.params{k}.sym;
             end
         end
 
@@ -74,8 +107,21 @@ classdef SubFunc < handle
         function paramVals = getSubFuncParamVals(subf)
             paramVals = zeros(length(subf.params));
             for k=1:1:length(paramVals)
-                paramVals(k) = subf.params.val;
+                paramVals(k) = subf.params{k}.val;
             end
+        end
+
+        % subf: SubFunc class ref
+        function paramUnits = getSubFuncParamUnits(subf)
+            paramUnits = string.empty(1,0);
+            for k=1:1:length(subf.params)
+                paramUnits(k) = subf.params{k}.unit;
+            end
+        end
+
+        % subf: SubFunc class ref, funcName: string
+        function setSubFuncName(subf,funcName)
+            subf.funcName = funcName;
         end
 
         % subf: SubFunc class ref, funcVal: string
@@ -83,10 +129,11 @@ classdef SubFunc < handle
             subf.funcVal = funcVal;
         end
 
-        % subf: SubFunc class ref, funcVal: string
+        % subf: SubFunc class ref, funcSym: string
         function setSubFuncSym(subf,funcSym)
             subf.funcSym = funcSym;
-        end    end
+        end
+    end
 
     methods (Static)
 
