@@ -37,6 +37,11 @@ classdef Environment < handle
             env.subfuncs{5}.setSubFuncVal(val);
         end
 
+        % env: Environment class ref
+        function modelEndTime = getModelTime(env)
+            modelEndTime = str2double(env.subfuncs{1}.getSubFuncVal());
+        end
+
         % env: Environment class ref, envFuncName: string, paramSym: string,
         % newVal: number, newUnit: string, newParamName: string
         function updateEnvFuncParams(env,envFuncName,paramSym,newVal,newUnit,newParamName)

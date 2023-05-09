@@ -172,7 +172,7 @@ classdef ODESys < handle
             funcHandles = sys.environs.(sys.activeEnv).getParamFuncHandles(sys.getModelVarNames());
             custDefault = EnvDefaults();
             units = custDefault.Units;
-            paramUnits = {units.lightFunc;units.tempFunc;units.culVol;units.culSA;units.modelTime};
+            paramUnits = {units.modelTime;units.lightFunc;units.tempFunc;units.culVol;units.culSA};
         end
 
         % sys: ODESys class ref, prop: string
@@ -289,7 +289,7 @@ classdef ODESys < handle
 
         % sys: ODESys class ref, funcName: string, funcSym: string,
         % funcVal: string, add: boolean
-        function addRemoveHelperFuncs(sys,funcName,funcSym,funcVal,add)
+        function addRmHelperFuncs(sys,funcName,funcSym,funcVal,add)
             if add
                 sys.helperFuncs{end+1} = SubFunc(funcVal,funcName,funcSym,0,0);
                 sys.helperFuncs{end}.initParams(sys.getModelVarNames());
@@ -457,9 +457,9 @@ classdef ODESys < handle
         % sys: ODESys class ref, helperFuncName: string, paramSym: string,
         % newVal: number, newUnit: string, newParamName: string
         function updateHelperFuncParam(sys,helperFuncName,paramSym,newVal,newUnit,newParamName)
-            for func = sys.helperFuncs
-                if strcmp(func.getSubFuncName(),helperFuncName)
-                    func.updateParams(newParamName,paramSym,newVal,newUnit);
+            for k=1:1:length(sys.helperFuncs)
+                if strcmp(sys.helperFuncs{k}.getSubFuncName(),helperFuncName)
+                    sys.helperFuncs{k}.updateParams(newParamName,paramSym,newVal,newUnit);
                     break;
                 end
             end
@@ -515,8 +515,8 @@ classdef ODESys < handle
         % sys: ODESys class ref
         function names = getHelperFuncNames(sys)
             names = string.empty(0,1);
-            for func = sys.helperFuncs
-                names(k,1) = func.getSubFuncName();
+            for k=1:1:length(sys.helperFuncs)
+                names(k,1) = sys.helperFuncs{k}.getSubFuncName();
             end
         end
 
@@ -546,14 +546,14 @@ classdef ODESys < handle
             % Species Concentrations
             if length(specs) > 0 %#ok<ISMT> 
                 for i=1:1:length(specs)
-                    vars{i,1} = [specs{i}.name,' Concentration'];
+                    vars{i,1} = specs{i}.name;
                     vars{i,2} = ['X',num2str(i)];
                 end
             end
             % Chemical Concentrations
             if length(chems) > 0 %#ok<ISMT> 
                 for i=1:1:length(chems)
-                    vars{i+length(specs),1} = [chems{i}.name,' Concentration'];
+                    vars{i+length(specs),1} = chems{i}.name;
                     vars{i+length(specs),2} = ['C',num2str(i)];
                 end
             end
@@ -585,16 +585,22 @@ classdef ODESys < handle
 
         % sys: ODESys class ref, helperFuncName: string
         function params = getGrthParamsByHelperFuncName(sys,helperFuncName)
-            for func = sys.helperFuncs
-                if strcmp(func.getSubFuncName(),helperFuncName)
-                    paramNames = func.getSubFuncParamNames();
-                    paramSyms = func.getSubFuncParamSyms();
-                    paramVals = func.getSubFuncParamVals();
-                    paramUnits = func.getSubFuncParamUnits();
+            for k=1:1:length(sys.helperFuncs)
+                if strcmp(sys.helperFuncs{k}.getSubFuncName(),helperFuncName)
+                    paramNames = sys.helperFuncs{k}.getSubFuncParamNames();
+                    paramSyms = sys.helperFuncs{k}.getSubFuncParamSyms();
+                    paramVals = sys.helperFuncs{k}.getSubFuncParamVals();
+                    paramUnits = sys.helperFuncs{k}.getSubFuncParamUnits();
                     paramNums = 1:1:length(paramNames);
-                    paramFuncNames = double.empty(0,1);
-                    for k=paramNums, paramFuncNames(k,1) = envFuncName; end
-                    params = {paramNums,paramNames,paramSyms,paramNames,paramVals,paramUnits};
+                    params = cell(length(paramNums),6);
+                    for l=paramNums
+                        params{l,1} = char(string(paramNums(l)));
+                        params{l,2} = helperFuncName;
+                        params{l,3} = char(paramSyms(l));
+                        params{l,4} = char(paramNames(l));
+                        params{l,5} = paramVals(l);
+                        params{l,6} = char(paramUnits(l));
+                    end
                 end
             end
         end
@@ -642,7 +648,7 @@ classdef ODESys < handle
         % of t
 
         % sys: ODEsys class ref, tRange: number[], tPtsNb: number
-        function [tRes,yRes] = compileModel(sys,tRange,tPtsNb)
+        function [tRes,yRes] = compileModel(sys)
             % 1. loop through funcParams in each Component and assemble
             % functions into full governing function
             %   replace each parameter name with p({gloNum})
@@ -659,6 +665,7 @@ classdef ODESys < handle
 
             sys.dydt = "@(t,y,p,f) [";
             sys.param = [];
+            sys.f = {};
             comps = [sys.getSpecies('comp');sys.getChemicals('comp')];
             sysVar = sys.getModelVarNames();
             for k=1:1:length(comps)
@@ -669,20 +676,20 @@ classdef ODESys < handle
                 % ### FIXME: requires special logic/restrictions in the
                 % governing function portion
                 [govFunc, params, ~] = comps{k}.compileGovFunc(length(sys.param),sys.reg_param_ct,{},false);
-                for l=1:1:length(comps)
-                    if l <= length(sys.getSpecies('comp'))
-                        govFunc = regexprep(govFunc,"X"+l,"y("+l+")");
-                    else
-                        govFunc = regexprep(govFunc,"C"+(l-length(sys.getSpecies('comp'))),"y("+l+")");
-                    end
+                for l=1:1:length(sys.helperFuncs)
+                    govFunc = regexprep(govFunc,sys.helperFuncs{l}.getSubFuncSym(),"f{"+(l+length(sys.environs.(sys.activeEnv).subfuncs))+"}(y,t,p,f)");
                 end
                 for l=1:1:length(sys.environs.(sys.activeEnv).subfuncs)
                     if ~strcmp(sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"t")
                         govFunc = regexprep(govFunc,sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"f{"+l+"}(y,t,p)");
                     end
                 end
-                for l=1:1:length(sys.helperFuncs)
-                    govFunc = regexprep(govFunc,sys.helperFuncs{l}.getSubFuncSym(),"f{"+(l+length(sys.environs.(sys.activeEnv).subfuncs))+"}(y,t,p,f)");
+                for l=1:1:length(comps)
+                    if l <= length(sys.getSpecies('comp'))
+                        govFunc = regexprep(govFunc,"X"+l,"y("+l+")");
+                    else
+                        govFunc = regexprep(govFunc,"C"+(l-length(sys.getSpecies('comp'))),"y("+l+")");
+                    end
                 end
 
                 if k ~= length(comps)
@@ -709,7 +716,7 @@ classdef ODESys < handle
                 end
                 for l=1:1:length(sys.environs.(sys.activeEnv).subfuncs)
                     if ~strcmp(sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"t")
-                        govFunc = regexprep(govFunc,sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"f{"+l+"}(y,t,p)");
+                        govFunc = regexprep(govFunc,sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"f{"+l+"}(y,t,p,f)");
                     end
                 end
                 syms = sys.environs.(sys.activeEnv).subfuncs{k}.getSubFuncParamSyms();
@@ -717,14 +724,14 @@ classdef ODESys < handle
                 for l=1:1:length(syms)
                     for m=1:1:length(govFunc)
                         if strlength(govFunc(m)) > 1
-                            govFunc(m) = regexprep(govFunc(m),syms(l),"p("+(length(sys.params)+env_param_ct)+")");
+                            govFunc(m) = regexprep(govFunc(m),syms(l),"p("+(length(sys.param)+env_param_ct)+")");
                         end
                     end
                     env_param_ct = env_param_ct + 1;
                 end
                 govFunc = strrep(strrep(strjoin(govFunc),"#","")," ","");
-                funcArgText = "@(y,t,p)";
-                sys.f{k} = str2func(funcArgText+govFunc);
+                funcArgText = "@(y,t,p,f)";
+                sys.f{end+1} = str2func(funcArgText+govFunc);
                 sys.param = [sys.param,sys.environs.(sys.activeEnv).subfuncs{k}.getSubFuncParamVals()];
             end
 
@@ -735,13 +742,6 @@ classdef ODESys < handle
                 % helper (this is very complicated, for now just don't let
                 % helpers be defined by helpers)
                 govFunc = string(sys.helperFuncs{k}.getSubFuncVal());
-                for l=1:1:length(comps)
-                    if l <= length(sys.getSpecies('comp'))
-                        govFunc = regexprep(govFunc,"X"+l,"y("+l+")");
-                    else
-                        govFunc = regexprep(govFunc,"C"+(l-length(sys.getSpecies('comp'))),"y("+l+")");
-                    end
-                end
                 for l=1:1:length(sys.helperFuncs)
                     govFunc = regexprep(govFunc,sys.helperFuncs{l}.getSubFuncSym(),"f{"+l+"}(y,t,p,f)");
                 end
@@ -750,27 +750,43 @@ classdef ODESys < handle
                 for l=1:1:length(syms)
                     for m=1:1:length(govFunc)
                         if strlength(govFunc(m)) > 1
-                            govFunc(m) = regexprep(govFunc(m),syms(l),"p("+(length(sys.params)+helper_param_ct)+")");
+                            govFunc(m) = regexprep(govFunc(m),syms(l),"p("+(length(sys.param)+helper_param_ct)+")");
                         end
                     end
                     helper_param_ct = helper_param_ct + 1;
                 end
                 govFunc = strrep(strrep(strjoin(govFunc),"#","")," ","");
+                for l=1:1:length(sys.environs.(sys.activeEnv).subfuncs)
+                    if ~strcmp(sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"t")
+                        govFunc = regexprep(govFunc,sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"f{"+l+"}(y,t,p,f)");
+                    end
+                end
+                for l=1:1:length(comps)
+                    if l <= length(sys.getSpecies('comp'))
+                        govFunc = regexprep(govFunc,"X"+l,"y("+l+")");
+                    else
+                        govFunc = regexprep(govFunc,"C"+(l-length(sys.getSpecies('comp'))),"y("+l+")");
+                    end
+                end
                 funcArgText = "@(y,t,p,f)";
-                sys.f{k} = str2func(funcArgText+govFunc);
+                sys.f{end+1} = str2func(funcArgText+govFunc);
                 sys.param = [sys.param,sys.helperFuncs{k}.getSubFuncParamVals()];
             end
 
             % converting to function_handle
-            sys.dydt = str2func(sys.dydt');
+            sys.f
             sys.dydt
+            sys.dydt = str2func(sys.dydt');
 
             % running model for each plot
             % ### FIXME: need to be able to plot all system variables
             % ### FIXME: include all system variables in ODE system?
             % ### FIXME: test the plotting functionality
             
-            tSmooth = linspace(tRange(1),tPtsNb,tRange(end));
+            % ### FIXME: add feature to allow user to specify time
+            % precision of model
+            tEnd = sys.environs.(sys.activeEnv).getModelTime()
+            tSmooth = linspace(0,tEnd,100);
             for k=1:1:length(sys.plots)
                 plot_obj = sys.plots{k};
                 axes = plot_obj.axes;

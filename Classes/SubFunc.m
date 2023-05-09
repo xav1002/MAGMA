@@ -62,7 +62,14 @@ classdef SubFunc < handle
             for k=1:1:length(paramSyms)
                 % ### FIXME: add functionality to allow user to come back
                 % to update envFunc after defining the parameters' values
-                subf.updateParams(paramSyms(k),paramSyms(k),1,"");
+                funcIdx = strcmp(subf.getSubFuncParamSyms(),paramSyms(k));
+                if any(funcIdx)
+                    paramVals = subf.getSubFuncParamVals();
+                    paramUnits = subf.getSubFuncParamUnits();
+                    subf.updateParams(paramSyms(k),paramSyms(k),paramVals(funcIdx),paramUnits(funcIdx));
+                else
+                    subf.updateParams(paramSyms(k),paramSyms(k),1,"");
+                end
             end
         end
 
@@ -105,7 +112,7 @@ classdef SubFunc < handle
 
         % subf: SubFunc class ref
         function paramVals = getSubFuncParamVals(subf)
-            paramVals = zeros(length(subf.params));
+            paramVals = zeros(length(subf.params),1);
             for k=1:1:length(paramVals)
                 paramVals(k) = subf.params{k}.val;
             end
