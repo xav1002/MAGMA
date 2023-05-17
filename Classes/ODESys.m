@@ -17,7 +17,6 @@ classdef ODESys < handle
 
         editing = false; % used for tracking changes in component/function editing
 
-
         degree = 0; % number of functions within the ODE system
         dydt = ""; % ODE system functions
         param = []; % ODE system parameter values
@@ -36,6 +35,14 @@ classdef ODESys < handle
         importedDataIdx = []; % for picking out which data to match in nlinfit
         regData = []; % storing regressed data
         reg_param_ct = 1;
+        reg_analytics = struct( ...
+                'beta',[], ...
+                'R', [], ...
+                'J', [], ...
+                'CovB', [], ...
+                'MSE', 0, ...
+                'ErrorModelInfo', [] ...
+            );
     end
 
     properties(Constant)
@@ -52,6 +59,8 @@ classdef ODESys < handle
             sys.environs.Test_Tube = Environment("Test_Tube",sys.getModelVarNames());
             sys.environs.Shaking_Flask = Environment("Shaking_Flask",sys.getModelVarNames());
             sys.environs.Outdoor_Tank = Environment("Outdoor_Tank",sys.getModelVarNames());
+
+            sys.regSpecs.paramIGs = [];
         end
 
         % sys: ODSSys class ref, key: string, val: cell array of
@@ -681,7 +690,7 @@ classdef ODESys < handle
                 end
                 for l=1:1:length(sys.environs.(sys.activeEnv).subfuncs)
                     if ~strcmp(sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"t")
-                        govFunc = regexprep(govFunc,sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"f{"+l+"}(y,t,p)");
+                        govFunc = regexprep(govFunc,sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"f{"+l+"}(y,t,p,f)");
                     end
                 end
                 for l=1:1:length(comps)
@@ -720,10 +729,11 @@ classdef ODESys < handle
                     end
                 end
                 syms = sys.environs.(sys.activeEnv).subfuncs{k}.getSubFuncParamSyms();
+                govFuncLength = strlength(govFunc);
                 govFunc = split(govFunc,"#");
                 for l=1:1:length(syms)
                     for m=1:1:length(govFunc)
-                        if strlength(govFunc(m)) > 1
+                        if strlength(govFunc(m)) > 1 || govFuncLength == 1
                             govFunc(m) = regexprep(govFunc(m),syms(l),"p("+(length(sys.param)+env_param_ct)+")");
                         end
                     end
@@ -746,10 +756,11 @@ classdef ODESys < handle
                     govFunc = regexprep(govFunc,sys.helperFuncs{l}.getSubFuncSym(),"f{"+l+"}(y,t,p,f)");
                 end
                 syms = sys.helperFuncs{k}.getSubFuncParamSyms();
+                govFuncLength = strlength(govFunc);
                 govFunc = split(govFunc,"#");
                 for l=1:1:length(syms)
                     for m=1:1:length(govFunc)
-                        if strlength(govFunc(m)) > 1
+                        if strlength(govFunc(m)) > 1 || govFuncLength == 1
                             govFunc(m) = regexprep(govFunc(m),syms(l),"p("+(length(sys.param)+helper_param_ct)+")");
                         end
                     end
@@ -774,8 +785,6 @@ classdef ODESys < handle
             end
 
             % converting to function_handle
-            sys.f
-            sys.dydt
             sys.dydt = str2func(sys.dydt');
 
             % running model for each plot
@@ -785,7 +794,7 @@ classdef ODESys < handle
             
             % ### FIXME: add feature to allow user to specify time
             % precision of model
-            tEnd = sys.environs.(sys.activeEnv).getModelTime()
+            tEnd = sys.environs.(sys.activeEnv).getModelTime();
             tSmooth = linspace(0,tEnd,100);
             for k=1:1:length(sys.plots)
                 plot_obj = sys.plots{k};
@@ -904,31 +913,121 @@ classdef ODESys < handle
 
         % sys: ODESys class ref,
         function regStats = compileRegression(sys)
-            sys.dydt = "@(t,y,p,r) [";
+            sys.dydt = "@(t,y,p,f,r) [";
             sys.param = [];
             sys.reg_param_ct = 1;
+            sys.f = {};
+            comps = [sys.getSpecies('comp');sys.getChemicals('comp')];
             sysVar = sys.getModelVarNames();
-            comps = [sys.getSpecies('comp'),sys.getChemicals('comp')];
             for k=1:1:length(comps)
-                [govFunc, params, sys.reg_param_ct] = comps{k}.compileGovFunc(length(sys.param),sys.reg_param_ct,sys.regParamList(:,1),true);
+                % add logic to compile component gov funcs in order that
+                % allows for growth-associated product funcs to be a
+                % function of biomass funcs, and substrate funcs to be a
+                % function of biomass and product funcs
+                % ### FIXME: requires special logic/restrictions in the
+                % governing function portion
+                [govFunc, params, sys.reg_param_ct] = comps{k}.compileGovFunc(length(sys.param),sys.reg_param_ct,sys.regParamList{:,1},true);
+                for l=1:1:length(sys.helperFuncs)
+                    govFunc = regexprep(govFunc,sys.helperFuncs{l}.getSubFuncSym(),"f{"+(l+length(sys.environs.(sys.activeEnv).subfuncs))+"}(y,t,p,f,r)");
+                end
+                for l=1:1:length(sys.environs.(sys.activeEnv).subfuncs)
+                    if ~strcmp(sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"t")
+                        govFunc = regexprep(govFunc,sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"f{"+l+"}(y,t,p,f,r)");
+                    end
+                end
                 for l=1:1:length(comps)
                     if l <= length(sys.getSpecies('comp'))
                         govFunc = regexprep(govFunc,"X"+l,"y("+l+")");
                     else
                         govFunc = regexprep(govFunc,"C"+(l-length(sys.getSpecies('comp'))),"y("+l+")");
                     end
-                    for m=1:1:length(sysVar{end-4:end,1})
-                        govFunc = regexprep(govFunc,sysVar{end-5+m,2},"y("+(length(comps)+m)+")");
-                    end
                 end
-                sys.dydt = sys.dydt + govFunc + ";";
+
+                if k ~= length(comps)
+                    sys.dydt = sys.dydt + govFunc + ";";
+                else
+                    sys.dydt = sys.dydt + govFunc + "]";
+                end
                 sys.param = [sys.param,params];
             end
 
-            for k=1:1:length(sys.f)
-                sys.dydt = sys.dydt + sys.f.getSubFuncVal() + ";";
-                sys.param = [sys.param,sys.f.getSubFuncParamVals()];
+            % creating functions for environmental conditions
+            env_param_ct = 1;
+            for k=1:1:length(sys.environs.(sys.activeEnv).subfuncs)
+                % ### FIXME: add feature to define helpers with another
+                % helper (this is very complicated, for now just don't let
+                % helpers be defined by helpers)
+                govFunc = string(sys.environs.(sys.activeEnv).subfuncs{k}.getSubFuncVal());
+                for l=1:1:length(comps)
+                    if l <= length(sys.getSpecies('comp'))
+                        govFunc = regexprep(govFunc,"X"+l,"y("+l+")");
+                    else
+                        govFunc = regexprep(govFunc,"C"+(l-length(sys.getSpecies('comp'))),"y("+l+")");
+                    end
+                end
+                for l=1:1:length(sys.environs.(sys.activeEnv).subfuncs)
+                    if ~strcmp(sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"t")
+                        govFunc = regexprep(govFunc,sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"f{"+l+"}(y,t,p,f,r)");
+                    end
+                end
+                syms = sys.environs.(sys.activeEnv).subfuncs{k}.getSubFuncParamSyms();
+                govFuncLength = strlength(govFunc);
+                govFunc = split(govFunc,"#");
+                for l=1:1:length(syms)
+                    for m=1:1:length(govFunc)
+                        if strlength(govFunc(m)) > 1 || govFuncLength == 1
+                            govFunc(m) = regexprep(govFunc(m),syms(l),"p("+(length(sys.param)+env_param_ct)+")");
+                        end
+                    end
+                    env_param_ct = env_param_ct + 1;
+                end
+                govFunc = strrep(strrep(strjoin(govFunc),"#","")," ","");
+                funcArgText = "@(y,t,p,f)";
+                sys.f{end+1} = str2func(funcArgText+govFunc);
+                sys.param = [sys.param,sys.environs.(sys.activeEnv).subfuncs{k}.getSubFuncParamVals()];
             end
+
+            % creating functions for helper functions
+            helper_param_ct = 1;
+            for k=1:1:length(sys.helperFuncs)
+                % ### FIXME: add feature to define helpers with another
+                % helper (this is very complicated, for now just don't let
+                % helpers be defined by helpers)
+                govFunc = string(sys.helperFuncs{k}.getSubFuncVal());
+                for l=1:1:length(sys.helperFuncs)
+                    govFunc = regexprep(govFunc,sys.helperFuncs{l}.getSubFuncSym(),"f{"+l+"}(y,t,p,f,r)");
+                end
+                syms = sys.helperFuncs{k}.getSubFuncParamSyms();
+                govFuncLength = strlength(govFunc);
+                govFunc = split(govFunc,"#");
+                for l=1:1:length(syms)
+                    for m=1:1:length(govFunc)
+                        if strlength(govFunc(m)) > 1 || govFuncLength == 1
+                            govFunc(m) = regexprep(govFunc(m),syms(l),"p("+(length(sys.param)+helper_param_ct)+")");
+                        end
+                    end
+                    helper_param_ct = helper_param_ct + 1;
+                end
+                govFunc = strrep(strrep(strjoin(govFunc),"#","")," ","");
+                for l=1:1:length(sys.environs.(sys.activeEnv).subfuncs)
+                    if ~strcmp(sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"t")
+                        govFunc = regexprep(govFunc,sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"f{"+l+"}(y,t,p,f,r)");
+                    end
+                end
+                for l=1:1:length(comps)
+                    if l <= length(sys.getSpecies('comp'))
+                        govFunc = regexprep(govFunc,"X"+l,"y("+l+")");
+                    else
+                        govFunc = regexprep(govFunc,"C"+(l-length(sys.getSpecies('comp'))),"y("+l+")");
+                    end
+                end
+                funcArgText = "@(y,t,p,f,r)";
+                sys.f{end+1} = str2func(funcArgText+govFunc);
+                sys.param = [sys.param,sys.helperFuncs{k}.getSubFuncParamVals()];
+            end
+
+            % converting to function_handle
+            sys.dydt = str2func(sys.dydt');
             sys.dydt = char(sys.dydt);
             sys.dydt(end) = ']';
             sys.dydt = string(sys.dydt);
@@ -940,29 +1039,25 @@ classdef ODESys < handle
             sys.importedDataIdx = [];
             for k=1:1:length(sys.matchedVarsList)
                 matchIdx = strcmp(cellstr(sysVar(:,2)),sys.matchedVarsList{k}.sysVarName);
-                if any(matchIdx)
+                varSyms = cellstr(sysVar(:,2));
+                if any(matchIdx) && ~strcmp("t",varSyms{matchIdx})
                     sys.importedDataIdx(end+1) = find(matchIdx);
                 end
             end
             DVs = [sys.importedData{:,2:end}];
             % ### FIXME: upgrade later to allow automatic testing of
             % various starting guesses for each parameter
-            beta0 = cell2mat(sys.regSpecs.paramIGs);
+            beta0 = sys.regSpecs.paramIGs;
 
             y0 = [];
             comps = [sys.getSpecies('comp'),sys.getChemicals('comp')];
             for m=1:1:(length(fieldnames(sys.species))+length(fieldnames(sys.chemicals)))
                 y0(m) = comps{m}.getInitConc(); %#ok<AGROW>
             end
-%             test3 = @(reg_param,t) sys.nLinRegHandler(reg_param,t,y0)
-            [beta,R,J,CovB,MSE,ErrorModelInfo] = nlinfit(IVs,DVs,@(reg_param,t) sys.nLinRegHandler(reg_param,t,y0),beta0,sys.regSpecs);
-            RMSE = sqrt(MSE);
-            % ### FIXME: update type of NRMSE, NRMSE for each DV?
-            NRMSE = RMSE./mean(DVs);
-            % regressed function
-%             for k=1:1:length(sys.matches)
-%                 sys.param(sys.matches(k)) = beta(k);
-%             end
+            [sys.reg_analytics.beta,sys.reg_analytics.R,sys.reg_analytics.J, ...
+                sys.reg_analytics.CovB,sys.reg_analytics.MSE,sys.reg_analytics.ErrorModelInfo] = ...
+                nlinfit(IVs,DVs,@(reg_param,t) sys.nLinRegHandler(reg_param,t,y0),beta0,sys.regSpecs);
+
             [tRes,yRes] = sys.runRegModel(IVs,y0,beta);
             sys.regData = [tRes,yRes];
             regStats = struct('importedDataIdx',sys.importedDataIdx, ...
@@ -973,7 +1068,7 @@ classdef ODESys < handle
         % sys: ODESys class ref, param: number[], t: number[]
         function yRes = nLinRegHandler(sys,reg_param,t,y0)
             opts = odeset('RelTol',1e-6,'AbsTol',1e-6);
-            [~,yRes_all] = ode45(@(t,y) sys.dydt(t,y,sys.param,reg_param),t,y0,opts);
+            [~,yRes_all] = ode45(@(t,y) sys.dydt(t,y,sys.param,sys.f,reg_param),t,y0,opts);
             yRes = [];
             for k=1:1:length(sys.importedDataIdx)
                 yRes(:,k) = yRes_all(:,sys.importedDataIdx(k)); %#ok<AGROW> 
@@ -984,7 +1079,17 @@ classdef ODESys < handle
         function [tRes,yRes] = runRegModel(sys,t,y0,reg_param)
             % iterating over BatchFunction with ode45
             opts = odeset('RelTol',1e-6,'AbsTol',1e-6);
-            [tRes,yRes] = ode45(@(t,y) sys.dydt(t,y,sys.param,reg_param),t,y0,opts);
+            [tRes,yRes] = ode45(@(t,y) sys.dydt(t,y,sys.param,sys.f,reg_param),t,y0,opts);
+        end
+
+        % sys: ODESys class ref
+        function reg_analytics = getRegAnalysis(sys)
+            reg_analytics = sys.reg_analytics;
+        end
+
+        % sys: ODESys class ref
+        function dydt = getODE(sys)
+            dydt = sys.dydt;
         end
 
         % sys: ODESys class ref, funcVal: string, funcName: string
@@ -1249,20 +1354,25 @@ classdef ODESys < handle
                 if ~cancel
                     for k=1:1:size(paramList,1)
                         if strcmp(paramList{k,3},paramSym)
-                            param = paramList(k,:); %#ok<PROPLC> 
+                            regParam = paramList(k,:);
                             break;
                         end
                     end
-                    sys.regParamList{end+1,1} = param{3}; %#ok<PROPLC> 
+                    sys.regParamList{end+1,1} = regParam{3};
                     sys.regParamList{end,2} = compName;
-                    sys.regParamList{end,3} = param{2}; %#ok<PROPLC> 
-                    sys.regParamList{end,4} = param{5}; %#ok<PROPLC> 
-                    sys.regParamList{end,5} = '~';    
+                    sys.regParamList{end,3} = regParam{2};
+                    sys.regParamList{end,4} = regParam{5};
+                    sys.regParamList{end,5} = '~';
+
+                    sys.regSpecs.DerivStep(end+1) = eps^(1/3);
+                    sys.regSpecs.paramIGs(end+1) = regParam{5};
                 end
             elseif updateType == "Remove"
                 for k=1:1:size(sys.regParamList,1)
                     if strcmp(sys.regParamList{k,1},paramSym)
                         sys.regParamList(k,:) = [];
+                        sys.regSpecs.DerivStep(k) = [];
+                        sys.regSpecs.paramIGs(k) = [];
                         break;
                     end
                 end

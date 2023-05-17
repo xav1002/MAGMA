@@ -155,7 +155,6 @@ classdef Component < handle
         function funcs = getGovFuncs(comp, funcCombo, valsOrNames, editing, refFuncVal, refFuncName)
             % ### FIXME
             funcs = cell(1,2);
-            disp(editing+"test")
             segment = 1;
             for k=1:1:length(comp.funcParams)
                 if editing
@@ -165,7 +164,6 @@ classdef Component < handle
                                 segment = 2;
                             else
                                 funcs{segment}{end+1} = comp.funcParams{k}.funcName;
-                                disp(k)
                             end
                         elseif valsOrNames == "Values"
                             if strcmp(comp.funcParams{k}.funcName,refFuncName) && strcmp(comp.funcParams{k}.funcVal,refFuncVal)
@@ -354,10 +352,12 @@ classdef Component < handle
                     for l=1:1:length(comp.funcParams{k}.params)
                         match = strcmp(cellstr(regParamList),char(comp.funcParams{k}.params{l}.sym));
                         if any(match)
+                            govFuncLength = strlength(govFunc);
                             govFunc = split(govFunc,"#");
                             for m=1:1:length(comp.funcParams{k}.params)
                                 for n=1:1:length(govFunc)
-                                    if strlength(govFunc(n)) > 1
+                                    if strlength(govFunc(n)) > 1 || govFuncLength == 1
+                                        comp.funcParams{k}.params{m}.sym
                                         govFunc(n) = regexprep(govFunc(n),comp.funcParams{k}.params{m}.sym,"r("+(param_ct+ct)+")");
                                     end
                                 end
@@ -367,7 +367,7 @@ classdef Component < handle
                             govFunc = split(govFunc,"#");
                             for m=1:1:length(comp.funcParams{k}.params)
                                 for n=1:1:length(govFunc)
-                                    if strlength(govFunc(n)) > 1
+                                    if strlength(govFunc(n)) > 1 || govFuncLength == 1
                                         govFunc(n) = regexprep(govFunc(n),comp.funcParams{k}.params{m}.sym,"p("+(param_ct+ct)+")");
                                     end
                                 end
@@ -378,10 +378,11 @@ classdef Component < handle
                 end
             else
                 for k=1:1:length(comp.funcParams)
+                    govFuncLength = strlength(govFunc);
                     govFunc = split(govFunc,"#");
                     for l=1:1:length(comp.funcParams{k}.params)
                         for m=1:1:length(govFunc)
-                            if strlength(govFunc(m)) > 1
+                            if strlength(govFunc(m)) > 1 || govFuncLength == 1
                                 govFunc(m) = regexprep(govFunc(m),comp.funcParams{k}.params{l}.sym,"p("+(param_ct+ct)+")");
                             end
                         end

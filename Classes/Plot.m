@@ -36,7 +36,7 @@ classdef Plot < handle
 %                 DVNames
 %                 varNames
                 ICNames = string.empty(0,1);
-                for l=1:1:length(DVNames)
+                for l=1:1:size(DVNames,1)
                     ICNames(l,1) = string(DVNames(l,2))+"_{Init-Cond}";
                 end
                 mins = string.empty(0,1);
@@ -46,7 +46,7 @@ classdef Plot < handle
                     maxes(l,1) = "max("+string(varNames(l,2))+")";
                 end
                 plot.axes{k} = plot.createNewAxes(k,title,string(varNames(k,2)),string(varNames(:,2)),mins(k,1),maxes(k,1), ...
-                    true,{0},0,0,50,isDV,false,ICNames,mins,maxes); % ### FIXME
+                    true,{0},0,0,50,isDV,false,ICNames,mins,maxes); % ### FIXME: can't make Z-axis
             end
         end
 
