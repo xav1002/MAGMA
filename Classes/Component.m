@@ -354,25 +354,21 @@ classdef Component < handle
                         if any(match)
                             govFuncLength = strlength(govFunc);
                             govFunc = split(govFunc,"#");
-                            for m=1:1:length(comp.funcParams{k}.params)
-                                for n=1:1:length(govFunc)
-                                    if strlength(govFunc(n)) > 1 || govFuncLength == 1
-                                        comp.funcParams{k}.params{m}.sym
-                                        govFunc(n) = regexprep(govFunc(n),comp.funcParams{k}.params{m}.sym,"r("+(param_ct+ct)+")");
-                                    end
+                            for m=1:1:length(govFunc)
+                                if strlength(govFunc(m)) > 1 || govFuncLength == 1
+                                    govFunc(m) = regexprep(govFunc(m),comp.funcParams{k}.params{l}.sym,"r("+(reg_param_ct)+")");
                                 end
-                                reg_param_ct = reg_param_ct + 1;
                             end
+                            reg_param_ct = reg_param_ct + 1;
                         else
                             govFunc = split(govFunc,"#");
-                            for m=1:1:length(comp.funcParams{k}.params)
-                                for n=1:1:length(govFunc)
-                                    if strlength(govFunc(n)) > 1 || govFuncLength == 1
-                                        govFunc(n) = regexprep(govFunc(n),comp.funcParams{k}.params{m}.sym,"p("+(param_ct+ct)+")");
-                                    end
+                            for m=1:1:length(govFunc)
+                                comp.funcParams{k}.params{l}.sym
+                                if strlength(govFunc(m)) > 1 || govFuncLength == 1
+                                    govFunc(m) = regexprep(govFunc(m),comp.funcParams{k}.params{l}.sym,"p("+(param_ct+ct)+")")
                                 end
-                                ct = ct + 1;
                             end
+                            ct = ct + 1;
                         end
                     end
                 end

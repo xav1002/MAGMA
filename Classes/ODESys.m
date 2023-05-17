@@ -926,7 +926,16 @@ classdef ODESys < handle
                 % function of biomass and product funcs
                 % ### FIXME: requires special logic/restrictions in the
                 % governing function portion
-                [govFunc, params, sys.reg_param_ct] = comps{k}.compileGovFunc(length(sys.param),sys.reg_param_ct,sys.regParamList{:,1},true);
+                idx = zeros(size(sys.regParamList,1),1);
+                for l=1:1:size(sys.regParamList,1)
+                    if strcmp(sys.regParamList{l,2},comps{k}.name)
+                        idx(l) = 1;
+                    else
+                        idx(l) = 0;
+                    end
+                end
+                compRegParamList = sys.regParamList(find(idx),1);
+                [govFunc, params, sys.reg_param_ct] = comps{k}.compileGovFunc(length(sys.param),sys.reg_param_ct,compRegParamList,true);
                 for l=1:1:length(sys.helperFuncs)
                     govFunc = regexprep(govFunc,sys.helperFuncs{l}.getSubFuncSym(),"f{"+(l+length(sys.environs.(sys.activeEnv).subfuncs))+"}(y,t,p,f,r)");
                 end
@@ -1031,6 +1040,7 @@ classdef ODESys < handle
             sys.dydt = char(sys.dydt);
             sys.dydt(end) = ']';
             sys.dydt = string(sys.dydt);
+            sys.dydt
 
             % converting to function_handle
             sys.dydt = str2func(sys.dydt');
@@ -1058,16 +1068,20 @@ classdef ODESys < handle
                 sys.reg_analytics.CovB,sys.reg_analytics.MSE,sys.reg_analytics.ErrorModelInfo] = ...
                 nlinfit(IVs,DVs,@(reg_param,t) sys.nLinRegHandler(reg_param,t,y0),beta0,sys.regSpecs);
 
-            [tRes,yRes] = sys.runRegModel(IVs,y0,beta);
+            [tRes,yRes] = sys.runRegModel(IVs,y0,sys.reg_analytics.beta);
             sys.regData = [tRes,yRes];
             regStats = struct('importedDataIdx',sys.importedDataIdx, ...
-                'beta',beta,'R',R,'J',J,'CovB',CovB,'MSE',MSE,'RMSE',RMSE,'NRMSE',NRMSE, ...
-                'ErrorModelInfo',ErrorModelInfo,'IVs',IVs,'DVs',DVs,'tRes',tRes,'yRes',yRes);
+                'beta',sys.reg_analytics.beta,'R',sys.reg_analytics.R, ...
+                'J',sys.reg_analytics.J,'CovB',sys.reg_analytics.CovB,'MSE',sys.reg_analytics.MSE, ...
+                'ErrorModelInfo',sys.reg_analytics.ErrorModelInfo, ...
+                'IVs',IVs,'DVs',DVs,'tRes',tRes,'yRes',yRes);
         end
 
         % sys: ODESys class ref, param: number[], t: number[]
         function yRes = nLinRegHandler(sys,reg_param,t,y0)
             opts = odeset('RelTol',1e-6,'AbsTol',1e-6);
+            % ### FIXME: need to make regression able to take in 1 reg
+            % param at a time
             [~,yRes_all] = ode45(@(t,y) sys.dydt(t,y,sys.param,sys.f,reg_param),t,y0,opts);
             yRes = [];
             for k=1:1:length(sys.importedDataIdx)
