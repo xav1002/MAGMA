@@ -29,6 +29,7 @@ classdef ODESys < handle
 
         importedDataPath = ""; % path to user imported data
         importedData = {}; % user-imported data
+        importedDataColNames = {}; % column names for user imported data
         regParamList = {}; % list of parameters for easy access
         matchedVarsList = {}; % list of parameters that are matched in regression
         regSpecs = statset; % struct for regression specifications
@@ -935,15 +936,6 @@ classdef ODESys < handle
                 % function of biomass and product funcs
                 % ### FIXME: requires special logic/restrictions in the
                 % governing function portion
-%                 idx = zeros(size(sys.regParamList,1),1);
-%                 for l=1:1:size(sys.regParamList,1)
-%                     if strcmp(sys.regParamList{l,2},comps{k}.name)
-%                         idx(l) = 1;
-%                     else
-%                         idx(l) = 0;
-%                     end
-%                 end
-%                 compRegParamList = sys.regParamList(find(idx),[1,6]);
                 [govFunc, params, sys.reg_param_ct,regPUpdate] = comps{k}.compileGovFunc(length(sys.param),sys.reg_param_ct,sys.regParamList(:,[1,6]),true);
                 if regPUpdate{1}, sys.regParamList{regPUpdate{1},6} = regPUpdate{2}; end
                 for l=1:1:length(sys.helperFuncs)
@@ -1105,7 +1097,7 @@ classdef ODESys < handle
         end
 
         % sys: ODESys class ref
-        function reg_analytics = getRegAnalysis(sys)
+        function reg_analytics = getRegAnalytics(sys)
             reg_analytics = sys.reg_analytics;
         end
 
@@ -1349,20 +1341,24 @@ classdef ODESys < handle
             plot.setVarICEvalData(axisName,varName,evaltVal,loEvalLim,upEvalLim,nbEvalPts);
         end
 
-        % sys: ODESys class ref, filePath: string
-        function setImportedData(sys,filePath,importedData)
+        % sys: ODESys class ref, filePath: string, colNames: {}
+        function setImportedData(sys,filePath,importedData,colNames)
             sys.importedDataPath = filePath;
             sys.importedData = importedData;
+            sys.importedDataColNames = colNames;
         end
 
         % sys: ODESys class ref
-        function [importedData,path] = getUserImportedData(sys)
+        function [importedData,path,colNames] = getUserImportedData(sys)
             importedData = sys.importedData;
             path = sys.importedDataPath;
+            colNames = sys.importedDataColNames;
         end
 
         % sys: ODESys class ref, compName: string, paramSym: string, updateType: string
         function params = updateRegParamList(sys,compName,paramSym,updateType)
+            % ### FIXME: add functionality to include capability to update
+            % for envs and helpers
             comp = sys.getCompByName(compName);
             paramList = comp.getGrthParams();
             cancel = false;
@@ -1399,6 +1395,7 @@ classdef ODESys < handle
                         break;
                     end
                 end
+                for k=1:1:size(sys.regParamList,1), sys.regParamList{k,6} = ""; end
             end
             params = sys.regParamList(:,1:5);
         end

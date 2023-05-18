@@ -350,26 +350,12 @@ classdef Component < handle
             ct = 1;
             if regression
                 for k=1:1:length(comp.funcParams)
-                    % replacing regression parameters that were previously
-                    % defined
-%                     for l=1:1:size(regParamList,1)
-%                         if ~strcmp(regParamList{l,2},"")
-%                             govFuncLength = strlength(govFunc);
-%                             govFunc = split(govFunc,"#");
-%                             for m=1:1:length(govFunc)
-%                                 if strlength(govFunc(m)) > 1 || govFuncLength == 1
-%                                     govFunc(m) = regexprep(govFunc(m),regParamList{l,1},"r("+regParamList{l,2}+")");
-%                                 end
-%                             end
-%                         end
-%                     end
-
                     % replacing function and regression parameters that haven't yet been
                     % replaced
                     for l=1:1:length(comp.funcParams{k}.params)
-                        regParamList
                         match = strcmp(cellstr(regParamList(:,1)),char(comp.funcParams{k}.params{l}.sym));
                         if any(match)
+                            regParamList
                             govFuncLength = strlength(govFunc);
                             govFunc = split(govFunc,"#");
                             for m=1:1:length(govFunc)
@@ -381,10 +367,10 @@ classdef Component < handle
                                         regParamListUpdate{1} = true;
                                         regParamListUpdate{2} = find(match);
                                         regParamListUpdate{3} = string(reg_param_ct);
+                                        reg_param_ct = reg_param_ct + 1;
                                     end
                                 end
                             end
-                            reg_param_ct = reg_param_ct + 1;
                             ct = ct + 1;
                         else
                             govFunc = split(govFunc,"#");
