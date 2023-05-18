@@ -935,16 +935,17 @@ classdef ODESys < handle
                 % function of biomass and product funcs
                 % ### FIXME: requires special logic/restrictions in the
                 % governing function portion
-                idx = zeros(size(sys.regParamList,1),1);
-                for l=1:1:size(sys.regParamList,1)
-                    if strcmp(sys.regParamList{l,2},comps{k}.name)
-                        idx(l) = 1;
-                    else
-                        idx(l) = 0;
-                    end
-                end
-                compRegParamList = sys.regParamList(find(idx),[1,6]);
-                [govFunc, params, sys.reg_param_ct] = comps{k}.compileGovFunc(length(sys.param),sys.reg_param_ct,compRegParamList,true);
+%                 idx = zeros(size(sys.regParamList,1),1);
+%                 for l=1:1:size(sys.regParamList,1)
+%                     if strcmp(sys.regParamList{l,2},comps{k}.name)
+%                         idx(l) = 1;
+%                     else
+%                         idx(l) = 0;
+%                     end
+%                 end
+%                 compRegParamList = sys.regParamList(find(idx),[1,6]);
+                [govFunc, params, sys.reg_param_ct,regPUpdate] = comps{k}.compileGovFunc(length(sys.param),sys.reg_param_ct,sys.regParamList(:,[1,6]),true);
+                if regPUpdate{1}, sys.regParamList{regPUpdate{1},6} = regPUpdate{2}; end
                 for l=1:1:length(sys.helperFuncs)
                     govFunc = regexprep(govFunc,sys.helperFuncs{l}.getSubFuncSym(),"f{"+(l+length(sys.environs.(sys.activeEnv).subfuncs))+"}(y,t,p,f,r)");
                 end
@@ -1000,7 +1001,7 @@ classdef ODESys < handle
                     env_param_ct = env_param_ct + 1;
                 end
                 govFunc = strrep(strrep(strjoin(govFunc),"#","")," ","");
-                funcArgText = "@(y,t,p,f)";
+                funcArgText = "@(y,t,p,f,r)";
                 sys.f{end+1} = str2func(funcArgText+govFunc);
                 sys.param = [sys.param,sys.environs.(sys.activeEnv).subfuncs{k}.getSubFuncParamVals()];
             end
