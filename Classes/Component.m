@@ -314,7 +314,7 @@ classdef Component < handle
             funcNum = length(comp.funcParams);
         end
 
-        % comp: Component class ref, paramCt: numbers, regParamList: {}, regression: boolean
+        % comp: Component class ref, paramCt: numbers, paramList: {}, regParamList: {}, regression: boolean
         function [govFunc,params,reg_param_ct] = compileGovFunc(comp,param_ct,reg_param_ct,regParamList,regression)
             % Need to make sure that each individual govFunc component is
             % isolated (so (C1+C2)*(C3+C4) ~= C1+C2*C3_C4)
@@ -349,6 +349,22 @@ classdef Component < handle
             ct = 1;
             if regression
                 for k=1:1:length(comp.funcParams)
+                    % replacing regression parameters that were previously
+                    % defined
+                    for l=1:1:size(regParamList,1)
+                        if ~strcmp(regParamList{l,2},"")
+                            govFuncLength = strlength(govFunc);
+                            govFunc = split(govFunc,"#");
+                            for m=1:1:length(govFunc)
+                                if strlength(govFunc(m)) > 1 || govFuncLength == 1
+                                    govFunc(m) = regexprep(govFunc(m),regParamList{l,1},"r("+regParamList{l,2}+")");
+                                end
+                            end
+                        end
+                    end
+
+                    % replacing function and regression parameters that haven't yet been
+                    % replaced
                     for l=1:1:length(comp.funcParams{k}.params)
                         match = strcmp(cellstr(regParamList),char(comp.funcParams{k}.params{l}.sym));
                         if any(match)
@@ -360,12 +376,13 @@ classdef Component < handle
                                 end
                             end
                             reg_param_ct = reg_param_ct + 1;
+                            ct = ct + 1;
                         else
                             govFunc = split(govFunc,"#");
                             for m=1:1:length(govFunc)
                                 comp.funcParams{k}.params{l}.sym
                                 if strlength(govFunc(m)) > 1 || govFuncLength == 1
-                                    govFunc(m) = regexprep(govFunc(m),comp.funcParams{k}.params{l}.sym,"p("+(param_ct+ct)+")")
+                                    govFunc(m) = regexprep(govFunc(m),comp.funcParams{k}.params{l}.sym,"p("+(param_ct+ct)+")");
                                 end
                             end
                             ct = ct + 1;
@@ -373,6 +390,8 @@ classdef Component < handle
                     end
                 end
             else
+                % replacing function parameters that haven't been replaced
+                % yet
                 for k=1:1:length(comp.funcParams)
                     govFuncLength = strlength(govFunc);
                     govFunc = split(govFunc,"#");

@@ -448,28 +448,37 @@ classdef ODESys < handle
         function editing = getEditing(sys)
             editing = sys.editing;
         end
-        
-        % sys: ODESys class ref, compName: string, paramSym: string,
+
+        % sys: ODESys class ref, paramSym: string,
         % newVal: number, newUnit: string, newParamName: string, funcName:
         % string
-        function updateCompParam(sys, compName, paramSym, newVal, newUnit, newParamName, funcName)
-            comp = sys.getCompByName(compName);
-            comp.updateParam(paramSym, newVal, newUnit, newParamName, funcName);
-        end
+        function updateMultiParams(sys,paramSym,newVal,newUnit,newParamName,funcName)
+            comps = [sys.getSpecies('comp'),sys.getChemicals('comp')];
+            for k=1:1:length(comps)
+                grthParams = comps{k}.getGrthParams();
+                if any(strcmp(grthParams(:,3),paramSym))
+                    comps{k}.updateParam(paramSym,newVal,newUnit,newParamName,funcName);
+                end
+            end
 
-        % sys: ODESys class ref, envFuncName: string, paramSym: string,
-        % newVal: number, newUnit: string, newParamName: string
-        function updateEnvFuncParam(sys,envFuncName,paramSym,newVal,newUnit,newParamName)
-            sys.environs.(sys.activeEnv).updateEnvFuncParams(envFuncName,paramSym,newVal,newUnit,newParamName);
-        end
+            envs = struct2cell(sys.environs);
+            for k=1:1:length(envs)
+                for l=1:1:length(envs{k}.subfuncs)
+                    envFuncName = envs{k}.subfuncs{l}.getSubFuncName();
+                    grthParams = envs{k}.getGrthParamsByEnvFuncName(envFuncName);
+                    if any(strcmp(grthParams(:,3),paramSym))
+                        envs{k}.updateEnvFuncParams(envFuncName,paramSym,newVal,newUnit,newParamName);
+                    end
+                end
+            end
 
-        % sys: ODESys class ref, helperFuncName: string, paramSym: string,
-        % newVal: number, newUnit: string, newParamName: string
-        function updateHelperFuncParam(sys,helperFuncName,paramSym,newVal,newUnit,newParamName)
             for k=1:1:length(sys.helperFuncs)
                 if strcmp(sys.helperFuncs{k}.getSubFuncName(),helperFuncName)
-                    sys.helperFuncs{k}.updateParams(newParamName,paramSym,newVal,newUnit);
-                    break;
+                    helperFuncName = sys.helperFncs{k}.getSubFuncName();
+                    grthParams = sys.getGrthParamsByHelperFuncName(helperFuncName);
+                    if any(strcmp(grthParams(:,3),paramSym))
+                        sys.helperFuncs{k}.updateParams(newParamName,paramSym,newVal,newUnit);
+                    end
                 end
             end
         end
@@ -934,7 +943,7 @@ classdef ODESys < handle
                         idx(l) = 0;
                     end
                 end
-                compRegParamList = sys.regParamList(find(idx),1);
+                compRegParamList = sys.regParamList(find(idx),[1,6]);
                 [govFunc, params, sys.reg_param_ct] = comps{k}.compileGovFunc(length(sys.param),sys.reg_param_ct,compRegParamList,true);
                 for l=1:1:length(sys.helperFuncs)
                     govFunc = regexprep(govFunc,sys.helperFuncs{l}.getSubFuncSym(),"f{"+(l+length(sys.environs.(sys.activeEnv).subfuncs))+"}(y,t,p,f,r)");
@@ -1080,8 +1089,6 @@ classdef ODESys < handle
         % sys: ODESys class ref, param: number[], t: number[]
         function yRes = nLinRegHandler(sys,reg_param,t,y0)
             opts = odeset('RelTol',1e-6,'AbsTol',1e-6);
-            % ### FIXME: need to make regression able to take in 1 reg
-            % param at a time
             [~,yRes_all] = ode45(@(t,y) sys.dydt(t,y,sys.param,sys.f,reg_param),t,y0,opts);
             yRes = [];
             for k=1:1:length(sys.importedDataIdx)
@@ -1360,7 +1367,7 @@ classdef ODESys < handle
             cancel = false;
             if updateType == "Add"
                 for k=1:1:size(sys.regParamList)
-                    if strcmp(sys.regParamList{k},paramSym)
+                    if strcmp(sys.regParamList{k,1},paramSym)
                         cancel = true;
                     end
                 end
@@ -1377,6 +1384,7 @@ classdef ODESys < handle
                     sys.regParamList{end,3} = regParam{2};
                     sys.regParamList{end,4} = regParam{5};
                     sys.regParamList{end,5} = '~';
+                    sys.regParamList{end,6} = "";
 
                     sys.regSpecs.DerivStep(end+1) = eps^(1/3);
                     sys.regSpecs.paramIGs(end+1) = regParam{5};
@@ -1391,7 +1399,7 @@ classdef ODESys < handle
                     end
                 end
             end
-            params = sys.regParamList;
+            params = sys.regParamList(:,1:5);
         end
 
         % sys: ODESys, compName: string
