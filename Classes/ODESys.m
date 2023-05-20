@@ -1047,7 +1047,6 @@ classdef ODESys < handle
             % converting to function_handle
             sys.dydt = str2func(sys.dydt');
 
-            IVs = [sys.importedData{:,1}];
             sys.importedDataIdx = [];
             for k=1:1:length(sys.matchedVarsList)
                 matchIdx = strcmp(cellstr(sysVar(:,2)),sys.matchedVarsList{k}.sysVarName);
@@ -1056,11 +1055,18 @@ classdef ODESys < handle
                     sys.importedDataIdx(end+1) = find(matchIdx);
                 end
             end
-            DVs = [sys.importedData{:,2:end}];
+            IVs = zeros((size(sys.importedData,2)-1).*size(sys.importedData,1),1);
+            DVs = zeros((size(sys.importedData,2)-1).*size(sys.importedData,1),1);
+            for k=2:1:size(sys.importedData,2)
+                IVs((1:1:size(sys.importedData,1))+((k-2).*size(sys.importedData,1)),1) = [sys.importedData{:,1}];
+                DVs((1:1:size(sys.importedData,1))+((k-2).*size(sys.importedData,1)),1) = [sys.importedData{:,k}];
+            end
             % ### FIXME: upgrade later to allow automatic testing of
             % various starting guesses for each parameter
             beta0 = sys.regSpecs.paramIGs;
 
+            % ### FIXME: upgrade to fitnlm (more recent/robust nonlin
+            % fitter?)
             y0 = [];
             comps = [sys.getSpecies('comp'),sys.getChemicals('comp')];
             for m=1:1:(length(fieldnames(sys.species))+length(fieldnames(sys.chemicals)))
@@ -1070,22 +1076,25 @@ classdef ODESys < handle
                 sys.reg_analytics.CovB,sys.reg_analytics.MSE,sys.reg_analytics.ErrorModelInfo] = ...
                 nlinfit(IVs,DVs,@(reg_param,t) sys.nLinRegHandler(reg_param,t,y0),beta0,sys.regSpecs);
 
+            sys.reg_analytics.R
+
             [tRes,yRes] = sys.runRegModel(IVs,y0,sys.reg_analytics.beta);
             sys.regData = [tRes,yRes];
             regStats = struct('importedDataIdx',sys.importedDataIdx, ...
                 'beta',sys.reg_analytics.beta,'R',sys.reg_analytics.R, ...
                 'J',sys.reg_analytics.J,'CovB',sys.reg_analytics.CovB,'MSE',sys.reg_analytics.MSE, ...
                 'ErrorModelInfo',sys.reg_analytics.ErrorModelInfo, ...
-                'IVs',IVs,'DVs',DVs,'tRes',tRes,'yRes',yRes);
+                'IVs',sys.importedData{:,1},'DVs',sys.importedData{:,2:end},'tRes',tRes,'yRes',yRes);
         end
 
         % sys: ODESys class ref, param: number[], t: number[]
         function yRes = nLinRegHandler(sys,reg_param,t,y0)
             opts = odeset('RelTol',1e-6,'AbsTol',1e-6);
-            [~,yRes_all] = ode45(@(t,y) sys.dydt(t,y,sys.param,sys.f,reg_param),t,y0,opts);
-            yRes = [];
-            for k=1:1:length(sys.importedDataIdx)
-                yRes(:,k) = yRes_all(:,sys.importedDataIdx(k)); %#ok<AGROW> 
+            tspan = t(1:size(sys.importedData,1));
+            [~,yRes_all] = ode45(@(t,y) sys.dydt(t,y,sys.param,sys.f,reg_param),tspan,y0,opts);
+            yRes = zeros((size(sys.importedData,2)-1).*size(sys.importedData,1),1);
+            for k=1:1:size(sys.importedData,2)-1
+                yRes((1:1:size(sys.importedData,1))+((k-1).*size(sys.importedData,1)),1) = yRes_all(:,sys.importedDataIdx(k));
             end
         end
 
@@ -1093,7 +1102,8 @@ classdef ODESys < handle
         function [tRes,yRes] = runRegModel(sys,t,y0,reg_param)
             % iterating over BatchFunction with ode45
             opts = odeset('RelTol',1e-6,'AbsTol',1e-6);
-            [tRes,yRes] = ode45(@(t,y) sys.dydt(t,y,sys.param,sys.f,reg_param),t,y0,opts);
+            tspan = t(1:size(sys.importedData,1));
+            [tRes,yRes] = ode45(@(t,y) sys.dydt(t,y,sys.param,sys.f,reg_param),tspan,y0,opts);
         end
 
         % sys: ODESys class ref
@@ -1102,8 +1112,84 @@ classdef ODESys < handle
         end
 
         % sys: ODESys class ref
-        function dydt = getODE(sys)
-            dydt = sys.dydt;
+        function NRMSE = calcNRMSE(sys,normType)
+            % ### FIXME: check that calculation is correct
+            RMSE = zeros(size(sys.importedData,2)-1,1);
+            NRMSE = cell(size(sys.importedData,2)-1,2);
+            skip = 0;
+            for k=1:1:length(RMSE)
+                RMSE(k) = sqrt(sum(sys.reg_analytics.R((1:1:size(sys.importedData,1))+((k-1).*size(sys.importedData,1)),1)));
+                switch normType
+                    case "Range"
+                        normFactor = range(sys.regData(k+1,:),'all');
+                    case "Mean"
+                        normFactor = mean(sys.regData(k+1,:),'all');
+                    case "Inter-Quartile Range"
+                        normFactor = iqr(sys.regData(k+1,:),'all');
+                    case "Median"
+                        normFactor = median(sys.regData(k+1,:),'all');
+                end
+                if strcmp(sys.matchedVarsList{k}.sysVarName,'t'), skip = 1; end
+                NRMSE{k,1} = char(sys.matchedVarsList{k+skip}.sysVarName);
+                NRMSE{k,2} = RMSE(k)./normFactor;
+            end
+        end
+
+        % sys: ODESys class ref, calcType: string, alpha: number
+        function parCI = calcParCI(sys,calcType,alpha)
+            % ### FIXME: need to ensure that the R, J, and CovB are
+            % separated by variable
+            % ### FIXME: Check that the calculation here is correct
+            parCI = cell(length(sys.matchedVarsList)-1,3);
+            switch calcType
+                case "Covariance"
+                    res = nlparci(sys.reg_analytics.beta,sys.reg_analytics.R,'covariance',sys.reg_analytics.CovB,'alpha',alpha);
+                    for k=1:1:size(parCI,1)
+                        parCI{k,2} = res(k,1);
+                        parCI{k,3} = res(k,2);
+                    end
+                case "Jacobian"
+                    res = nlparci(sys.reg_analytics.beta,sys.reg_analytics.R,'jacobian',sys.reg_analytics.J,'alpha',alpha);
+                    for k=1:1:size(parCI,1)
+                        parCI{k,2} = res(k,1);
+                        parCI{k,3} = res(k,2);
+                    end
+            end
+            for k=1:1:size(parCI,1), parCI{k,1} = sys.regParamList{k,1}; end
+        end
+
+        % sys: ODESys class ref, tval: number, calcType: string, alpha:
+        % number, predIntType: string
+        function predCI = calcPredCI(sys,tval,calcType,alpha,simBnds,predIntType)
+            predCI = cell(length(sys.matchedVarsList)-1,3);
+            comps = [sys.getSpecies('comp'),sys.getChemicals('comp')];
+            y0 = zeros(size(comps));
+            for m=1:1:length(comps), y0(m) = comps{m}.getInitConc(); end
+            if predIntType == "Curve", predIntType = 'curve'; else, predIntType = 'observation'; end
+            if simBnds == "On", simBnds = 'on'; else, simBnds = 'off'; end
+            switch calcType
+                case "Covariance"
+                    res = nlpredci(@(reg_param,t) sys.nLinRegHandler(reg_param,t,y0,true),[tval,tval.*1.001],sys.reg_analytics.beta, ...
+                        sys.reg_analytics.R,'covariance',sys.reg_analytics.CovB,'alpha',alpha, ...
+                        'ErrorModelInfo',sys.reg_analytics.ErrorModelInfo,'MSE',sys.reg_analytics.MSE, ...
+                        'PredOpt',predIntType,'SimOpt',simBnds,'Weights',sys.regSpecs.RobustWgtFun);
+                    for k=1:1:size(predCI,1)
+                        predCI{k,2} = res(k,1);
+                        predCI{k,3} = res(k,2);
+                    end
+                case "Jacobian"
+                    res = nlpredci(@(reg_param,t) sys.nLinRegHandler(reg_param,t,y0,true),[tval,tval.*1.001],sys.reg_analytics.beta, ...
+                        sys.reg_analytics.R,'jacobian',sys.reg_analytics.J,'alpha',alpha, ...
+                        'ErrorModelInfo',sys.reg_analytics.ErrorModelInfo,'MSE',sys.reg_analytics.MSE, ...
+                        'PredOpt',predIntType,'SimOpt',simBnds,'Weights',sys.regSpecs.RobustWgtFun);
+                    for k=1:1:size(predCI,1)
+                        predCI{k,2} = res(k,1);
+                        predCI{k,3} = res(k,2);
+                    end
+            end
+            for k=1:1:size(predCI,1), predCI{k,1} = sys.regParamList{k,1}; end
+            % ### FIXME: need to get unit for params
+            for k=1:1:size(predCI,1), predCI{k,4} = sys.regParamList{k,7}; end
         end
 
         % sys: ODESys class ref, funcVal: string, funcName: string
@@ -1382,6 +1468,7 @@ classdef ODESys < handle
                     sys.regParamList{end,4} = regParam{5};
                     sys.regParamList{end,5} = '~';
                     sys.regParamList{end,6} = "";
+                    sys.regParamList{end,7} = regParam{6};
 
                     sys.regSpecs.DerivStep(end+1) = eps^(1/3);
                     sys.regSpecs.paramIGs(end+1) = regParam{5};
@@ -1463,10 +1550,10 @@ classdef ODESys < handle
         function [plotRegData,plotImportData] = updateRegPlotDV(sys,DVIdx)
             plotRegData = [];
             plotRegData(:,1) = sys.regData(:,1);
-            plotRegData(:,2) = sys.regData(:,DVIdx+1);
+            plotRegData(:,2) = sys.regData(:,find(DVIdx)+1);
             plotImportData = [];
             plotImportData(:,1) = [sys.importedData{:,1}];
-            plotImportData(:,2) = [sys.importedData{:,sys.importedDataIdx(DVIdx)+1}];
+            plotImportData(:,2) = [sys.importedData{:,find(sys.importedDataIdx == (find(DVIdx)))+1}];
         end
 
         % sys: ODESys class ref
