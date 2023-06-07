@@ -801,6 +801,8 @@ classdef ODESys < handle
             % ### FIXME: need to be able to plot all system variables
             % ### FIXME: include all system variables in ODE system?
             % ### FIXME: test the plotting functionality
+            % ### FIXME: need to code in logic for only having one IV be
+            % ICs
             
             % ### FIXME: add feature to allow user to specify time
             % precision of model
@@ -857,11 +859,13 @@ classdef ODESys < handle
                     fig = figure('Name',plot_obj.title);
                     hold on;
                     if length(axes) == 2
-                        xVarIdx = strcmp(sysVar(:,2),axes{1}.varNames);
+                        varSym = split(axes{1}.varNames,'_');
+                        xVarIdx = strcmp(sysVar(:,2),varSym(1));
                         yVarIdx = zeros(size(axes{2}.varNames));
                         for l=1:1:length(axes{2}.varNames)
                             yVarIdx(l) = find(strcmp(sysVar(:,2),axes{2}.varNames{l}));
                         end
+                        res
                         plot(res{1,1}(:,xVarIdx),res{1,1}(:,yVarIdx));
                     elseif length(axes) == 3
                         % interpolation query points
@@ -870,6 +874,9 @@ classdef ODESys < handle
                         [qGridXVals,qGridYVals] = meshgrid(qXVals,qYVals);
                         
                         % 2D interpolation
+                        res
+                        % ### FIXME: need to add functionality to consider
+                        % the time of evaluation if both IVs are ICs
                         DVVals = zeros(size(res));
                         DVIdx = strcmp(sysVar(2),{axes{3}.varNames});
                         for l=1:1:size(res,1)
@@ -937,7 +944,7 @@ classdef ODESys < handle
                 % ### FIXME: requires special logic/restrictions in the
                 % governing function portion
                 [govFunc, params, sys.reg_param_ct,regPUpdate] = comps{k}.compileGovFunc(length(sys.param),sys.reg_param_ct,sys.regParamList(:,[1,6]),true);
-                if regPUpdate{1}, sys.regParamList{regPUpdate{1},6} = regPUpdate{2}; end
+                if regPUpdate{1}, sys.regParamList{regPUpdate{2},6} = regPUpdate{3}; end
                 for l=1:1:length(sys.helperFuncs)
                     govFunc = regexprep(govFunc,sys.helperFuncs{l}.getSubFuncSym(),"f{"+(l+length(sys.environs.(sys.activeEnv).subfuncs))+"}(y,t,p,f,r)");
                 end
@@ -1076,7 +1083,7 @@ classdef ODESys < handle
                 sys.reg_analytics.CovB,sys.reg_analytics.MSE,sys.reg_analytics.ErrorModelInfo] = ...
                 nlinfit(IVs,DVs,@(reg_param,t) sys.nLinRegHandler(reg_param,t,y0),beta0,sys.regSpecs);
 
-            sys.reg_analytics.R
+%             sys.reg_analytics.R
 
             [tRes,yRes] = sys.runRegModel(IVs,y0,sys.reg_analytics.beta);
             sys.regData = [tRes,yRes];
@@ -1408,6 +1415,7 @@ classdef ODESys < handle
         % evaltVal: string | number, loEvalLim: string | number, upEvalLim:
         % string | number, nbEvalPts: number
         function setAxisICEvalData(sys,plotName,axisName,evaltVal,loEvalLim,upEvalLim,nbEvalPts)
+            % ### FIXME: add logic to determine if varIsIC
             plot = sys.getPlotByName(plotName);
             plot.setAxisICEvalData(axisName,evaltVal,loEvalLim,upEvalLim,nbEvalPts);
         end

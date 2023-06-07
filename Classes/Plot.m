@@ -107,10 +107,18 @@ classdef Plot < handle
 
         % plot: Plot class ref
         function addZAxis(plot)
+            % ### FIXME: add mins and maxes
             varNames = plot.axes{1}.varNameOpts;
             ICNames = plot.axes{1}.ICNames;
+
+            mins = string.empty(0,1);
+            maxes = string.empty(0,1);
+            for l=1:1:size(varNames,1)
+                mins(l,1) = "min("+string(varNames(l))+")";
+                maxes(l,1) = "max("+string(varNames(l))+")";
+            end
             plot.axes{3} = plot.createNewAxes(3,"Z-Axis Title",varNames(3),varNames,"min("+varNames(3)+")","max("+varNames(3)+")", ...
-                true,1,0,0,50,true,false,ICNames);
+                true,1,0,0,50,true,false,ICNames,mins,maxes);
             plot.updateAx(2,"isDV",false);
         end
 
@@ -129,15 +137,17 @@ classdef Plot < handle
         end
 
         % plot: Plot class ref, axisName: string, evaltVal: string | number, 
-        % loEvalLim: string | number, upEvalLim: string | number, nbEvalPts: number
+        % loEvalLim: string | number, upEvalLim: string | number,
+        % nbEvalPts: number
         function setAxisICEvalData(plot,axisName,evaltVal,loEvalLim,upEvalLim,nbEvalPts)
+            % ### FIXME: need to be able to set isDV
             for k=1:1:length(plot.axes)
                 if strcmp(string(plot.axes{k}.title),string(axisName))
                     axis = plot.axes{k};
                 end
             end
-            props = ["evaltVal","loEvalLim","upEvalLim","nbEvalPts","isDV"];
-            data = {evaltVal,loEvalLim,upEvalLim,nbEvalPts};
+            props = ["evaltVal","loEvalLim","upEvalLim","nbEvalPts","isDV","varIsIC"];
+            data = {evaltVal,loEvalLim,upEvalLim,nbEvalPts,axis.isDV,axis.varIsIC};
             for k=1:1:length(props)
                 axis.(props(k)) = data{k};
             end
@@ -178,6 +188,7 @@ classdef Plot < handle
         % plot: Plot class ref, axisName: string, varName: string, evaltVal: string | number, 
         % loEvalLim: string | number, upEvalLim: string | number, nbEvalPts: number
         function setVarICEvalData(plot,axisName,varName,evaltVal,loEvalLim,upEvalLim,nbEvalPts)
+            % ### FIXME: need to be able to set isDV and varIsIC
             for k=1:1:length(plot.axes)
                 if strcmp(string(plot.axes{k}.title),string(axisName))
                     axis = plot.axes{k};

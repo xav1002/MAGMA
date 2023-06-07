@@ -355,7 +355,6 @@ classdef Component < handle
                     for l=1:1:length(comp.funcParams{k}.params)
                         match = strcmp(cellstr(regParamList(:,1)),char(comp.funcParams{k}.params{l}.sym));
                         if any(match)
-                            regParamList
                             govFuncLength = strlength(govFunc);
                             govFunc = split(govFunc,"#");
                             for m=1:1:length(govFunc)
