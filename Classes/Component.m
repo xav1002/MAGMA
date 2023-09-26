@@ -8,7 +8,6 @@ classdef Component < handle
 
         funcParams = {}; % cell array of structs that contain the values, names, symbols, and units of parameters,
                         % with the indicies being the parameter numbers.
-
         sym = "";
         type = "";
 

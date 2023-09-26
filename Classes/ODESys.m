@@ -7,7 +7,7 @@ classdef ODESys < handle
         activeEnv = 'Photo_Bioreactor_PBR'; % string of field name of active Environment in environs struct
             % when pulling data for plotting, use this property to
             % reference the active environment with
-            % sys.environs.(activeEnv)
+            % sys.environs.(sys.activeEnv)
 
         currentCompName = ""; % used to track changes in component/function editing
         currentFuncName = ""; % used to track changes in component/function editing
@@ -22,9 +22,9 @@ classdef ODESys < handle
         param = []; % ODE system parameter values
         f = {}; % ODE system subfuncs for passing into ode45
         helperFuncs = {}; % ODE system helper functions
-        matches = []; % used to find parameters that are being regressed
+%         matches = []; % used to find parameters that are being regressed
 
-        sysVars = {}; % system variable names
+%         sysVars = {}; % system variable names
         plots = {}; % plot objects
 
         importedDataPath = ""; % path to user imported data
@@ -62,12 +62,6 @@ classdef ODESys < handle
             sys.environs.Outdoor_Tank = Environment("Outdoor_Tank",sys.getModelVarNames());
 
             sys.regSpecs.paramIGs = [];
-        end
-
-        % sys: ODSSys class ref, key: string, val: cell array of
-        %   conditions + units
-        function updateInitCond(sys, key, val)
-            sys.initCond(key) = val;
         end
 
         % sys: ODESys class ref, num: number, name: string, initConc:
@@ -108,7 +102,6 @@ classdef ODESys < handle
             switch field
                 case "initConc"
                     spec.setInitConc(val);
-                    
             end
         end
 
@@ -119,8 +112,6 @@ classdef ODESys < handle
             switch field
                 case "initConc"
                     chem.setInitConc(val);
-                case "nutModel"
-                    chem.setNutModel(val);
             end
         end
 
@@ -173,7 +164,7 @@ classdef ODESys < handle
             sys.activeEnv = envName;
 
             % ### FIXME: add code here to update the EnvSubFuncs based on
-            % active environment
+            % active environment - do I need this?
         end
 
         % sys: ODESys class ref
@@ -192,9 +183,7 @@ classdef ODESys < handle
                     specs = struct2cell(sys.species);
                     % need to write loop for this
                     res = cell(length(specs),1);
-                    for i=1:1:length(specs)
-                        res{i} = specs{i}.name;
-                    end
+                    for i=1:1:length(specs), res{i} = specs{i}.name; end
                 case 'comp'
                     res = struct2cell(sys.species);
             end
@@ -207,9 +196,7 @@ classdef ODESys < handle
                     chems = struct2cell(sys.chemicals);
                     % need to write loop for this
                     res = cell(length(chems),1);
-                    for i=1:1:length(chems)
-                        res{i} = chems{i}.name;
-                    end
+                    for i=1:1:length(chems), res{i} = chems{i}.name; end
                 case 'comp'
                     res = struct2cell(sys.chemicals);
             end
@@ -233,59 +220,6 @@ classdef ODESys < handle
 
             % adding model to Comp
             comp.setModel(funcVal, funcName, funcCombo, funcType, paramStr, varStr, sys.editing, sys.currentFuncName);
-
-            % interpret which terms are variables in model function
-%             vars = convertCharsToStrings(split(func,["+","-","*","/","^","(",")"]));
-%             varChars = {};
-%             paramChars = {};
-%             j = 1;
-%             k = 1;
-%             for i=1:1:length(vars)
-%                 % do we need both 1st and 3rd logic gate here?
-%                 if isnan(str2double(vars(i))) && vars(i) ~= ""
-%                     if any(strcmp(convertCharsToStrings(depVars(:,2)),vars(i)))
-%                         varChars{1,j} = vars(i); %#ok<AGROW> 
-%                         j = j+1;
-%                     else
-%                         paramChars{1,k} = vars(i); %#ok<AGROW>
-%                         k = k+1;
-%                     end
-%                 end
-%             end
-            % removing duplicates
-%             varStr = unique([varChars{:}]);
-%             paramStr = unique([paramChars{:}]); % use this for displaying param expressions later
-
-            % converting function string to function_handle
-%             funcStr = '@(';
-%             for i=1:1:length(sys.tempParamStore)
-%                 funcStr = [funcStr,app.tempParamStore{i}]; %#ok<AGROW> 
-%             end
-%             funcStr = [funcStr,')',func];
-
-            % returning LaTeX output for UI - should be already done from
-            % the SubFuncVF value changing callback
-%             FFuncStr = "$F(";
-%             GFuncStr = "$G(";
-%             for i=1:1:length(FvarStr)
-%                 if i==length(FvarStr)
-%                     FFuncStr = FFuncStr+FvarStr(i);
-%                 elseif i~=length(FvarStr)
-%                     FFuncStr = FFuncStr+FvarStr(i)+",";
-%                 end
-%             end
-%             for i=1:1:length(GvarStr)
-%                 if i==length(GvarStr)
-%                     GFuncStr = GFuncStr+GvarStr(i);
-%                 elseif i~=length(GvarStr)
-%                     GFuncStr = GFuncStr+GvarStr(i)+",";
-%                 end
-%             end
-%             % converts function string into LaTeX
-%             FFunc = sys.convertToLaTeX(FFunc);
-%             GFunc = sys.convertToLaTeX(GFunc);
-%             FFuncStr = FFuncStr+")="+FFunc+"$";
-%             GFuncStr = GFuncStr+")="+GFunc+"$";
         end
 
         % sys: ODESys class ref, funcName: string
@@ -486,9 +420,6 @@ classdef ODESys < handle
 
         % sys: ODESys class ref, prop: char, val: string
         function type = getComponentType(sys, prop, val)
-            % adjusting names for proper syntax
-%             chemName = replace(regexprep(regexprep(replace(regexprep(val,' ','_'),'^','_'),'+','p'),'-','n'),'.','_')
-%             specName = regexprep(val, ' ', '_')
             % gets all species and chemical names
             specs = sys.getSpecies(prop);
             chems = sys.getChemicals(prop);
@@ -813,9 +744,10 @@ classdef ODESys < handle
                 axes = plot_obj.axes;
                 if plot_obj.getPlotProp("display") == true || plot_obj.getPlotProp("download") == true
                     for l=1:1:length(axes)-1
+                        disp(axes{k})
                         if axes{k}.varIsIC
                             % run computation for each plot
-                            y0_span_arr = {0,0};
+                            y0_span_arr = {0,0}
                             y0_var_num = {0,0};
                             for m=1:1:length(axes)
                                 if ~axes{m}.isDV
@@ -826,7 +758,7 @@ classdef ODESys < handle
         
                             % ### FIXME: need to add the specifications to control
                             % whether this is for var IC or for var values
-                            res = cell(length(y0_span_arr{1}),length(y0_span_arr{2}));
+                            res = cell(length(y0_span_arr{1}),length(y0_span_arr{2}))
                             for m=1:1:length(y0_span_arr{1})
                                 for n=1:1:length(y0_span_arr{2})
                                     y0 = [];
@@ -865,7 +797,6 @@ classdef ODESys < handle
                         for l=1:1:length(axes{2}.varNames)
                             yVarIdx(l) = find(strcmp(sysVar(:,2),axes{2}.varNames{l}));
                         end
-                        res
                         plot(res{1,1}(:,xVarIdx),res{1,1}(:,yVarIdx));
                     elseif length(axes) == 3
                         % interpolation query points
@@ -914,6 +845,8 @@ classdef ODESys < handle
                     if plot_obj.getPlotProp("display") == false
                         close;
                     end
+                    disp(plot_obj.getPlotProp("download"))
+                    disp(plot_obj)
                     if plot_obj.getPlotProp("download") == true
                         plot_obj.downloadPlot(fig);
                     end
@@ -1287,6 +1220,14 @@ classdef ODESys < handle
         function updatePlotDispDownload(sys,plotName,prop,val)
             plot = sys.getPlotByName(plotName);
             plot.updatePlot(prop,val);
+        end
+
+        % sys: ODESyss class ref
+        function clearPlotDispDownload(sys)
+            for k=1:1:length(sys.plots)
+                sys.plots{k}.updatePlot("display",false);
+                sys.plots{k}.updatePlot("download",false);
+            end
         end
         
         % sys: ODESys class ref, plotName: string, axesDir: string, title:
