@@ -3,7 +3,6 @@ classdef Component < handle
         number = 0; % comps identifying number
         name = ""; % comps name
 
-        transOut = {}; % struct representing mass transport of comps out of system
         initConc = 1; % initial concentration for comps
 
         funcParams = {}; % cell array of structs that contain the values, names, symbols, and units of parameters,

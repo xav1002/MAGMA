@@ -1,5 +1,7 @@
 classdef ODESys < handle
     properties
+        is_link = false; % used to determine whether this is an instance of MAGMA or MAGMALink UI
+
         species = struct(); % struct of Species in ODE system, (key: string, val: {Species})
         chemicals = struct(); % struct of Chemicals in ODE system, (key: string, val: {Chemical})
 
@@ -51,8 +53,10 @@ classdef ODESys < handle
     end
 
     methods
-        function sys = ODESys()
+        function sys = ODESys(is_link)
             disp('ODESys init');
+
+            sys.is_link = is_link;
 
             % set default values
             sys.environs.Photo_Bioreactor_PBR = Environment("Photo_Bioreactor_PBR",sys.getModelVarNames());
@@ -61,6 +65,7 @@ classdef ODESys < handle
             sys.environs.Shaking_Flask = Environment("Shaking_Flask",sys.getModelVarNames());
             sys.environs.Outdoor_Tank = Environment("Outdoor_Tank",sys.getModelVarNames());
 
+            sys.regSpecs
             sys.regSpecs.paramIGs = [];
         end
 
