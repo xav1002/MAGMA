@@ -316,7 +316,7 @@ classdef Component < handle
         function [govFunc,params,reg_param_ct,regParamListUpdate] = compileGovFunc(comp,param_ct,reg_param_ct,regParamList,regression)
             % Need to make sure that each individual govFunc component is
             % isolated (so (C1+C2)*(C3+C4) ~= C1+C2*C3_C4)
-            regParamListUpdate = {false,0,""};
+            regParamListUpdate = {};
             govFunc = "";
             params = [];
             for k=1:1:length(comp.funcParams)
@@ -346,6 +346,7 @@ classdef Component < handle
 
             % replacing param syms in govFunc with p({gloNum})
             ct = 1;
+            regParamChgCt = 1;
             if regression
                 for k=1:1:length(comp.funcParams)
                     % replacing function and regression parameters that haven't yet been
@@ -361,10 +362,11 @@ classdef Component < handle
                                         govFunc(m) = regexprep(govFunc(m),comp.funcParams{k}.params{l}.sym,"r("+(regParamList{match,2})+")");
                                     else
                                         govFunc(m) = regexprep(govFunc(m),comp.funcParams{k}.params{l}.sym,"r("+(reg_param_ct)+")");
-                                        regParamListUpdate{1} = true;
-                                        regParamListUpdate{2} = find(match);
-                                        regParamListUpdate{3} = string(reg_param_ct);
+                                        regParamListUpdate{regParamChgCt,1} = true; %#ok<AGROW>
+                                        regParamListUpdate{regParamChgCt,2} = find(match); %#ok<AGROW>
+                                        regParamListUpdate{regParamChgCt,3} = string(reg_param_ct); %#ok<AGROW>
                                         reg_param_ct = reg_param_ct + 1;
+                                        regParamChgCt = regParamChgCt + 1;
                                     end
                                 end
                             end

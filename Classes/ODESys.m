@@ -53,10 +53,10 @@ classdef ODESys < handle
     end
 
     methods
-        function sys = ODESys(is_link)
+        function sys = ODESys()
             disp('ODESys init');
 
-            sys.is_link = is_link;
+            % sys.is_link = is_link;
 
             % set default values
             sys.environs.Photo_Bioreactor_PBR = Environment("Photo_Bioreactor_PBR",sys.getModelVarNames());
@@ -881,8 +881,11 @@ classdef ODESys < handle
                 % function of biomass and product funcs
                 % ### FIXME: requires special logic/restrictions in the
                 % governing function portion
-                [govFunc, params, sys.reg_param_ct,regPUpdate] = comps{k}.compileGovFunc(length(sys.param),sys.reg_param_ct,sys.regParamList(:,[1,6]),true);
-                if regPUpdate{1}, sys.regParamList{regPUpdate{2},6} = regPUpdate{3}; end
+                sys.regParamList
+                [govFunc, params, sys.reg_param_ct, regPUpdate] = comps{k}.compileGovFunc(length(sys.param),sys.reg_param_ct,sys.regParamList(:,[1,6]),true);
+                for l=1:1:size(regPUpdate,1)
+                    if regPUpdate{l,1}, sys.regParamList{regPUpdate{l,2},6} = regPUpdate{l,3}; end
+                end
                 for l=1:1:length(sys.helperFuncs)
                     govFunc = regexprep(govFunc,sys.helperFuncs{l}.getSubFuncSym(),"f{"+(l+length(sys.environs.(sys.activeEnv).subfuncs))+"}(y,t,p,f,r)");
                 end
@@ -987,7 +990,6 @@ classdef ODESys < handle
             sys.dydt = char(sys.dydt);
             sys.dydt(end) = ']';
             sys.dydt = string(sys.dydt);
-            sys.dydt
 
             % converting to function_handle
             sys.dydt = str2func(sys.dydt');
@@ -1013,10 +1015,11 @@ classdef ODESys < handle
             % ### FIXME: upgrade to fitnlm (more recent/robust nonlin
             % fitter?)
             y0 = [];
-            comps = [sys.getSpecies('comp'),sys.getChemicals('comp')];
+            comps = [sys.getSpecies('comp');sys.getChemicals('comp')];
             for m=1:1:(length(fieldnames(sys.species))+length(fieldnames(sys.chemicals)))
                 y0(m) = comps{m}.getInitConc(); %#ok<AGROW>
             end
+            test = @(reg_param,t) sys.nLinRegHandler(reg_param,t,y0)
             [sys.reg_analytics.beta,sys.reg_analytics.R,sys.reg_analytics.J, ...
                 sys.reg_analytics.CovB,sys.reg_analytics.MSE,sys.reg_analytics.ErrorModelInfo] = ...
                 nlinfit(IVs,DVs,@(reg_param,t) sys.nLinRegHandler(reg_param,t,y0),beta0,sys.regSpecs);
@@ -1034,9 +1037,9 @@ classdef ODESys < handle
 
         % sys: ODESys class ref, param: number[], t: number[]
         function yRes = nLinRegHandler(sys,reg_param,t,y0)
-            opts = odeset('RelTol',1e-6,'AbsTol',1e-6);
+            opts = odeset('RelTol',1e-2,'AbsTol',1e-6);
             tspan = t(1:size(sys.importedData,1));
-            [~,yRes_all] = ode45(@(t,y) sys.dydt(t,y,sys.param,sys.f,reg_param),tspan,y0,opts);
+            [~,yRes_all] = ode45(@(t,y) sys.dydt(t,y,sys.param,sys.f,reg_param),tspan,y0,opts)
             yRes = zeros((size(sys.importedData,2)-1).*size(sys.importedData,1),1);
             for k=1:1:size(sys.importedData,2)-1
                 yRes((1:1:size(sys.importedData,1))+((k-1).*size(sys.importedData,1)),1) = yRes_all(:,sys.importedDataIdx(k));
