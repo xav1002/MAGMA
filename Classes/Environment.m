@@ -2,44 +2,169 @@ classdef Environment < handle
     properties
         name = '';
 
+        reactorType = "";
+        reactorSpecificParams = {};
+
         subfuncs = {};
+
+        T_comp = {};
+        P_comp = {};
+        V_comp = {};
+        V_m_helper = {};
+        SV_comps = {};
+        H3O_comp = {};
+        OH_comp = {};
+
+        K_w = 1E-14;
     end
 
     methods
-        function env = Environment(name,modelVarSyms)
+        function env = Environment(name,modelVarSyms,defaultParamVals)
             env.name = name;
 
-            env.setDefault(name,modelVarSyms);
-        end
-
-        % env: Environment class ref, val: number
-        function setModelTime(env, val)
-            env.subfuncs{1}.setSubFuncVal(val);
+            env.setDefault(modelVarSyms,defaultParamVals);
         end
 
         % env: Environment class ref, funcStr: string
         function setLightFunc(env, funcStr)
-            env.subfuncs{2}.setSubFuncVal(funcStr);
+            env.subfuncs{1}.setSubFuncVal(funcStr);
         end
 
         % env: Environment class ref, funcStr: string
-        function setTempFunc(env, funcStr)
-            env.subfuncs{3}.setSubFuncVal(funcStr);
+        function setMaxVol(env,funcStr)
+            env.subfuncs{2}.setSubFuncVal(funcStr);
         end
 
-        % env: Environment class ref, val: number
-        function setCulVol(env, val)
-            env.subfuncs{4}.setSubFuncVal(val);
+        % env Environment class ref
+        function comp = getTComp(env)
+            comp = env.T_comp;
         end
 
-        % env: Environment class ref, val: number
-        function setCulSA(env, val)
-            env.subfuncs{5}.setSubFuncVal(val);
+        % env Environment class ref
+        function comp = getPComp(env)
+            comp = env.P_comp;
+        end
+
+        % env Environment class ref
+        function comp = getVComp(env)
+            comp = env.V_comp;
         end
 
         % env: Environment class ref
-        function modelEndTime = getModelTime(env)
-            modelEndTime = str2double(env.subfuncs{1}.getSubFuncVal());
+        function maxV = getMaxV(env)
+            maxV = env.V_m_helper;
+        end
+
+        % env: Environment class ref, prop: string
+        function comp = getSVComps(env,prop)
+            if strcmp(prop,'comp')
+                comp = env.SV_comps;
+            elseif strcmp(prop,'name')
+                comp = [];
+                for k=1:1:length(env.SV_comps)
+                    comp(k) = env.SV_comps{k}.getName(); %#ok<AGROW>
+                end
+            end
+        end
+
+        % env: Environment class ref
+        function comp = getH3OComp(env)
+            comp = env.H3O_comp;
+        end
+
+        % env: Environment class ref
+        function comp = getOHComp(env)
+            comp = env.OH_comp;
+        end
+
+        % env: Environment class ref
+        function comps = getAllEnvComps(env)
+            comps = {env.getTComp(),env.getPComp(),env.getVComp(),env.getH3OComp(),env.getOHComp()};
+        end
+
+        % env: Environment class ref, initT: number
+        function setInitT(env,initT)
+            env.T_comp.setInitConc(initT);
+        end
+        
+        % env: Environment class ref, initP: number
+        function setInitP(env,initP)
+            env.P_comp.setInitConc(initP);
+        end
+
+        % env: Environment class ref, initV: number
+        function setInitV(env, initV)
+            env.V_comp.setInitConc(initV);
+        end
+
+        % env: Environment class ref, initpH: number, defaultParamVals: {}
+        function setInitpH(env,initpH,defaultParamVals)
+            H3O_initConc = 10.^(-initpH).*defaultParamVals.MW_H3O;
+            OH_initConc = 1E-14./(H3O_initConc).*(defaultParamVals.MW_H3O./defaultParamVals.MW_OH);
+            env.H3O_comp.setInitConc(H3O_initConc);
+            env.OH_comp.setInitConc(OH_initConc);
+        end
+
+        % env: Environment class ref, solventName: string, initVol: num
+        function addSVComp(env,solventName,initVol)
+            % what's the sym + num on SV_comps?
+            for k=1:1:length(env.SV_comps)
+                if env.SV_comps{k}.getNum() ~= k
+                    nextNum = k;
+                end
+            end
+            newComp = Component(char(solventName),nextNum,initVol,'svol',false,modelVarSyms);
+            env.SV_comps(nextNum+1:end+1) = env.SV_comps(nextNum:end);
+            env.SV_comps{nextNum} = newComp;
+        end
+
+        % env: Environment class ref, solventName: string, initVol: num
+        function updateSVComp(env,solventName,initVol)
+            % update initial volume
+            for k=1:1:length(env.SV_comps)
+                if strcmp(env.SV_comps{k}.getName(),[char(solventName)])
+                    env.SV_comps{k}.setInitConc(initVol);
+                    return;
+                end
+            end
+        end
+
+        % env: Environment class ref, solventName: string
+        function removeSVComp(env,solventName)
+            for k=1:1:length(env.SV_comps)
+                if strcmp(env.SV_comps{k}.getName(),char(solventName))
+                    env.SV_comps(k) = [];
+                    return;
+                end
+            end
+        end
+
+        % env: Environment class ref
+        function initCond = getInitCond(env)
+            % Incident light
+            % ### UPDATE: need to get initial condition for incident light
+            initCond = {env.T_comp.getInitConc();env.P_comp.getInitConc();env.V_comp.getInitConc();-log10(double(string(env.H3O_comp.getInitConc())))};
+        end
+
+        % env: Environment class ref
+        function setReactorSpecificParams(env,params)
+            env.reactorType = params{1};
+            env.reactorSpecificParams = params{2};
+
+            env.calculateAvgLightPathLength();
+        end
+
+        % env: Environment class ref
+        function [reactorType,params] = getReactorSpecificParams(env)
+            reactorType = env.reactorType;
+            params = env.reactorSpecificParams;
+        end
+
+        % env: Environment class ref
+        function calculateAvgLightPathLength(env)
+            switch env.reactorType
+                % ### STARTHERE: avg light path length calculations
+            end
         end
 
         % env: Environment class ref, envFuncName: string, paramSym: string,
@@ -61,6 +186,7 @@ classdef Environment < handle
                     paramSyms = env.subfuncs{k}.getSubFuncParamSyms();
                     paramVals = env.subfuncs{k}.getSubFuncParamVals();
                     paramUnits = env.subfuncs{k}.getSubFuncParamUnits();
+                    paramEditable = env.subfuncs{k}.getSubFuncParamEditable();
                     paramNums = 1:1:length(paramNames);
                     params = cell(length(paramNums),6);
                     for l=paramNums
@@ -70,37 +196,58 @@ classdef Environment < handle
                         params{l,4} = char(paramNames(l));
                         params{l,5} = paramVals(l);
                         params{l,6} = char(paramUnits(l));
+                        params{l,7} = char(string(boolean(paramEditable{l})));
                     end
                 end
             end
         end
 
-        % env: Environment class ref, name: string, modelVarSyms: string[]
-        function setDefault(env, name, modelVarSyms)
+        % env: Environment class ref, name: string, modelVarSyms: string{},
+        % defaultParamVals: struct
+        function setDefault(env, modelVarSyms, defaultParamVals)
             envDef = EnvDefaults();
-            if ~any(envDef.Names == name)
-                name = "Custom_Env";
-            end
             envParamVals = {};
-            envParamVals{1} = envDef.(name).modelTime;
-            envParamVals{2} = envDef.(name).lightFunc;
-            envParamVals{3} = envDef.(name).tempFunc;
-            envParamVals{4} = envDef.(name).culVol;
-            envParamVals{5} = envDef.(name).culSA;
-            envParamNames = env.getParamNames();
-            for k=1:1:size(envParamNames,1)
-                env.subfuncs{k} = SubFunc(envParamVals{k},envParamNames{k,1},envParamNames{k,2},0,0);
+            envParamVals{1} = envDef.Values.lightFunc;
+            envParamVals{2} = envDef.Values.maxVol;
+            envParamNames = env.getEnvSubfNames();
+            for k=1:1:length(envParamVals)
+                env.subfuncs{k} = SubFunc(envParamVals{k},envParamNames{1,k},envParamNames{2,k},0,0);
                 env.subfuncs{k}.initParams(modelVarSyms);
-%                 env.subfuncs{k}.updateParams(envParamNames{k,2},envParamNames{k,2},1,"");
             end
+
+            env.reactorSpecificParams = {envDef.Values.agSpd,envDef.Values.tkHt,envDef.Values.tkDiam,envDef.Values.maxVol, ...
+            envDef.Values.tkSA,envDef.Values.lgtConfig,envDef.Values.numLgtSrc,envDef.Values.lgtSrcDiam,envDef.Values.lgtSrcRad};
+
+            % creating components for T, P, V
+            env.T_comp = Component('Temperature',0,30,'temp',false,0,0,'',0,'');
+            env.P_comp = Component('Pressure',0,1.01325,'press',false,0,0,'',0,'');
+            env.P_comp.addModel("P/(V_m-V)*(L_i-L_o)",'Pressure Dilution',[],'Main',defaultParamVals);
+            env.V_comp = Component('Volume',0,char(string((3.*pi.*(1./2).^2).*1000)),'vol',false,0,0,'',0,'');
+
+            % creating pH components
+            env.H3O_comp = Component('Hydronium',0,1E-7,'acid',false,19.023,0,'',0,'');
+            env.H3O_comp.addModel("k_pH*(H3O_eq-H3O)",'pH Equilibrium',"k_pH",'Main',defaultParamVals);
+            env.OH_comp = Component('Hydroxide',0,1E-7,'base',false,17.007,0,'',0,'');
+            env.OH_comp.addModel("k_pH*(OH_eq-OH)",'pH Equilibrium',"k_pH",'Main',defaultParamVals);
         end
 
         % env: Environment class ref
-        function paramVals = getParamVals(env)
-            paramVals = cell(size(env.subfuncs'));
-            for k=1:1:length(paramVals)
+        function paramVals = getParamVals(env,defaultParamVals)
+            paramVals = {};
+            for k=1:1:length(env.subfuncs)-1
                 func = env.subfuncs{k}.getSubFuncVal();
-                paramVals{k} = char(func);
+                paramVals{end+1,1} = char(func); %#ok<AGROW>
+            end
+            env_comps = env.getAllEnvComps();
+            for k=1:1:length(env_comps)-1
+                if strcmp(env_comps{k}.getType(),'acid')
+                    paramVals{end+1,1} = char(string(-log10(env_comps{k}.getInitConc()./defaultParamVals.MW_H3O))); %#ok<AGROW>
+                else
+                    paramVals{end+1,1} = char(string(env_comps{k}.getInitConc())); %#ok<AGROW>
+                end
+            end
+            for k=1:1:length(env.reactorSpecificParams)
+                paramVals{end+1,1} = env.reactorSpecificParams{k}; %#ok<AGROW>
             end
         end
 
@@ -132,7 +279,13 @@ classdef Environment < handle
     methods (Static)
         % env: Environment class ref
         function paramNames = getParamNames()
-            paramNames = {'Model Runtime (t)','Incident Light (I)','Temperature (T)','Culture Volume (V)','Culture Surface Area (SA)';'t','I','T','V','SA'}';
+            paramNames = {'Incident Light','Temperature','Pressure','Volume','Maximum Volume', ...
+                'Hydronium Concentration','Hydroxide Concentration'; ...
+                'I_0','T','P','V','V_m','H3O','OH'}';
+        end
+
+        function paramNames = getEnvSubfNames()
+            paramNames = {'Incident Light','Maximum Volume','Average Light Path Length';'I_0','V_m','l_avg'};
         end
     end
 end

@@ -1,23 +1,54 @@
 classdef Component < handle
     properties
         number = 0; % comps identifying number
-        name = ""; % comps name
+        name = ''; % comps name
 
         initConc = 1; % initial concentration for comps
 
         funcParams = {}; % cell array of structs that contain the values, names, symbols, and units of parameters,
                         % with the indicies being the parameter numbers.
-        sym = "";
+        sym = '';
         type = "";
 
+        % Liquid-gas mass transfer properties
         h_const = 1; % Henry's Law Constant
+        h_const_u = ''; % Henry's Law Constant unit
+        h_const_sym = ''; % Henry's Law Constant symbol
+        dh_const = 1; % Temperature Dependence Coefficient for Henry's Law
+        dh_const_u = '';
+        dh_const_sym = '';
+        h_const_helper_funcs = {};
+        is_vol = false;
+        bulk_gas_sym = "";
+        gasBulkFuncParams = {};
+        gasBulkHelpers = {};
 
-        %% funcParams Item Data Structure
+        % Suspended-solid phase mass transfer properties
+        sorped_sym = struct([]);
+        % sorpFuncParams is same structure as funcParams, but has extra
+        % properties: solventName: string, solventSym: string
+        % in compileGovFunc, need to loop through every sorpFuncParam to
+        % create a new dependent variable for each phase
+        sorpFuncParams = {};
+        sorpVolFuncParams = {};
+        sorpHelpers = {};
+        sorpTInfo = {};
+
+        MW = 1; % Molecular Weight
+        MW_sym = '';
+        den = 1; % Density
+        den_u = ''; % Density unit
+        den_sym = '';
+        Cp = 1; % Heat Capacity
+        Cp_u = ''; % Heat Capacity unit
+        Cp_sym = '';
+        Cpg = 1; % Gas Phase Heat Capacity
+        Cpg_u = ''; % Gas Phase Heat Capacity unit
+        Cpg_sym = '';
+
+        %% funcParams Item Data Structure: {}
         %   funcVal: string
         %   funcName: string
-        %   funcCombo: string
-        %   funcType: string
-        %   reactants?: string (do we need this?)
         %   params: {struct}
         %       locNum: number
         %       gloNum: number
@@ -25,30 +56,237 @@ classdef Component < handle
         %       sym: string
         %       val: number
         %       unit: string
-        % lims: {struct - by variable name}
-        %       upperVal: number
-        %       lowerVal: number
+        %       editable: boolean
+        %   lims: {struct - by variable name}
+        %       funcVal: string
+        %       lowerLim: number
+        %       upperLim: number
+        %       sysVar: string
+        %       elseVal: number
+        %       lowLimOp: string
+        %       upLimOp: string
 
     end
 
     methods
-        function comp = Component(name, number, initConc, type)
+        % varargin:
+        % 1 - MW
+        % 2 - den
+        % 3 - den_u
+        % 4 - Cp
+        % 5 - Cp_u
+        % 6 - h_const
+        % 7 - h_const_u
+        % 8 - dh_const
+        % 9 - dh_const_u
+        function comp = Component(name,number,initConc,type,is_vol,MW,h_const,h_const_u,dh_const,dh_const_u,defaultParamVals)
             comp.name = name;
             comp.number = number;
-            comp.initConc = initConc;
-            if type == "spec"
-                comp.sym = "X"+number;
-            elseif type == "chem"
-                comp.sym = "C"+number;
+            if strcmp(type,'Biological Solute')
+                comp.sym = char("X_"+number);
+                % creates funcParam for biological governing functions
+                comp.funcParams{1} = comp.createFuncParamObj("0",'BioGovFunc');
+            elseif strcmp(type,'Chemical Solute')
+                comp.sym = char("C_"+number);
+                % creates funcParam for biological governing functions
+                comp.funcParams{1} = comp.createFuncParamObj("0",'BioGovFunc');
+            elseif strcmp(type,'Suspended Solid Sorbent')
+                comp.sym = char("V_S_"+number);
+            elseif strcmp(type,'Liquid Solvent')
+                comp.sym = char("LS_"+number);
+            elseif strcmp(type,'temp')
+                comp.sym = 'T';
+            elseif strcmp(type,'press')
+                comp.sym = 'P';
+            elseif strcmp(type,'vol')
+                comp.sym = 'V';
+            elseif strcmp(type,'acid')
+                comp.sym = 'H3O';
+                initConc = initConc * MW;
+            elseif strcmp(type,'base')
+                comp.sym = 'OH';
+                initConc = initConc * MW;
             end
+            comp.initConc = initConc;
             comp.type = type;
-            
-            comp.setDefaultParams(name);
+
+            % set species parameters
+            comp.MW = MW;
+            comp.MW_sym = ['MW_',char(comp.sym)];
+
+            % comp.den_u = den_u;
+            % switch comp.den_u
+            %     case 'g/L'
+            %         comp.den = den;
+            %     case 'kg/m^3'
+            %         comp.den = den;
+            %     case 'lbm/ft^3'
+            %         comp.den = den / 28.168 * 453.592;
+            % end
+            % comp.den_sym = ['rho_',char(comp.sym)];
+            % 
+            % comp.Cp_u = Cp_u;
+            % comp.Cpg_u = Cp2_u;
+            % switch comp.Cp_u
+            %     case 'kJ/(kg*K)'
+            %         comp.Cp = Cp;
+            %         comp.Cpg = Cp2;
+            %     case 'J/(g*K)'
+            %         comp.Cp = Cp;
+            %         comp.Cpg = Cp2;
+            % end
+            % comp.Cp_sym = ['C_p_',char(comp.sym)];
+            % comp.Cpg_sym = ['C_pg_',char(comp.sym)];
+
+            if is_vol, comp.setVol(is_vol,h_const,h_const_u,dh_const,dh_const_u,defaultParamVals); end
+            comp.is_vol = is_vol;
         end
 
-        % comp: comps class ref, name: string
-        function comp = setDefaultParams(comp, name)
+        % comp: Compnent class ref, depVars: char{}
+        function comp = setHConstHelperFuncs(comp,defaultParamVals)
+            % sets helpers for the Henry's Constant function, vapor
+            % partial pressure in equilibrium with liquid phase
+            % concentration, and liquid phase concentration in equilibrium
+            % with vapor partial pressure
+            % Total 3 helpers (HConst, P*, C*)
+            funcVal = [comp.h_const_sym,'*exp(',comp.dh_const_sym,'*((1/T)-(1/298.15)))'];
+            comp.h_const_helper_funcs{end+1} = SubFunc(funcVal,[char(comp.name),' Henry Constant'],['H_',char(comp.sym)],0,0);
+            comp.h_const_helper_funcs{end}.updateParams([char(comp.name),' Henry Constant at 298.15K'],comp.h_const_sym,comp.h_const,comp.h_const_u,true,defaultParamVals);
+            comp.h_const_helper_funcs{end}.updateParams([char(comp.name),' H Temperature Dependence Coefficient'],comp.dh_const_sym,comp.dh_const,comp.dh_const_u,true,defaultParamVals);
+
+            funcVal2 = [char(comp.sym),'*H_',char(comp.sym)];
+            comp.h_const_helper_funcs{end+1} = SubFunc(funcVal2,['Gas Phase Partial Pressure of ',char(comp.name),' in Equilibrium with Liquid Phase'], ...
+                ['P_eq_',char(comp.sym)],0,0);
             
+            funcVal3 = [comp.bulk_gas_sym,'/H_',char(comp.sym)];
+            comp.h_const_helper_funcs{end+1} = SubFunc(funcVal3,['Liquid Phase Concentration of ',char(comp.name),' in Equilibrium with Gas Phase'], ...
+                [char(comp.sym),'_g_eq'],0,0);
+        end
+
+        % comp: Component class ref
+        function comp = setVolMassTransFuncs(comp)
+            % bub to bulk mass transfer
+            % see line 1770 in ODESys.m
+            % ### UPDATE: need better symbol for gas phase mol fraction
+            % ### UPDATE: only add this function if necessary (if there is
+            % an input of a gas as a bubble)
+            % ### IMPT: this is done in ODESys.updateIOFunc()
+            % bub_to_bulk = "(R*T)/((V_m-V)*"+comp.MW_sym+")*(D_i-(P*Y_i_"+comp.sym+"/"+comp.h_const_sym+"-"+comp.sym+"_bubf)/tau*V)"; % should be a mixing equation, not a transfer equation
+            % 
+            % % bub to liq mass transfer - ### FIXME: this needs improvement
+            % % to better model how a PFR would work
+            % bub_to_liq = "(P*Y_i_"+comp.sym+"/"+comp.h_const_sym+"-"+comp.sym+"_bub0)/tau_"+comp.sym; % discrete transfer rates calculated analytically
+            % 
+            % % bulk to liq mass transfer - based on concentration gradient
+            % % at liquid surface/bulk gas interface
+            % bulk_to_liq = "k_"+comp.sym+"_bulk*("+comp.bulk_gas_sym+"/"+comp.h_const_sym+"-"+comp.sym+")";
+            % liq_to_bulk = "k_"+comp.sym+"_bulk*"+comp.h_const_sym+"*("+comp.sym+"-"+comp.bulk_gas_sym+")";
+            % 
+            % % bulk gas phase funcParams
+            % comp.gasBulkFuncParams{1} = struct( ...
+            %     'funcVal',bub_to_bulk, ...
+            %     'funcName',[char(comp.sym),' bub_to_bulk'], ...
+            %     'params',struct([]) ...
+            % );
+            % comp.gasBulkFuncParams{2} = struct( ...
+            %     'funcVal',liq_to_bulk, ...
+            %     'funcName',[char(comp.sym),' liq_to_bulk'], ...
+            %     'params',struct([]) ...
+            % );
+            % % liquid phase funcParams
+            % comp.funcParams{2} = struct( ...
+            %     'funcVal',bub_to_liq, ...
+            %     'funcName',[char(comp.sym),' bub_to_liq'], ...
+            %     'params',struct([]) ...
+            % );
+            % comp.funcParams{3} = struct( ...
+            %     'funcVal',bulk_to_liq, ...
+            %     'funcName',[char(comp.sym),' bulk_to_liq'], ...
+            %     'params',struct([]) ...
+            % );
+            % 
+            % % setting parameters
+            % funcVals = [bub_to_bulk,liq_to_bulk,bub_to_liq,bulk_to_liq];
+            % depVars = [depVars(:,2);{['C_',char(string(comp.number))]}];
+            % for k=1:1:length(funcVals)
+            %     symVarStrArr = string(findVars(char(funcVals(k))));
+            %     varStr = string(intersect(symVarStrArr,depVars));
+            %     paramStr = convertStringsToChars(string(setxor(symVarStrArr,varStr)));
+            %     for l=1:1:length(paramStr)
+            %         switch k
+            %             case 1
+            %                 %(locNum, name, sym, val, unit, funcObj)
+            %                 comp.gasBulkFuncParams{1} = comp.createNewParam(l,paramStr{l},paramStr{l},1,'',comp.gasBulkFuncParams{1},true);
+            %             case 2
+            %                 comp.gasBulkFuncParams{2} = comp.createNewParam(l,paramStr{l},paramStr{l},1,'',comp.gasBulkFuncParams{2},true);
+            %             case 3
+            %                 comp.funcParams{1} = comp.createNewParam(l,paramStr{l},paramStr{l},1,'',comp.funcParams{1},true);
+            %             case 4
+            %                 comp.funcParams{2} = comp.createNewParam(l,paramStr{l},paramStr{l},1,'',comp.funcParams{2},true);
+            %         end
+            %     end
+            % end
+        end
+
+        % comp: Comp class ref
+        function HConstFunc = getHConstHelperFuncs(comp)
+            HConstFunc = comp.h_const_helper_funcs;
+        end
+
+        % comp: Comp class ref
+        function massTransFuncs = getMassTransHelpers(comp)
+            massTransFuncs = comp.gasBulkHelpers;
+        end
+
+        % comp: Comp class ref
+        function phases = getSorpPhases(comp)
+            phases = {};
+            for k=1:1:length(comp.sorpFuncParams)
+                if ~any(strcmp(phases,comp.sorpFuncParams{k}.solventSym))
+                    phases{end+1} = comp.sorpFuncParams{k}.solventSym; %#ok<AGROW>
+                end
+            end
+        end
+
+        % comp: Comp class ref, is_vol: Boolean
+        function setVol(comp,is_vol,h_const,h_const_u,dh_const,dh_const_u,defaultParamVals)
+            comp.is_vol = is_vol;
+
+            % perform operations to set or reset volatility
+            % properties
+            if is_vol
+                comp.bulk_gas_sym = char(replace(comp.sym,"C","P"));
+
+                comp.h_const_u = char(string(h_const_u));
+                switch comp.h_const_u
+                    case 'kPa*L/mol'
+                        comp.h_const = h_const./comp.MW;
+                    case 'kPa*m^3/kg'
+                        comp.h_const = h_const;
+                end
+                comp.dh_const_u = char(string(dh_const_u));
+                switch comp.dh_const_u
+                    case 'K'
+                        comp.dh_const = dh_const;
+                    case 'C'
+                        comp.dh_const = dh_const;
+                    case 'F'
+                        comp.dh_const = dh_const .* 5 ./ 9;
+                end
+                comp.h_const_sym = ['H_0_',char(comp.sym)];
+                comp.dh_const_sym = ['A_',char(comp.sym)];
+                comp.h_const_helper_funcs = {};
+                comp.setHConstHelperFuncs(defaultParamVals);
+            else
+                comp.bulk_gas_sym = '';
+                comp.h_const_u = '';
+                comp.h_const = 1;
+                comp.dh_const_u = '';
+                comp.dh_const = 1;
+                comp.h_const_sym = '';
+                comp.dh_const_sym = '';
+                comp.h_const_helper_funcs = {};
+            end
         end
 
         % comp: comps class ref, prop: string, val: number | string
@@ -61,82 +299,154 @@ classdef Component < handle
             initConc = comp.initConc;
         end
 
+        % comp: Component class ref, initConc: num, is_vol: boolean,
+        % h_const: num, h_const_u: string, dh_const: num, dh_const_u:
+        % string
+        function updateComp(comp,initConc,is_vol,MW,h_const,h_const_u,dh_const,dh_const_u,defaultParamVals)
+            comp.setInitConc(initConc);
+            comp.MW = MW;
+            comp.setVol(is_vol,h_const,h_const_u,dh_const,dh_const_u,defaultParamVals);
+        end
+
         % comp: Component class ref
         function type = getType(comp)
             type = comp.type;
         end
 
+        % comp: Component class ref
+        function clearFuncParams(comp)
+            comp.funcParams = {};
+        end
+
         % comp: comps class ref, funcVal: string, funcName: string,
-        % funcCombo: string, funcType: string, paramStr: string{},
-        % varNames: {}
-        function comp = setModel(comp, funcVal, funcName, funcCombo, funcType, paramStr, varNames, editing, refFuncName)
-            if editing
-                disp('Func Does Exist')
-                idx = comp.getFuncIdx(refFuncName);
-                comp.funcParams{idx} = comp.reviseFuncParamObj(funcVal, funcName, funcCombo, funcType, comp.funcParams{idx});
-                % creates array of existing param symbols (strings)
-                existingParamSyms = cell(1,length(comp.funcParams{idx}.params));
-                for k=1:1:length(existingParamSyms)
-                    existingParamSyms{k} = comp.funcParams{idx}.params{k}.sym;
-                end
-                % idxA are the params to be removed, and idxB are the
-                % new params to be added
-                [~,idxA,idxB] = setxor(existingParamSyms,paramStr);
-                for k=1:1:length(idxA)
-                    comp.funcParams{idx}.params(idxA(k)) = [];
-                end
-%                 locNum = comp.funcParams{idx}.params{end}.locNum + 1;
-                for k=1:1:length(idxB)
-                    comp.funcParams{idx} = comp.createNewParam(1, paramStr{idxB(k)}, paramStr{idxB(k)}, 1, '', comp.funcParams{idx});
-%                     locNum = locNum + 1;
-                end
-%                     paramNums = length(comp.params):1:length(paramNames);
-            else
-                disp('Func Does not Exist')
-                % create new function
-                comp.createFuncParamObj(funcVal, funcName, funcCombo, funcType);
-                locNum = 1;
-                for i=1:1:length(paramStr)
-                    comp.funcParams{end} = comp.createNewParam(locNum, paramStr{i}, paramStr{i}, 1, '', comp.funcParams{end});
-                    locNum = locNum + 1;
-                end
+        % paramStr: string{}, varNames: {}, defaultParamVals: struct
+        function comp = setModel(comp, funcVal, funcName, paramStr, defaultParamVals)
+            if isempty(funcName), funcName = comp.funcParams{1}.funcName; end
+            comp.funcParams{1} = comp.reviseFuncParamObj(funcVal, funcName, comp.funcParams{1});
+            comp.funcParams{1} = comp.removeParams(comp.funcParams{1});
+            % sets parameter syms
+            locNum = 1;
+            for k=1:1:length(paramStr)
+                comp.funcParams{1} = comp.createNewParam(locNum, paramStr{k}, paramStr{k}, 1, '', comp.funcParams{1}, true, defaultParamVals);
+                locNum = locNum + 1;
             end
         end
 
-        % comp: comps class ref, func: string, interact: string,
-        % chemName: string
-        function comp = createFuncParamObj(comp, funcVal, funcName, funcCombo, funcType)
-            funcObj = struct( ...
-                'funcVal',funcVal, ...
-                'funcName',funcName, ...
-                'funcCombo',funcCombo, ...
-                'funcType', funcType, ...
-                'params',struct([]) ...
-            );
-            comp.funcParams{end+1} = funcObj;
+        % comp: Component class ref, funcVal: string, funcName: string,
+        % paramStr: string[], phase: string, defaultParamVals: struct
+        function comp = addModel(comp,funcVal,funcName,paramStr,phase,defaultParamVals)
+            if strcmp(phase,'Main'), phase = 'Liquid'; end
+            % sets parameter syms
+            locNum = 1;
+            switch phase
+                case 'Liquid'
+                    comp.funcParams{end+1} = comp.createFuncParamObj(funcVal,funcName);
+                    for k=1:1:length(paramStr)
+                        comp.funcParams{end} = comp.createNewParam(locNum, paramStr{k}, paramStr{k}, 1, '', comp.funcParams{end}, true, defaultParamVals);
+                        locNum = locNum + 1;
+                    end
+
+                case 'Gas'
+                    comp.gasBulkFuncParams{end+1} = comp.createFuncParamObj(funcVal,funcName);
+                    for k=1:1:length(paramStr)
+                        comp.gasBulkFuncParams{end} = comp.createNewParam(locNum, paramStr{k}, paramStr{k}, 1, '', comp.gasBulkFuncParams{end}, true, defaultParamVals);
+                        locNum = locNum + 1;
+                    end
+
+                case 'Suspended Solid'
+                    comp.sorpFuncParams{end+1} = comp.createFuncParamObj(funcVal,funcName);
+                    for k=1:1:length(paramStr)
+                        comp.sorpFuncParams{end} = comp.createNewParam(locNum, paramStr{k}, paramStr{k}, 1, '', comp.sorpFuncParams{end}, true, defaultParamVals);
+                        locNum = locNum + 1;
+                    end
+            end
         end
-        
-        % comp: comps class ref, chemName: string
-        function comp = removeFuncParamObj(comp, funcVal, funcName, funcCombo, funcType)
-            for k=1:1:length(comp.funcParams)
-                if strcmp(comp.funcParams{k}.funcVal,funcVal) && ...
-                        strcmp(comp.funcParams{k}.funcName,funcName) && ...
-                        strcmp(comp.funcParams{k}.funcCombo,funcCombo) && ...
-                        strcmp(comp.funcParams{k}.funcType,funcType)
-                    comp.funcParams{k} = [];
+
+        % comp: Component class ref
+        function comp = rmModel(comp)
+            % input string of which funcParam group to remove from
+            comp.removeFuncParamObj();
+        end
+
+        % comp: Component class ref, compName: string, funcVal: string,
+        % funcName: string, paramStr: string{}, defaultParamVals: struct
+        function comp = addSuspendedSolidVolumeFunc(comp,funcVal,funcName,paramStr,defaultParamVals)
+            comp.sorpVolFuncParams{end+1} = comp.createFuncParamObj(funcVal,funcName);
+
+            % sets parameter syms
+            locNum = 1;
+            for k=1:1:length(paramStr)
+                comp.sorpVolFuncParams{end} = comp.createNewParam(locNum, paramStr{k}, paramStr{k}, 1, '', comp.sorpVolFuncParams{end}, true, defaultParamVals);
+                locNum = locNum + 1;
+            end
+        end
+
+        % comp: Component class ref, compName: string, funcVal: string,
+        % funcName: string
+        function comp = rmSuspendedSolidVolumeFunc(comp,funcVal,funcName)
+            for k=1:1:length(comp.sorpVolFuncParams)
+                if strcmp(comp.sorpVolFuncParams{k}.funcVal,funcVal) && ...
+                        strcmp(comp.sorpVolFuncParams{k}.funcName,funcName)
+                    comp.sorpVolFuncParams(k) = [];
                     return;
                 end
             end
         end
 
+        % comp: Component class ref, funcVal: string, phaseA: string,
+        % phaseB: string, paramStr: string{}, defaultParamVals: struct
+        function comp = setMTModel(comp,funcVal,phaseA,phaseB,paramStr,defaultParamVals)
+            % updating the function values in the correct funcParam
+            if strcmp(phaseA,'Liquid')
+                idx = 0;
+                for k=1:1:length(comp.funcParams)
+                    if strcmp(comp.funcParams{k}.funcName,[phaseB,' MT'])
+                        idx = k;
+                    end
+                end
+                comp.funcParams{idx} = comp.reviseFuncParamObj(funcVal,[phaseB,' MT'],comp.funcParams{idx});
+                % sets parameter syms
+                locNum = 1;
+                for k=1:1:length(paramStr)
+                    comp.funcParams{idx} = comp.createNewParam(locNum, paramStr{k}, paramStr{k}, 1, '', comp.funcParams{idx}, true, defaultParamVals);
+                    locNum = locNum + 1;
+                end
+            elseif strcmp(phaseA,'Gas')
+                idx = 1;
+                for k=1:1:length(comp.gasBulkFuncParams)
+                    if strcmp(comp.gasBulkFuncParams{k}.funcName,[phaseB,' MT'])
+                        idx = k;
+                    end
+                end
+                comp.gasBulkFuncParams{idx} = comp.reviseFuncParamObj(funcVal,[phaseB,' MT'],comp.gasBulkFuncParams{idx});
+                % sets parameter syms
+                locNum = 1;
+                for k=1:1:length(paramStr)
+                    comp.gasBulkFuncParams{idx} = comp.createNewParam(locNum, paramStr{k}, paramStr{k}, 1, '', comp.gasBulkFuncParams{end}, true, defaultParamVals);
+                    locNum = locNum + 1;
+                end
+            else
+                idx = 1;
+                for k=1:1:length(comp.sorpFuncParams)
+                    if strcmp(comp.sorpFuncParams{k}.solventName,phaseA)
+                        idx = k;
+                    end
+                end
+                comp.sorpFuncParams{idx} = comp.reviseFuncParamObj(funcVal,phaseA,comp.sorpFuncParams{idx});
+                locNum = 1;
+                for k=1:1:length(paramStr)
+                    comp.sorpFuncParams{idx} = comp.createNewParam(locNum, paramStr{k}, paramStr{k}, 1, '', comp.sorpFuncParams{end}, true, defaultParamVals);
+                    locNum = locNum + 1;
+                end
+            end
+        end
+
         % comp: comps class ref, chemName: string, func: string
-        function funcExists = checkForDuplicateFunc(comp, funcVal, funcName, funcCombo, funcType)
+        function funcExists = checkForDuplicateFunc(comp, funcVal, funcName)
             funcExists = false;
             for k=1:1:numel(comp.funcParams)
                 if strcmp(comp.funcParams{k}.funcVal,funcVal) && ...
-                        strcmp(comp.funcParams{k}.funcName,funcName) && ...
-                        strcmp(comp.funcParams{k}.funcCombo,funcCombo) && ...
-                        strcmp(comp.funcParams{k}.funcType,funcType)
+                        strcmp(comp.funcParams{k}.funcName,funcName)
                     funcExists = true;
                     return;
                 end
@@ -148,43 +458,48 @@ classdef Component < handle
             sym = comp.sym;
         end
 
-        % comp: comps class ref, funcCombo: string, valsOrNames: string,
-        % editing: boolean, editedFuncName: string, editedFuncVal: string
-        function funcs = getGovFuncs(comp, funcCombo, valsOrNames, editing, refFuncVal, refFuncName)
-            % ### FIXME
-            funcs = cell(1,2);
-            segment = 1;
-            for k=1:1:length(comp.funcParams)
-                if editing
-                    if strcmp(comp.funcParams{k}.funcCombo,funcCombo)
-                        if valsOrNames == "Names"
-                            if strcmp(comp.funcParams{k}.funcName,refFuncName) && strcmp(comp.funcParams{k}.funcVal,refFuncVal)
-                                segment = 2;
-                            else
-                                funcs{segment}{end+1} = comp.funcParams{k}.funcName;
-                            end
-                        elseif valsOrNames == "Values"
-                            if strcmp(comp.funcParams{k}.funcName,refFuncName) && strcmp(comp.funcParams{k}.funcVal,refFuncVal)
-                                segment = 2;
-                            else
-                                funcs{segment}{end+1} = comp.funcParams{k}.funcVal;
-                            end
-                        end
-                    end
-                else
-                    if strcmp(comp.funcParams{k}.funcCombo,funcCombo)
-                        if valsOrNames == "Names"
-                            funcs{segment}{end+1} = comp.funcParams{k}.funcName;
-                        elseif valsOrNames == "Values"
-                            funcs{segment}{end+1} = comp.funcParams{k}.funcVal;
-                        end
+        % comp: Component class ref
+        function sym = getBulkGasSym(comp)
+            sym = char(comp.bulk_gas_sym);
+        end
+
+        % comp: Component class ref
+        function name = getName(comp)
+            name = comp.name;
+        end
+
+        % comp: Component class ref
+        function num = getNum(comp)
+            num = comp.number;
+        end
+
+        % comp: comps class ref, phase: string, phaseName: string, dispMT: boolean
+        function funcs = getGovFuncs(comp, phase, phaseName)
+            funcs = {};
+            if strcmp(phase,'Gas Phase')
+                fp = comp.gasBulkFuncParams;
+            elseif strcmp(phase,'Liquid Phase')
+                fp = comp.funcParams;
+            elseif strcmp(phase,'Suspended Solid Phase')
+                fp = {};
+                for k=1:1:length(comp.sorpFuncParams)
+                    if strcmp(comp.sorpFuncParams{k}.solventName,phaseName)
+                        fp{end+1} = comp.sorpFuncParams{k}; %#ok<AGROW>
                     end
                 end
+            end
+            for k=1:1:length(fp)
+                % converting piecewise expressions to latex
+                funcVal = comp.convertPWToLaTeX(fp{k});
+                funcs{end+1} = funcVal; %#ok<AGROW>
+            end
+            if isempty(funcs)
+                funcs{1} = "0";
             end
         end
 
         % comp: comps class ref, field: string[], val: cell{}
-        % returns the indices for comp.funcParams taht correspond to items
+        % returns the indices for comp.funcParams that correspond to items
         % that match the fields searched
         % make sure that val inputs for text are strings
 %         function idx = getFuncByField(comp, fields, val)
@@ -225,10 +540,16 @@ classdef Component < handle
 %         end
 
         % comp: comps class ref, paramSym: string, newVal: number,
-        % newUnit: string, newParamName: string, funcName: string
+        % newUnit: string, newParamName: string, funcName: string,
+        % editable: boolean
         function comp = updateParam(comp, paramSym, newVal, newUnit, newParamName, funcName)
-            funcObjIdx = comp.getFuncIdx(funcName);
-            comp.funcParams{funcObjIdx} = comp.reviseParam(paramSym, newVal, newUnit, newParamName, comp.funcParams{funcObjIdx});
+            try
+                funcObjIdx = comp.getFuncIdx(funcName);
+            catch
+                disp("err Component.m Line 412")
+                return;
+            end
+            comp.funcParams{funcObjIdx} = comp.reviseParam(paramSym,newVal,newUnit,newParamName,comp.funcParams{funcObjIdx});
         end
 
         % comp: comps class ref, funcName: string,
@@ -246,64 +567,117 @@ classdef Component < handle
 
         % comp: comps class ref
         % returns parameter info ready to display to ODESys (params struct)
-        function params = getGrthParams(comp)
-            params = cell([comp.getParamCount(),6]);
+        function params = getGrthParams(comp,phase)
+            if strcmp(phase,'Main'), phase = 'Liquid'; end
+            params = cell([comp.getParamCount(phase),6]);
             ct = 1;
-            for k=1:1:length(comp.funcParams)
-                for j=1:1:length(comp.funcParams{k}.params)
+            if strcmp(phase,'Liquid')
+                fp = comp.funcParams;
+            elseif strcmp(phase,'Gas')
+                fp = comp.gasBulkFuncParams;
+            else
+                for k=1:1:length(comp.sorpFuncParams)
+                    if strcmp(phase,comp.sorpFuncParams{k}.solventName)
+                        fp = comp.sorpFuncParams{k};
+                    end
+                end
+            end
+            for k=1:1:length(fp)
+                for l=1:1:length(fp{k}.params)
                     params{ct,1} = num2str(ct);
-                    params{ct,2} = comp.funcParams{k}.funcName;
-                    params{ct,3} = comp.funcParams{k}.params{j}.sym;
-                    params{ct,4} = comp.funcParams{k}.params{j}.name;
-                    params{ct,5} = comp.funcParams{k}.params{j}.val;
-                    params{ct,6} = comp.funcParams{k}.params{j}.unit;
+                    params{ct,2} = fp{k}.funcName;
+                    params{ct,3} = fp{k}.params{l}.sym;
+                    params{ct,4} = fp{k}.params{l}.name;
+                    params{ct,5} = fp{k}.params{l}.val;
+                    params{ct,6} = fp{k}.params{l}.unit;
+                    params{ct,7} = fp{k}.params{l}.editable;
                     ct = ct + 1;
                 end
             end
         end
 
-        % comp: comps class ref
-        function paramCt = getParamCount(comp)
+        % comp: comps class ref, phase: string
+        function paramCt = getParamCount(comp,phase)
             paramCt = 0;
-            for k=1:1:length(comp.funcParams)
-                paramCt = paramCt + length(comp.funcParams{k}.params);
+            if strcmp(phase,'Liquid')
+                fp = comp.funcParams;
+            elseif strcmp(phase,'Gas')
+                fp = comp.gasBulkFuncParams;
+            else
+                for k=1:1:length(comp.sorpFuncParams)
+                    if strcmp(phase,comp.sorpFuncParams{k}.solventName)
+                        fp = comp.sorpFuncParams{k};
+                    end
+                end
+            end
+            for k=1:1:length(fp)
+                paramCt = paramCt + length(fp{k}.params);
             end
         end
 
         % comp: comps class ref
-        function removeModel(comp,funcVal,funcName,funcCombo,funcType)
-            for k=1:1:length(comp.funcParams)
-                if strcmp(comp.funcParams{k}.funcVal,funcVal) && ...
-                        strcmp(comp.funcParams{k}.funcName,funcName) && ...
-                        strcmp(comp.funcParams{k}.funcCombo,funcCombo) && ...
-                        strcmp(comp.funcParams{k}.funcType,funcType)
-                    comp.funcParams(k) = [];
-                    return;
-                end
+        function removeModel(comp,funcVal,funcName,phase)
+            if strcmp(phase,'Main'), phase = 'Liquid'; end
+            switch phase
+                case 'Liquid'
+                    for k=1:1:length(comp.funcParams)
+                        if strcmp(comp.funcParams{k}.funcVal,funcVal) && ...
+                                strcmp(comp.funcParams{k}.funcName,funcName)
+                            comp.funcParams(k) = [];
+                            return;
+                        end
+                    end
+                    if isempty(comp.funcParams)
+                        
+                    end
+
+                case 'Gas'
+                    for k=1:1:length(comp.gasBulkFuncParams)
+                        if strcmp(comp.gasBulkFuncParams{k}.funcVal,funcVal) && ...
+                                strcmp(comp.gasBulkFuncParams{k}.funcName,funcName)
+                            comp.gasBulkFuncParams(k) = [];
+                            return;
+                        end
+                    end
+
+                case 'Suspended Solid'
+                    for k=1:1:length(comp.sorpFuncParams)
+                        if strcmp(comp.sorpFuncParams{k}.funcVal,funcVal) && ...
+                                strcmp(comp.sorpFuncParams{k}.funcName,funcName)
+                            comp.sorpFuncParams(k) = [];
+                            return;
+                        end
+                    end
             end
         end
 
-        % comp: comps class ref, funcCombo: string
-        function funcNames = getFuncNames(comp,funcCombo)
-            funcNames = {};
-            ct = 1;
-            for k=1:1:length(comp.funcParams)
-                if strcmp(comp.funcParams{k}.funcCombo, funcCombo)
-                    funcNames{ct} = comp.funcParams{k}.funcName; %#ok<AGROW> 
-                    ct = ct + 1;
-                end
-            end
-        end
+        % comp: Component class ref, funcName: string, phase: string
+        function removeModelByName(comp,funcName,phase)
+            if strcmp(phase,'Main'), phase = 'Liquid'; end
+            switch phase
+                case 'Liquid'
+                    for k=1:1:length(comp.funcParams)
+                        if strcmp(comp.funcParams{k}.funcName,funcName)
+                            comp.funcParams(k) = [];
+                            return;
+                        end
+                    end
 
-        % comp: Component class ref, funcName: string
-        function funcVal = getFuncValByName(comp,funcName)
-            % ### FIXME
-            for k=1:1:length(comp.funcParams)
-%                 comp.funcParams{k}
-                if strcmp(comp.funcParams{k}.funcName, funcName)
-                    funcVal = comp.funcParams{k}.funcVal;
-                    return;
-                end
+                case 'Gas'
+                    for k=1:1:length(comp.gasBulkFuncParams)
+                        if strcmp(comp.gasBulkFuncParams{k}.funcName,funcName)
+                            comp.gasBulkFuncParams(k) = [];
+                            return;
+                        end
+                    end
+
+                case 'Suspended Solid'
+                    for k=1:1:length(comp.sorpFuncParams)
+                        if strcmp(comp.sorpFuncParams{k}.funcName,funcName)
+                            comp.sorpFuncParams(k) = [];
+                            return;
+                        end
+                    end
             end
         end
 
@@ -315,112 +689,637 @@ classdef Component < handle
         % comp: Component class ref, paramCt: numbers, paramList: {}, regParamList: {}, regression: boolean
         function [govFunc,params,reg_param_ct,regParamListUpdate] = compileGovFunc(comp,param_ct,reg_param_ct,regParamList,regression)
             % Need to make sure that each individual govFunc component is
-            % isolated (so (C1+C2)*(C3+C4) ~= C1+C2*C3_C4)
+            % isolated (so (C1+C2)*(C3+C4) ~= C1+C2*C3+C4)
             regParamListUpdate = {};
             govFunc = "";
             params = [];
-            for k=1:1:length(comp.funcParams)
-                if comp.funcParams{k}.funcCombo == "Multiplicative"
-                    if k == 1
-                        govFunc = govFunc + comp.funcParams{k}.funcVal;
+
+            if strcmp(comp.type,'Suspended Solid Sorbent')
+                % compiling governing functions (biological and mass transfer)
+                for k=1:1:length(comp.sorpVolFuncParams)
+                    % compilation for piecewise functions
+                    funcVal = comp.compilePWFuncs(comp.sorpVolFuncParams{k});
+                    charGovFunc = char(govFunc);
+                    if isempty(charGovFunc) || strcmp(charGovFunc(end),';')
+                        operator = "";
                     else
-                        govFunc = govFunc + "*" + comp.funcParams{k}.funcVal;
+                        operator = "+";
+                    end
+                    govFunc = govFunc + operator + funcVal;
+                    % compiling parameters array
+                    for l=1:1:length(comp.sorpVolFuncParams{k}.params)
+                        params = [params,comp.sorpVolFuncParams{k}.params{l}.val]; %#ok<AGROW>
                     end
                 end
-                % compiling parameters array
-                for l=1:1:length(comp.funcParams{k}.params)
-                    params = [params,comp.funcParams{k}.params{l}.val]; %#ok<AGROW>
+                fp = comp.sorpVolFuncParams;
+            else
+                % compiling governing functions (biological and mass transfer)
+                for k=1:1:length(comp.funcParams)
+                    % compilation for piecewise functions
+                    funcVal = comp.compilePWFuncs(comp.funcParams{k});
+                    charGovFunc = char(govFunc);
+                    if isempty(charGovFunc) || strcmp(charGovFunc(end),';')
+                        operator = "";
+                    else
+                        operator = "+";
+                    end
+                    govFunc = govFunc + operator + funcVal;
+                    % compiling parameters array
+                    for l=1:1:length(comp.funcParams{k}.params)
+                        params = [params,comp.funcParams{k}.params{l}.val]; %#ok<AGROW>
+                    end
                 end
-            end
-
-            if govFunc == ""
-                operator = "";
-            elseif govFunc ~= ""
-                operator = "+";
-            end
-            for k=1:1:length(comp.funcParams)
-                if comp.funcParams{k}.funcCombo == "Additive"
-                    govFunc = govFunc + operator + comp.funcParams{k}.funcVal;
+                % Gas concentration - should only need to track the bulk
+                % concentration, the bubble concentration will be an analytical
+                % calculation, add the mass transfer functions from perspective
+                % of bulk, bubble mass addition and mass transfer between bulk
+                % and liquid
+                if comp.is_vol
+                    govFunc = govFunc + ";";
+                    % compilation for piecewise functions
+                    % compiling governing functions (biological and mass transfer)
+                    for k=1:1:length(comp.gasBulkFuncParams)
+                        funcVal = comp.compilePWFuncs(comp.gasBulkFuncParams{k});
+                        charGovFunc = char(govFunc);
+                        if isempty(charGovFunc) || strcmp(charGovFunc(end),';')
+                            operator = "";
+                        else
+                            operator = "+";
+                        end
+                        govFunc = govFunc + operator + funcVal;
+                        % compiling parameters array
+                        for l=1:1:length(comp.gasBulkFuncParams{k}.params)
+                            params = [params,comp.gasBulkFuncParams{k}.params{l}.val]; %#ok<AGROW>
+                        end
+                    end
                 end
+                % compiling sorption phases
+                if ~isempty(comp.sorpFuncParams)
+                    govFunc = govFunc + ";";
+                    % compilation for piecewise functions
+                    for k=1:1:length(comp.sorpFuncParams)
+                        funcVal = comp.compilePWFuncs(comp.sorpFuncParams{k});
+                        charGovFunc = char(govFunc);
+                        if isempty(charGovFunc) || strcmp(charGovFunc(end),';')
+                            operator = "";
+                        else
+                            operator = "+";
+                        end
+                        govFunc = govFunc + operator + funcVal;
+                        % compiling parameters array
+                        for l=1:1:length(comp.sorpFuncParams{k}.params)
+                            params = [params,comp.sorpFuncParams{k}.params{l}.val]; %#ok<AGROW>
+                        end
+                    end
+                end
+                fp = [comp.funcParams,comp.gasBulkFuncParams,comp.sorpFuncParams];
             end
 
             % replacing param syms in govFunc with p({gloNum})
             ct = 1;
-            regParamChgCt = 1;
             if regression
-                for k=1:1:length(comp.funcParams)
+                for k=1:1:length(fp)
                     % replacing function and regression parameters that haven't yet been
                     % replaced
-                    for l=1:1:length(comp.funcParams{k}.params)
-                        match = strcmp(cellstr(regParamList(:,1)),char(comp.funcParams{k}.params{l}.sym));
+                    if class(fp{k}.params) == "cell"
+                        celldisp(fp{k}.params);
+                    end
+                    for l=1:1:length(fp{k}.params)
+                        match = strcmp(regParamList(:,1),char(fp{k}.params{l}.sym));
+                        % ### NOTE: replace variables passed in
+                        % in Simulink as v (like p but v)
+                        govFuncLength = strlength(govFunc);
                         if any(match)
-                            govFuncLength = strlength(govFunc);
-                            govFunc = split(govFunc,"#");
                             for m=1:1:length(govFunc)
                                 if strlength(govFunc(m)) > 1 || govFuncLength == 1
                                     if ~strcmp(regParamList{match,2},"")
-                                        govFunc(m) = regexprep(govFunc(m),comp.funcParams{k}.params{l}.sym,"r("+(regParamList{match,2})+")");
+                                        govFunc(m) = replace(govFunc(m),fp{k}.params{l}.sym,"$("+(regParamList{match,2})+")");
                                     else
-                                        govFunc(m) = regexprep(govFunc(m),comp.funcParams{k}.params{l}.sym,"r("+(reg_param_ct)+")");
-                                        regParamListUpdate{regParamChgCt,1} = true; %#ok<AGROW>
-                                        regParamListUpdate{regParamChgCt,2} = find(match); %#ok<AGROW>
-                                        regParamListUpdate{regParamChgCt,3} = string(reg_param_ct); %#ok<AGROW>
+                                        % if contains(govFunc(m),fp{k}.params{l}.sym), reg_param_ct = reg_param_ct + 1; end
+                                        govFunc(m) = replace(govFunc(m),fp{k}.params{l}.sym,"$("+(reg_param_ct)+")");
+                                        regParamListUpdate{1,match} = true; %#ok<*AGROW>
+                                        regParamListUpdate{2,match} = find(match);
+                                        regParamListUpdate{3,match} = string(reg_param_ct);
                                         reg_param_ct = reg_param_ct + 1;
-                                        regParamChgCt = regParamChgCt + 1;
                                     end
                                 end
                             end
-                            ct = ct + 1;
                         else
-                            govFunc = split(govFunc,"#");
                             for m=1:1:length(govFunc)
-                                comp.funcParams{k}.params{l}.sym
                                 if strlength(govFunc(m)) > 1 || govFuncLength == 1
-                                    govFunc(m) = regexprep(govFunc(m),comp.funcParams{k}.params{l}.sym,"p("+(param_ct+ct)+")");
+                                    % if contains(govFunc(m),fp{k}.params{l}.sym), ct = ct + 1; end
+                                    govFunc(m) = replace(govFunc(m),fp{k}.params{l}.sym,"#("+(param_ct+ct)+")");
+                                    ct = ct + 1;
                                 end
                             end
-                            ct = ct + 1;
                         end
                     end
                 end
             else
                 % replacing function parameters that haven't been replaced
                 % yet
-                for k=1:1:length(comp.funcParams)
+                for k=1:1:length(fp)
                     govFuncLength = strlength(govFunc);
-                    govFunc = split(govFunc,"#");
-                    for l=1:1:length(comp.funcParams{k}.params)
+                    for l=1:1:length(fp{k}.params)
                         for m=1:1:length(govFunc)
                             if strlength(govFunc(m)) > 1 || govFuncLength == 1
-                                govFunc(m) = regexprep(govFunc(m),comp.funcParams{k}.params{l}.sym,"p("+(param_ct+ct)+")");
+                                % if contains(govFunc(m),fp{k}.params{l}.sym), ct = ct + 1; end
+                                govFunc(m) = replace(govFunc(m),fp{k}.params{l}.sym,"#("+(param_ct+ct)+")");
+                                ct = ct + 1;
                             end
                         end
-                        ct = ct + 1;
                     end
                 end
             end
-            govFunc = strrep(strrep(strjoin(govFunc),"#","")," ","");
+            % govFunc = strrep(strrep(strjoin(govFunc),"#","")," ","");
+            govFunc = replace(replace(govFunc,"#","p"),"$","r");
+            if strcmp(govFunc,""), govFunc = "0"; end
+        end
+
+        % comp: Compnent class ref, newExpr: string, lowLim: number, 
+        % upLim: number, sysVar: string, elseVal: number, lowLimOp: string,
+        % upLimOp: string, phaseA: string, phaseB: string
+        function pwTInfo = addNewPWExpr(comp,newExpr,lowLim,upLim,sysVar,elseVal,lowLimOp,upLimOp,phaseA,phaseB)
+            if strcmp(phaseA,'Main')
+                comp.funcParams{1}.lims{end+1} = struct([ ...
+                    'funcVal',newExpr, ...
+                    'lowerLim',lowLim ...
+                    'upperLim',upLim, ...
+                    'sysVar',sysVar, ...
+                    'elseVal',elseVal, ...
+                    'lowLimOp',lowLimOp, ...
+                    'upLimOp',upLimOp
+                ]);
+                pwTInfo = cell(length(comp.funcParams{1}.lims),4);
+                for k=1:1:length(comp.funcParams{1}.lims)
+                    pwTInfo{k,1} = comp.funcParams{1}.lims{k}.lowerLim;
+                    pwTInfo{k,2} = comp.funcParams{1}.lims{k}.upperLim;
+                    pwTInfo{k,3} = comp.funcParams{1}.lims{k}.sysVar;
+                    pwTInfo{k,4} = comp.funcParams{1}.lims{k}.elseVal;
+                end
+            elseif strcmp(phaseA,'Liquid')
+                for k=2:1:length(comp.funcParams)
+                    if strcmp(comp.funcParams{k}.funcName,[phaseB,' MT'])
+                        comp.funcParams{k}.lims{end+1} = struct([ ...
+                            'funcVal',newExpr, ...
+                            'lowerLim',lowLim ...
+                            'upperLim',upLim, ...
+                            'sysVar',sysVar, ...
+                            'elseVal',elseVal, ...
+                            'lowLimOp',lowLimOp, ...
+                            'upLimOp',upLimOp
+                        ]);
+                        pwTInfo = cell(length(comp.funcParams{k}.lims),4);
+                        for l=1:1:length(comp.funcParams{k}.lims)
+                            pwTInfo{l,1} = comp.funcParams{k}.lims{l}.lowerLim;
+                            pwTInfo{l,2} = comp.funcParams{k}.lims{l}.upperLim;
+                            pwTInfo{l,3} = comp.funcParams{k}.lims{l}.sysVar;
+                            pwTInfo{l,4} = comp.funcParams{k}.lims{l}.elseVal;
+                        end
+                    end
+                end
+            elseif strcmp(phaseA,'Gas')
+                for k=1:1:length(comp.gasBulkFuncParams)
+                    if strcmp(comp.gasBulkFuncParams{k}.funcName,[phaseB,' MT'])
+                        comp.gasBulkFuncParams{k}.lims{end+1} = struct([ ...
+                            'funcVal',newExpr, ...
+                            'lowerLim',lowLim ...
+                            'upperLim',upLim, ...
+                            'sysVar',sysVar, ...
+                            'elseVal',elseVal, ...
+                            'lowLimOp',lowLimOp, ...
+                            'upLimOp',upLimOp
+                        ]);
+                        pwTInfo = cell(length(comp.gasBulkFuncParams{k}.lims),4);
+                        for l=1:1:length(comp.gasBulkFuncParams{k}.lims)
+                            pwTInfo{l,1} = comp.gasBulkFuncParams{k}.lims{l}.lowerLim;
+                            pwTInfo{l,2} = comp.gasBulkFuncParams{k}.lims{l}.upperLim;
+                            pwTInfo{l,3} = comp.gasBulkFuncParams{k}.lims{l}.sysVar;
+                            pwTInfo{l,4} = comp.gasBulkFuncParams{k}.lims{l}.elseVal;
+                        end
+                    end
+                end
+            else
+                for k=1:1:length(comp.sorpFuncParams)
+                    if strcmp(comp.sorpFuncParams{k}.solventName,phaseA)
+                        comp.sorpFuncParams{k}.lims{end+1} = struct([ ...
+                            'funcVal',newExpr, ...
+                            'lowerLim',lowLim ...
+                            'upperLim',upLim, ...
+                            'sysVar',sysVar, ...
+                            'elseVal',elseVal, ...
+                            'lowLimOp',lowLimOp, ...
+                            'upLimOp',upLimOp
+                        ]);
+                        pwTInfo = cell(length(comp.sorpFuncParams{k}.lims),4);
+                        for l=1:1:length(comp.sorpFuncParams{k}.lims)
+                            pwTInfo{l,1} = comp.sorpFuncParams{k}.lims{l}.lowerLim;
+                            pwTInfo{l,2} = comp.sorpFuncParams{k}.lims{l}.upperLim;
+                            pwTInfo{l,3} = comp.sorpFuncParams{k}.lims{l}.sysVar;
+                            pwTInfo{l,4} = comp.sorpFuncParams{k}.lims{l}.elseVal;
+                        end
+                    end
+                end
+            end
+        end
+
+        % comp: Compnent class ref, newExpr: string, lowLim: number, 
+        % upLim: number, sysVar: string, elseVal: number, lowLimOp: string,
+        % upLimOp: string, phaseA: string, phaseB: string
+        function pwTInfo = editPWExpr(comp,newExpr,lowLim,upLim,sysVar,elseVal,phaseA,phaseB)
+            idx = 1;
+            newLim = struct([ ...
+                    'funcVal',newExpr, ...
+                    'lowerLim',lowLim ...
+                    'upperLim',upLim, ...
+                    'sysVar',sysVar, ...
+                    'elseVal',elseVal, ...
+                    'lowLimOp',lowLimOp, ...
+                    'upLimOp',upLimOp
+            ]);
+            if strcmp(phaseA,'Main')
+                for k=1:1:length(comp.funcParams{1}.lims)
+                    if strcmp(comp.funcParams{1}.lims{k}.funcVal,newExpr)
+                        idx = k;
+                        break;
+                    end
+                end
+                comp.funcParams{1}.lims{idx} = newLim;
+                pwTInfo = cell(length(comp.funcParams{1}.lims),4);
+                for k=1:1:length(comp.funcParams{1}.lims)
+                    pwTInfo{k,1} = comp.funcParams{1}.lims{k}.lowerLim;
+                    pwTInfo{k,2} = comp.funcParams{1}.lims{k}.upperLim;
+                    pwTInfo{k,3} = comp.funcParams{1}.lims{k}.sysVar;
+                    pwTInfo{k,4} = comp.funcParams{1}.lims{k}.elseVal;
+                end
+            elseif strcmp(phaseA,'Liquid')
+                for k=1:1:length(comp.funcParams)
+                    if strcmp(comp.funcParams{k}.solventName,phaseB)
+                        for l=1:1:length(comp.funcParams{k}.lims)
+                            if strcmp(comp.funcParams{k}.lims{l}.funcVal,newExpr)
+                                idx = l;
+                                break;
+                            end
+                        end
+                        comp.funcParams{k}.lims{idx} = newLim;
+                        pwTInfo = cell(length(comp.funcParams{1}.lims),4);
+                        for l=1:1:length(comp.funcParams{k}.lims)
+                            pwTInfo{l,1} = comp.funcParams{k}.lims{l}.lowerLim;
+                            pwTInfo{l,2} = comp.funcParams{k}.lims{l}.upperLim;
+                            pwTInfo{l,3} = comp.funcParams{k}.lims{l}.sysVar;
+                            pwTInfo{l,4} = comp.funcParams{k}.lims{l}.elseVal;
+                        end
+                    end
+                end
+            elseif strcmp(phaseA,'Gas')
+                for k=1:1:length(comp.gasBulkFuncParams)
+                    if strcmp(comp.gasBulkFuncParams{k}.funcName,[phaseB,' MT'])
+                        for l=1:1:length(comp.gasBulkFuncParams{k}.lims)
+                            if strcmp(comp.gasBulkFuncParams{k}.lims{l}.funcVal,newExpr)
+                                idx = l;
+                                break;
+                            end
+                        end
+                        comp.gasBulkFuncParams{k}.lims{idx} = newLim;
+                        pwTInfo = cell(length(comp.gasBulkFuncParams{1}.lims),4);
+                        for l=1:1:length(comp.gasBulkFuncParams{k}.lims)
+                            pwTInfo{l,1} = comp.gasBulkFuncParams{k}.lims{l}.lowerLim;
+                            pwTInfo{l,2} = comp.gasBulkFuncParams{k}.lims{l}.upperLim;
+                            pwTInfo{l,3} = comp.gasBulkFuncParams{k}.lims{l}.sysVar;
+                            pwTInfo{l,4} = comp.gasBulkFuncParams{k}.lims{l}.elseVal;
+                        end
+                    end
+                end
+            else
+                for k=1:1:length(comp.sorpFuncParams)
+                    if strcmp(comp.sorpFuncParams{k}.solventName,phaseA)
+                        for l=1:1:length(comp.gasBulkFuncParams{k}.lims)
+                            if strcmp(comp.sorpFuncParams{k}.lims{l}.funcVal,newExpr)
+                                idx = l;
+                                break;
+                            end
+                        end
+                        comp.sorpFuncParams{k}.lims{idx} = newLim;
+                        pwTInfo = cell(length(comp.sorpFuncParams{k}.lims),4);
+                        for l=1:1:length(comp.sorpFuncParams{k}.lims)
+                            pwTInfo{l,1} = comp.sorpFuncParams{k}.lims{l}.lowerLim;
+                            pwTInfo{l,2} = comp.sorpFuncParams{k}.lims{l}.upperLim;
+                            pwTInfo{l,3} = comp.sorpFuncParams{k}.lims{l}.sysVar;
+                            pwTInfo{l,4} = comp.sorpFuncParams{k}.lims{l}.elseVal;
+                        end
+                    end
+                end
+            end
+        end
+
+        % comp: Compnent class ref, newExpr: string, lowLim: number, 
+        % upLim: number, sysVar: string, elseVal: number, phaseA: string,
+        % phaseB: string
+        function pwTInfo = rmPWExpr(comp,newExpr,lowLim,upLim,sysVar,elseVal,phaseA,phaseB)
+            idx = 1;
+            if strcmp(phaseA,'Main')
+                for k=1:1:length(comp.funcParams{1}.lims)
+                    if strcmp(comp.funcParams{1}.lims{k}.funcVal,newExpr) && ...
+                            comp.funcParams{1}.lims{k}.lowerLim == lowLim && ...
+                            comp.funcParams{1}.lims{k}.upperLim == upLim && ...
+                            strcmp(comp.funcParams{1}.lims{k}.sysVar,sysVar) && ...
+                            strcmp(comp.funcParams{1}.lims{k}.elseVal,elseVal)
+                        idx = k;
+                        break;
+                    end
+                end
+                comp.funcParams{1}.lims(idx) = [];
+                pwTInfo = cell(length(comp.funcParams{1}.lims),4);
+                for k=1:1:length(comp.funcParams{1}.lims)
+                    pwTInfo{k,1} = comp.funcParams{1}.lims{k}.lowerLim;
+                    pwTInfo{k,2} = comp.funcParams{1}.lims{k}.upperLim;
+                    pwTInfo{k,3} = comp.funcParams{1}.lims{k}.sysVar;
+                    pwTInfo{k,4} = comp.funcParams{1}.lims{k}.elseVal;
+                end
+            elseif strcmp(phaseA,'Liquid')
+                for k=1:1:length(comp.funcParams)
+                    if strcmp(comp.funcParams{k}.solventName,phaseB)
+                        for l=1:1:length(comp.funcParams{k}.lims)
+                            if strcmp(comp.funcParams{k}.lims{l}.funcVal,newExpr) && ...
+                                    comp.funcParams{k}.lims{l}.lowerLim == lowLim && ...
+                                    comp.funcParams{k}.lims{l}.upperLim == upLim && ...
+                                    strcmp(comp.funcParams{k}.lims{l}.sysVar,sysVar) && ...
+                                    strcmp(comp.funcParams{k}.lims{l}.elseVal,elseVal)
+                                idx = l;
+                                break;
+                            end
+                        end
+                    end
+                end
+                comp.funcParams{k}.lims(idx) = [];
+                pwTInfo = cell(length(comp.funcParams{k}.lims),4);
+                for k=1:1:length(comp.funcParams{k}.lims)
+                    pwTInfo{l,1} = comp.funcParams{k}.lims{l}.lowerLim;
+                    pwTInfo{l,2} = comp.funcParams{k}.lims{l}.upperLim;
+                    pwTInfo{l,3} = comp.funcParams{k}.lims{l}.sysVar;
+                    pwTInfo{l,4} = comp.funcParams{k}.lims{l}.elseVal;
+                end
+            elseif strcmp(phaseA,'Gas')
+                for k=1:1:length(comp.gasBulkFuncParams)
+                    if strcmp(comp.gasBulkFuncParams{k}.funcName,[phaseB,' MT'])
+                        for l=1:1:length(comp.gasBulkFuncParams{k}.lims)
+                            if strcmp(comp.gasBulkFuncParams{k}.lims{l}.funcVal,newExpr) && ...
+                                    comp.gasBulkFuncParams{k}.lims{l}.lowerLim == lowLim && ...
+                                    comp.gasBulkFuncParams{k}.lims{l}.upperLim == upLim && ...
+                                    strcmp(comp.gasBulkFuncParams{k}.lims{l}.sysVar,sysVar) && ...
+                                    strcmp(comp.gasBulkFuncParams{k}.lims{l}.elseVal,elseVal)
+                                idx = l;
+                                break;
+                            end
+                        end
+                    end
+                end
+                comp.gasBulkFuncParams{k}.lims(idx) = [];
+                pwTInfo = cell(length(comp.gasBulkFuncParams{k}.lims),4);
+                for k=1:1:length(comp.gasBulkFuncParams{k}.lims)
+                    pwTInfo{l,1} = comp.gasBulkFuncParams{k}.lims{l}.lowerLim;
+                    pwTInfo{l,2} = comp.gasBulkFuncParams{k}.lims{l}.upperLim;
+                    pwTInfo{l,3} = comp.gasBulkFuncParams{k}.lims{l}.sysVar;
+                    pwTInfo{l,4} = comp.gasBulkFuncParams{k}.lims{l}.elseVal;
+                end
+            else
+                for k=1:1:length(comp.sorpFuncParams)
+                    if strcmp(comp.sorpFuncParams{k}.solventName,phaseA)
+                        for l=1:1:length(comp.sorpFuncParams{k}.lims)
+                            if strcmp(comp.sorpFuncParams{k}.lims{l}.funcVal,newExpr) && ...
+                                    comp.sorpFuncParams{k}.lims{l}.lowerLim == lowLim && ...
+                                    comp.sorpFuncParams{k}.lims{l}.upperLim == upLim && ...
+                                    strcmp(comp.sorpFuncParams{k}.lims{l}.sysVar,sysVar) && ...
+                                    strcmp(comp.sorpFuncParams{k}.lims{l}.elseVal,elseVal)
+                                idx = l;
+                                break;
+                            end
+                        end
+                    end
+                end
+                comp.sorpFuncParams{k}.lims(idx) = [];
+                pwTInfo = cell(length(comp.sorpFuncParams{k}.lims),4);
+                for k=1:1:length(comp.sorpFuncParams{k}.lims)
+                    pwTInfo{l,1} = comp.sorpFuncParams{k}.lims{l}.lowerLim;
+                    pwTInfo{l,2} = comp.sorpFuncParams{k}.lims{l}.upperLim;
+                    pwTInfo{l,3} = comp.sorpFuncParams{k}.lims{l}.sysVar;
+                    pwTInfo{l,4} = comp.sorpFuncParams{k}.lims{l}.elseVal;
+                end
+            end
+        end
+
+        % comp: Component class ref, solventName: string, solventNum: num,
+        % soluteName: string, soluteNum: num,
+        % modelName: string, param1Val: num, param2Val: num, param3Val: num
+        function res = addSorptionEq(comp,solventName,solventNum,soluteName,soluteNum,modelName,param1Val,param2Val,param3Val,defaultParamVals)
+            % add functionality to track info for sorbent
+            % modeling
+            if strcmp(comp.type,'Chemical Solute')
+                funcVal = "0";
+                for k=1:1:length(comp.sorpFuncParams)
+                    if strcmp(comp.sorpFuncParams{k}.solventName,solventName)
+                        funcVal = comp.sorpFuncParams{k}.funcVal;
+                        comp.rmSorptionEq(solventName,solventNum,soluteName,modelName,param1Val,param2Val,param3Val);
+                    end
+                end
+                comp.createSorpFuncParam(solventName,solventNum,modelName,funcVal,param1Val,param2Val,param3Val,defaultParamVals);
+                res = comp.sorpHelpers;
+            elseif strcmp(comp.type,'Suspended Solid Sorbent')
+                if size(comp.sorpTInfo,2) > 0
+                    for k=1:1:length(comp.sorpTInfo(:,1))
+                        if strcmp(comp.sorpTInfo(:,1),soluteName)
+                            comp.rmSorptionEq(solventName,solventNum,soluteName,modelName,param1Val,param2Val,param3Val);
+                        end
+                    end
+                end
+                comp.sorpTInfo{end+1,1} = soluteName;
+                comp.sorpTInfo{end,2} = modelName;
+                switch modelName
+                    case 'Partition Coefficient'
+                        comp.sorpTInfo{end,3} = ['K_C_',char(string(soluteNum)),'_',char(string(solventNum)),'=',char(string(param1Val))];
+
+                    case 'Freundlich Adsorption'
+
+
+                end
+
+                res = comp.sorpTInfo;
+            end
+        end
+
+        % comp: Component class ref, solventName: string, solventNum: num,
+        % soluteName: string, soluteNum: num,
+        % modelName: string, param1Val: num, param2Val: num, param3Val: num
+        function res = rmSorptionEq(comp,solventName,~,soluteName,~,~,~,~)
+            if strcmp(comp.type,'Chemical Solute')
+                comp.removeSorpFuncParamObj(solventName);
+                res = {};
+                for k=1:1:length(comp.sorpHelpers)
+                    if contains(comp.sorpHelpers{k}.funcName,solventName) 
+                        res{end+1} = comp.sorpHelpers{k}; %#ok<AGROW>
+                    end
+                end
+            elseif strcmp(comp.type,'Suspended Solid Sorbent')
+                for k=1:1:size(comp.sorpTInfo,1)
+                    if strcmp(comp.sorpTInfo{k,1},soluteName)
+                        comp.sorpTInfo(k,:) = [];
+                        res = comp.sorpTInfo;
+                        return;
+                    end
+                end
+            end
+        end
+
+        % comp: Component class ref, solventName: string, solventNum: num, funcVal: string,
+        % modeName: string funcVal: string, param1Val: num, param2Val, numm, param3Val: num
+        function comp = createSorpFuncParam(comp,solventName,solventNum,modelName,funcVal,param1Val,param2Val,param3Val,defaultParamVals)
+            % creates funcParams for sorption MT governing
+            % functions
+            funcObj = struct( ...
+                'solventName',solventName, ...
+                'solventSym',['S_',char(string(comp.number)),'_',char(string(solventNum))], ...
+                'funcName',[solventName,' MT'], ...
+                'funcVal',funcVal, ...
+                'params',struct([]), ...
+                'lims',cell(1,1) ...
+            );
+    
+            switch modelName
+                case 'Partition Coefficient'
+                    % create helper functions for liquid phase concentration in
+                    % equilibrium with sorped phase concentration, and
+                    % sorped phase concentration in equilibrium with liquid
+                    % phase concentration
+                    partCoeffFuncVal = ['K_C0_',char(string(comp.number)),'_',char(string(solventNum))];
+                    comp.sorpHelpers{end+1} = SubFunc(partCoeffFuncVal,[char(comp.name),' Partition Coefficient between Liquid Phase and ',solventName], ...
+                        ['K_C_',char(string(comp.number)),'_',char(string(solventNum))],0,0);
+                    comp.sorpHelpers{end}.updateParams([char(comp.name),' Partition Coefficient between Liquid Phase and ',solventName], ...
+                        ['K_C0_',char(string(comp.number)),'_',char(string(solventNum))],param1Val,'-',true,defaultParamVals);
+
+                    eqLiqConcFuncVal = ['S_',char(string(comp.number)),'_',char(string(solventNum)),'/K_C_',char(string(comp.number)),'_',char(string(solventNum))];
+                    comp.sorpHelpers{end+1} = SubFunc(eqLiqConcFuncVal,[char(comp.name),' Concentration in Liquid Phase in Equilibrium with ',solventName], ...
+                        ['C_eq_',char(string(comp.number)),'_',char(string(solventNum))],0,0);
+                    comp.sorpHelpers{end}.updateParams([char(comp.name),' Partition Coefficient between Liquid Phase and ',solventName], ...
+                        ['K_C_',char(string(comp.number)),'_',char(string(solventNum))],param1Val,'-',true,defaultParamVals);
+                    
+                    eqSorpConcFuncVal = ['K_C_',char(string(comp.number)),'_',char(string(solventNum)),'*C_',char(string(comp.number))];
+                    comp.sorpHelpers{end+1} = SubFunc(eqSorpConcFuncVal,[char(comp.name),' Concentration in ',solventName,' Phase in Equilibrium with Liquid Phase'], ...
+                        ['S_eq_',char(string(comp.number)),'_',char(string(solventNum))],0,0);
+                    comp.sorpHelpers{end}.updateParams([char(comp.name),' Partition Coefficient between Liquid Phase and ',solventName], ...
+                        ['K_C_',char(string(comp.number)),'_',char(string(solventNum))],param1Val,'-',true,defaultParamVals);
+
+                case 'Freundlich Adsorption'
+                    % create helper functions for liquid phase concentration in
+                    % equilibrium with sorped phase concentration, and
+                    % sorped phase concentration in equilibrium with liquid
+                    % phase concentration
+
+
+                    % creates funcParams for sorption MT governing equations
+
+
+                    % add parameters in Freundlich Adsorption model
+
+            end
+
+            % adds a funcParam in the liquid phase and in the sorped phase
+            comp.funcParams{end+1} = funcObj;
+            comp.sorpFuncParams{end+1} = funcObj;
+        end
+
+        % comp: comps class ref, solventName: string
+        function comp = removeSorpFuncParamObj(comp, solventName)
+            % removes funcParam from both liquid and sorped phase
+            for k=1:1:length(comp.sorpFuncParams)
+                if strcmp(comp.sorpFuncParams{k}.solventName,solventName)
+                    comp.sorpFuncParams(k) = [];
+                    break;
+                end
+            end
+            for k=1:1:length(comp.funcParams)
+                if isfield(comp.funcParams{k},'solventName')
+                    if strcmp(comp.funcParams{k}.solventName,solventName)
+                        comp.funcParams(k) = [];
+                        break;
+                    end
+                end
+            end
+            rmIdx = [];
+            for k=1:1:length(comp.sorpHelpers)
+                if contains(comp.sorpHelpers{k}.getSubFuncName(),solventName)
+                    rmIdx(end+1) = k; %#ok<AGROW>
+                end
+            end
+            comp.sorpHelpers(rmIdx) = [];
+        end
+
+        % comp: Component class ref, phaseA: string, phaseB: string
+        function currGovFuncRaw = getMTGovFunc(comp,phaseA,phaseB)
+            if strcmp(phaseA,'Liquid')
+                for k=2:1:length(comp.funcParams)
+                    if strcmp(comp.funcParams{k}.funcName,[phaseB,' MT'])
+                        currGovFuncRaw = comp.funcParams{k}.funcVal;
+                    end
+                end
+            elseif strcmp(phaseA,'Gas')
+                for k=1:1:length(comp.gasBulkFuncParams)
+                    if strcmp(comp.gasBulkFuncParams{k}.funcName,'Liquid MT')
+                        currGovFuncRaw = comp.gasBulkFuncParams{k}.funcVal;
+                    end
+                end
+            else
+                for k=1:1:length(comp.sorpFuncParams)
+                    if strcmp(comp.sorpFuncParams{k}.solventName,phaseA)
+                        currGovFuncRaw = comp.sorpFuncParams{k}.funcVal;
+                    end
+                end
+            end
         end
     end
 
     methods (Static)
         % num: number, name: string, sym: string,
-        % val: number | string, unit: string, funcObj: struct
-        function funcObj = createNewParam(locNum, name, sym, val, unit, funcObj)
+        % val: number | string, unit: string, funcObj: struct, editable:
+        % boolean, defaultParamVals: struct
+        function funcObj = createNewParam(locNum, name, sym, val, unit, funcObj, editable, defaultParamVals)
             % won't maintain global number until very end, when all
             % comps and chemicals are set
+            paramNames = fields(defaultParamVals);
+            if strcmp(sym,"R")
+                val = 8.314;
+                unit = 'kPa*L/mol*K';
+                editable = false;
+            elseif strcmp(sym,"tau")
+                val = 1;
+                unit = 's';
+                editable = false;
+            elseif strcmp(sym,"pi")
+                val = pi;
+                unit = '';
+                editable = false;
+            elseif strcmp(sym,"K_w")
+                val = 1E-14;
+                unit = 'mol/L';
+                editable = false;
+            elseif any(strcmp(sym,paramNames))
+                val = defaultParamVals.(sym);
+                unit = 'g/mol';
+                editable = false;
+            end
+
             param = struct( ...
                 'locNum',locNum, ...
                 'gloNum',1, ...
                 'name',name, ...
                 'sym',sym, ...
                 'val',val, ...
-                'unit',unit ...
+                'unit',unit, ...
+                'editable',editable ...
             );
             funcObj.params{end+1} = param;
         end
 
-        % paramSym: string, newVal: number, funcObj: struct
+        % paramSym: string, newVal: number, newUnit: num, newParamName: string, funcObj: struct
         function funcObj = reviseParam(paramSym, newVal, newUnit, newParamName, funcObj)
             paramSyms = cell(1,numel(funcObj.params));
             for k=1:1:numel(funcObj.params)
@@ -433,23 +1332,63 @@ classdef Component < handle
         end
 
         % paramName: string, funcObj: struct
-        function funcObj = removeParam(paramName, funcObj)
-            for k=1:1:length(funcObj.params)
-                if strcmp(funcObj.params{k}.name, paramName)
-                    % removes parameter from funcObj
-                    funcObj.params{k} = [];
+        function newFuncObj = removeParams(funcObj)
+            funcObj.params = {};
+            newFuncObj = funcObj;
+        end
+
+        % funcVal: string, funcName: string
+        function funcObj = createFuncParamObj(funcVal, funcName)
+            funcObj = struct( ...
+                'funcVal',funcVal, ...
+                'funcName',funcName, ...
+                'params',struct([]), ...
+                'lims',cell(1,1) ...
+            );
+        end
+
+        % funcVal: string, funcName: string, funcObj: struct
+        function newFuncObj = reviseFuncParamObj(funcVal, funcName, funcObj)
+            funcObj.funcVal = funcVal;
+            funcObj.funcName = funcName;
+            newFuncObj = funcObj;
+        end
+
+        % funcParam: funcParamObj, funcVal: string, funcName: string
+        function newFuncParam = removeFuncParamObj(funcParam, funcVal, funcName)
+            for k=1:1:length(funcParam)
+                if strcmp(funcParam{k}.funcVal,funcVal) && ...
+                        strcmp(funcParam{k}.funcName,funcName)
+                    funcParam(k) = [];
+                    newFuncParam = funcParam;
                     return;
                 end
             end
         end
 
-        % funcVal: string, funcName: string, funcCombo: string, funcType: string, funcObj: struct
-        function newFuncObj = reviseFuncParamObj(funcVal, funcName, funcCombo, funcType, funcObj)
-            funcObj.funcVal = funcVal;
-            funcObj.funcName = funcName;
-            funcObj.funcCombo = funcCombo;
-            funcObj.funcType = funcType;
-            newFuncObj = funcObj;
+        % funcParam: cell{}
+        function funcVal = convertPWToLaTeX(funcParam)
+            funcVal = funcParam.funcVal;
+            lim = funcParam.lims;
+            for k=1:1:length(lim)
+                newFunc = "\begin{cases} " + lim{k}.funcVal + " & if & " + ...
+                    lim{k}.lowerLim + lim{k}.lowLimOp + lim{k}.sysVar + lim{k}.upLimOp + lim{k}.upperLim + ...
+                    " \\ " + lim{k}.elseVal + " & else \end{cases}";
+                funcVal = replace(funcVal,funcParam.lims{k}.funcVal,newFunc);
+            end
+        end
+
+        % funcParam: cell{}
+        function funcVal = compilePWFuncs(funcParam)
+            funcVal = funcParam.funcVal;
+            lim = funcParam.lims;
+            for k=1:1:length(lim)
+                newFunc = "((" + lim{k}.funcVal + ")*(" + lim{k}.lowerLim + ...
+                    + lim{k}.lowLimOp + lim{k}.sysVar + "&&" + lim{k}.sysVar + lim{k}.upLimOp + lim{k}.upperLim + ...
+                    ")+(" + lim{k}.elseVal + ")*(~(" + lim{k}.lowerLim + ...
+                    + lim{k}.lowLimOp + lim{k}.sysVar + "&&" + lim{k}.sysVar + lim{k}.upLimOp + lim{k}.upperLim + ")))";
+                funcVal = replace(funcVal,funcParam.lims{k}.funcVal,newFunc);
+            end
         end
     end
 end

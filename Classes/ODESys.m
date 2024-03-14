@@ -1,5 +1,14 @@
 classdef ODESys < handle
     properties
+        save_type = "file";
+        save_file_name = "";
+        save_db_handle = "";
+        save_model_name = "New Model";
+        save_model_desc = "";
+        save_model_bio_names = {};
+        save_model_chem_names = {};
+        save_model_ref_str = "";
+
         is_link = false; % used to determine whether this is an instance of MAGMA or MAGMALink UI
 
         species = struct(); % struct of Species in ODE system, (key: string, val: {Species})
@@ -10,6 +19,7 @@ classdef ODESys < handle
             % when pulling data for plotting, use this property to
             % reference the active environment with
             % sys.environs.(sys.activeEnv)
+        model_runtime = 20; % hr
 
         currentCompName = ""; % used to track changes in component/function editing
         currentFuncName = ""; % used to track changes in component/function editing
@@ -25,9 +35,27 @@ classdef ODESys < handle
         f = {}; % ODE system subfuncs for passing into ode45
         helperFuncs = {}; % ODE system helper functions
 %         matches = []; % used to find parameters that are being regressed
+        y0 = [];
 
 %         sysVars = {}; % system variable names
         plots = {}; % plot objects
+        subplot_ct = 1;
+        subplot_row_ct = [1];
+        subplot_col_ct = [1];
+        PBR_max_vol = 1; % L
+        environ_vars = {};
+        var_in_key = {};
+        var_out_key = {};
+        S_nums = {};
+
+        input_streams = {}; % used to keep track of streams being inputted into bioreactor, cell of InputStream objects
+        output_streams = {}; % used to keep track of streams being outputed from bioreactor, cell of OutputStream objects
+        has_liq_in = false;
+        has_liq_out = false;
+        has_gas_in = false;
+        has_gas_out = false;
+        inportCt = 0;
+        outportCt = 0;
 
         importedDataPath = ""; % path to user imported data
         importedData = {}; % user-imported data
@@ -56,16 +84,18 @@ classdef ODESys < handle
         function sys = ODESys()
             disp('ODESys init');
 
-            % sys.is_link = is_link;
-
             % set default values
-            sys.environs.Photo_Bioreactor_PBR = Environment("Photo_Bioreactor_PBR",sys.getModelVarNames());
-            sys.environs.Eutrophic_Lake = Environment("Eutrophic_Lake",sys.getModelVarNames());
-            sys.environs.Test_Tube = Environment("Test_Tube",sys.getModelVarNames());
-            sys.environs.Shaking_Flask = Environment("Shaking_Flask",sys.getModelVarNames());
-            sys.environs.Outdoor_Tank = Environment("Outdoor_Tank",sys.getModelVarNames());
+            sys.environs.Photo_Bioreactor_PBR = Environment("Photo_Bioreactor_PBR",sys.getModelVarNames(),sys.getDefaultParamVals(true));
 
-            sys.regSpecs
+            % adding helper functions for pH equilibrium values and pH, pOH
+            sys.addRmHelperFuncs('Equilibrium Hydrionium Concentration','H3O_eq',"(K_w/OH*(MW_OH*MW_H3O))",true);
+            sys.addRmHelperFuncs('Equilibrium Hydroxide Concentration','OH_eq',"(K_w/H3O*(MW_H3O*MW_OH))",true);
+            sys.addRmHelperFuncs('pH','pH',"-log10(H3O/MW_H3O)",true);
+            sys.addRmHelperFuncs('pOH','pOH',"-log10(OH/MW_H3O)",true);
+
+            % create V_tot helper
+            sys.addRmHelperFuncs("Total Solvent Volume",'V_tot',"V",true);
+
             sys.regSpecs.paramIGs = [];
         end
 
@@ -78,26 +108,55 @@ classdef ODESys < handle
             sys.sysFuncDef(sys.degree) = name;
             % instantiates Species, stores in ODESys Map
             specName = regexprep(name, ' ', '_');
-            sys.species.(specName) = Component(name, num, initConc, "spec");
+            sys.species.(specName) = Component(name,num,initConc,"Biological Solute",false,0,0,'',0,'',sys.getDefaultParamVals());
         end
 
         % sys: ODESys class ref, num: number, name: string
-        function sys = addChemical(sys, num, name, initConc)
+        function sys = addChemical(sys, num, name, initConc, type, is_vol, MW, h_const, h_const_u, dh_const, dh_const_u)
             % increases the degree of the ODE system
             sys.degree = sys.degree + 1;
             % maps Chemical to number in ODE system
             sys.sysFuncDef(sys.degree) = name;
             % instantiates Chemical, stores in ODESys Map
             chemName = replace(regexprep(regexprep(replace(regexprep(name,' ','_'),'^','_'),'+','p'),'-','n'),'.','_');
-            sys.chemicals.(chemName) = Component(name, num, initConc, "chem");
-        end
+            
+            sys.chemicals.(chemName) = Component(name, num, initConc, type, is_vol, MW, h_const, h_const_u, dh_const, dh_const_u, sys.getDefaultParamVals());
 
-        % sys: ODESys class ref, name: string
-        function sys = addEnvironment(sys, name)
-            % creates Environment field name, adds from ODESys Map
-            envName = regexprep(regexprep(regexprep(regexprep(name, ' ', '_'), '(',''), ')',''), '-','_');
-            % adds new Environment
-            sys.environs.(envName) = Environment(name,sys.getModelVarNames());
+            if strcmp(type,'Suspended Solid Sorbent')
+                helperVal = sys.getHelperFunc('Total Solvent Volume');
+                helperVal = helperVal + "+V_S_" + num;
+                sys.updateHelperFuncs("val",'Total Solvent Volume','V_tot',helperVal);
+            end
+            
+            % add a helper function for the h_const as a
+            % function of temperature
+            % need to have H_0 and A be parameters that cannot be
+            % edited
+            if is_vol
+                HConstHelpers = sys.chemicals.(chemName).getHConstHelperFuncs();
+                for k=1:1:length(HConstHelpers)
+                    paramNames = HConstHelpers{k}.getSubFuncParamNames();
+                    paramSyms = HConstHelpers{k}.getSubFuncParamSyms();
+                    paramVals = HConstHelpers{k}.getSubFuncParamVals();
+                    paramUnits = HConstHelpers{k}.getSubFuncParamUnits();
+                    sys.addRmHelperFuncs(HConstHelpers{k}.funcName,HConstHelpers{k}.funcSym,HConstHelpers{k}.funcVal,true);
+                    [~,~,helperIdx] = sys.getHelperFunc(HConstHelpers{k}.getSubFuncName());
+                    for l=1:1:length(paramNames)
+                        sys.helperFuncs{helperIdx}.updateParams(paramNames(l),paramSyms(l),paramVals(l),paramUnits(l),false,sys.getDefaultParamVals());
+                    end
+                end
+
+                P_comp = sys.environs.(sys.activeEnv).getPComp();
+                sys.addModel(P_comp.getName(), ...
+                    "0",char(sys.chemicals.(chemName).sym+" liq_to_bulk"),'Main');
+
+                % add and remove funcParam for liquid gas mass transfer
+                sys.addModel([sys.chemicals.(chemName).getName(),' (Liquid Phase)'],"0",'Gas MT','Liquid');
+                sys.addModel([sys.chemicals.(chemName).getName(),' (Gas Phase)'],"0",'Liquid MT','Gas');
+            end
+
+            % updates IOFuncs
+            sys.updateIOFunc();
         end
 
         % sys: ODESys class ref, name: string, field: string, val: number | string
@@ -110,35 +169,88 @@ classdef ODESys < handle
             end
         end
 
-        % sys: ODESys class ref, name: string, field: string, val: number | string
-        function sys = updateChemical(sys, name, field, val)
+        % sys: ODESys class ref, chemName: string, chemInitConc: num,
+        % is_vol: boolean, h_const: num, h_const_u: string, dh_const: num,
+        % dh_const_u: string
+        % ### STARTHERE: add MW
+        function sys = updateChemical(sys,name,chemInitConc,is_vol,MW,h_const,h_const_u,dh_const,dh_const_u)
             chemName = replace(regexprep(regexprep(replace(regexprep(name,' ','_'),'^','_'),'+','p'),'-','n'),'.','_');
             chem = sys.chemicals.(chemName);
-            switch field
-                case "initConc"
-                    chem.setInitConc(val);
+
+            prev_is_vol = chem.is_vol;
+
+            chem.updateComp(chemInitConc,is_vol,MW,h_const,h_const_u,dh_const,dh_const_u,sys.getDefaultParamVals());
+
+            if is_vol
+                % add HConst helpers
+                HConstHelpers = sys.chemicals.(chemName).getHConstHelperFuncs();
+                for k=1:1:length(HConstHelpers)
+                    paramNames = HConstHelpers{k}.getSubFuncParamNames();
+                    paramSyms = HConstHelpers{k}.getSubFuncParamSyms();
+                    paramVals = HConstHelpers{k}.getSubFuncParamVals();
+                    paramUnits = HConstHelpers{k}.getSubFuncParamUnits();
+                    if ~prev_is_vol, sys.addRmHelperFuncs(HConstHelpers{k}.funcName,HConstHelpers{k}.funcSym,HConstHelpers{k}.funcVal,true); end
+                    [~,~,helperIdx] = sys.getHelperFunc(HConstHelpers{k}.getSubFuncName());
+                    for l=1:1:length(paramNames)
+                        sys.helperFuncs{helperIdx}.updateParams(paramNames(l),paramSyms(l),paramVals(l),paramUnits(l),false,sys.getDefaultParamVals());
+                    end
+                end
+
+                if ~prev_is_vol
+                    P_comp = sys.environs.(sys.activeEnv).getPComp();
+                    sys.addModel(P_comp.getName(), ...
+                        "0",char(sys.chemicals.(chemName).sym+" liq_to_bulk"),'Main');
+
+                    % add and remove funcParam for liquid gas mass transfer
+                    sys.addModel([sys.chemicals.(chemName).getName(),' (Liquid Phase)'],"0",'Gas MT','Liquid');
+                    sys.addModel([sys.chemicals.(chemName).getName(),' (Gas Phase)'],"0",'Liquid MT','Gas');
+                end
+            elseif ~is_vol && prev_is_vol
+                % remove HConst helpers
+                HConstHelpers = chem.getHConstHelperFuncs();
+                for k=1:1:length(HConstHelpers)
+                    sys.addRmHelperFuncs(HConstHelpers{k}.funcName,HConstHelpers{k}.funcSym,HConstHelpers{k}.funcVal,false);
+                end
+
+                P_comp = sys.environs.(sys.activeEnv).getPComp();
+                P_comp.removeModel("k_"+chem.sym+"_g*"+chem.h_const_sym+"*("+chem.sym+"-"+chem.bulk_gas_sym+")", ...
+                    chem.sym+" liq_to_bulk",'Main');
+
+                chem.removeModelByName('Gas MT','Liquid');
+                chem.removeModelByName('Liquid MT','Gas');
             end
+
+            % updates IOFuncs
+            sys.updateIOFunc();
         end
 
         % sys: ODESys class ref, name: string, field: string, val: number |
         % string
-        function updateEnvironment(sys, name, field, val)
-            envName = regexprep(regexprep(regexprep(regexprep(name, ' ', '_'), '(',''), ')',''), '-','_');
-            env = sys.environs.(envName);
+        function updateEnvironment(sys, field, val)
+            env = sys.environs.(sys.activeEnv);
             switch field
-                case "Incident Light (I)"
+                case "Incident Light (I_0(t))"
                     env.setLightFunc(val);
-                case "Temperature (T)"
+                case "Initial Temperature (T_0)"
                     env.setTempFunc(val);
-                case "Initial Culture Volume (V)"
-                    env.setCulVol(val);
-                case "Culture Surface Area (SA)"
-                    env.setCulSA(val);
-                case "Model Time (t)"
-                    env.setModelTime(val);
+                case "Initial Culture Volume (V_0)"
+                    env.setInitV(val);
+                case "Initial Pressure (P_0)"
+                    env.setInitP(val);
+                case "Initial pH (pH_0)"
+                    env.setInitpH(val,sys.getDefaultParamVals());
+                case "Model Runtime (t)"
+                    sys.model_runtime = double(string(val));
+                case "reactorSpecificParams"
+                    env.setReactorSpecificParams(val);
             end
 
             sys.updateEnvSubFuncs(val,field);
+        end
+
+        % sys: ODESys class ref, tkMaxVol: number
+        function updatePBRMaxVol(sys,tkMaxVol)
+            sys.PBR_max_vol = tkMaxVol; % L
         end
 
         % sys: ODESys class ref, name: string
@@ -152,33 +264,202 @@ classdef ODESys < handle
         function sys = removeChemical(sys, name)
             % creates Chemical field name, removes from ODESys Map
             chemName = replace(regexprep(regexprep(replace(regexprep(name,' ','_'),'^','_'),'+','p'),'-','n'),'.','_');
+
+            % removing mass transfer govFunc from P_comp
+            chem = sys.chemicals.(chemName);
+            P_comp = sys.environs.(sys.activeEnv).getPComp();
+            P_comp.removeModel("k_"+chem.sym+"_g*"+chem.h_const_sym+"*("+chem.sym+"-"+chem.bulk_gas_sym+")", ...
+                chem.sym+" liq_to_bulk",'Main');
+
+            if strcmp(chem.getType(),'Suspended Solid Sorbent')
+                helperVal = sys.getHelperFunc('Total Solvent Volume');
+                helperVal = erase(helperVal,"+V_S_"+chem.getNum()); 
+                sys.updateHelperFuncs("val",'Total Solvent Volume','V_tot',helperVal);
+            end
+
+            % remove HConst helpers
+            if chem.is_vol
+                HConstHelpers = chem.getHConstHelperFuncs();
+                for k=1:1:length(HConstHelpers)
+                    sys.addRmHelperFuncs(HConstHelpers{k}.funcName,HConstHelpers{k}.funcSym,HConstHelpers{k}.funcVal,false);
+                end
+
+                chem.removeModelByName('Gas MT','Liquid');
+                chem.removeModelByName('Liquid MT','Gas');
+            end
+
+            % updates IOFuncs
+            sys.updateIOFunc();
+
             sys.chemicals = rmfield(sys.chemicals, chemName);
-        end
-
-        % sys: ODESys class ref, name: string
-        function sys = removeEnvironment(sys, name)
-            % creates Environment field name, removes from ODESys Map
-            envName = regexprep(regexprep(regexprep(regexprep(name, ' ', '_'), '(',''), ')',''), '-','_');
-            sys.environs = rmfield(sys.environs, envName);
-        end
-
-        % sys: ODESys class ref, name: string
-        function sys = setEnvironment(sys, name)
-            % creates Environment field name
-            envName = regexprep(regexprep(regexprep(regexprep(name, ' ', '_'), '(',''), ')',''), '-','_');
-            sys.activeEnv = envName;
-
-            % ### FIXME: add code here to update the EnvSubFuncs based on
-            % active environment - do I need this?
         end
 
         % sys: ODESys class ref
         function [paramVals, paramUnits, funcHandles] = getCurrentEnvironParams(sys)
-            paramVals = sys.environs.(sys.activeEnv).getParamVals();
+            paramVals = [char(string(sys.model_runtime));sys.environs.(sys.activeEnv).getParamVals(sys.getDefaultParamVals())];
             funcHandles = sys.environs.(sys.activeEnv).getParamFuncHandles(sys.getModelVarNames());
             custDefault = EnvDefaults();
-            units = custDefault.Units;
-            paramUnits = {units.modelTime;units.lightFunc;units.tempFunc;units.culVol;units.culSA};
+            paramUnits = struct2cell(custDefault.Units);
+        end
+
+       % sys: ODESys class ref, prop: string, onlyMultiPhase: Boolean
+        function res = getSoluteChems(sys,prop,onlyMultiPhase)
+            if onlyMultiPhase
+                res = {};
+                switch prop
+                    case 'name'
+                        chems = struct2cell(sys.chemicals);
+                        for k=1:1:length(chems)
+                            % test3 = chems{k}.getName()
+                            % test2 = isempty(chems{k}.sorpFuncParams)
+                            if strcmp(chems{k}.type,'Chemical Solute') && ...
+                                    (chems{k}.is_vol || ~isempty(chems{k}.sorpFuncParams))
+                                res{k,1} = chems{k}.name; %#ok<AGROW>
+                            end
+                        end
+                    case 'comp'
+                        chems = struct2cell(sys.chemicals);
+                        for k=1:1:length(chems)
+                            if strcmp(chems{k}.type,'Chemical Solute') && ...
+                                    (chems{k}.is_vol || isempty(chems{k}.sorpFuncParams))
+                                res{k,1} = chems{k}; %#ok<AGROW>
+                            end
+                        end
+                end
+            else
+                switch prop
+                    case 'name'
+                        chems = struct2cell(sys.chemicals);
+                        res = cell(length(chems),1);
+                        for k=1:1:length(chems)
+                            if strcmp(chems{k}.type,'Chemical Solute') || strcmp(chems{k}.type,'Suspended Solid Sorbent')
+                                res{k} = chems{k}.name;
+                            end
+                        end
+                    case 'comp'
+                        chems = struct2cell(sys.chemicals);
+                        res = cell(length(chems),1);
+                        for k=1:1:length(chems)
+                            if strcmp(chems{k}.type,'Chemical Solute') || strcmp(chems{k}.type,'Suspended Solid Sorbent')
+                                res{k} = chems{k};
+                            end
+                        end
+                end
+            end
+        end
+
+        % sys: ODESys class ref, compName: string, funcVal: string,
+        % funcName: string
+        function updateModel(sys, compName, funcVal, funcName)
+            % get component object
+            comp = sys.getCompByName(compName);
+
+            % gets the param expressions of dependent variables
+            depVars = sys.getModelVarNames(["specs","chems","envs","helpers","updateModel","matlabFuncs"]);
+
+            % param and depVar separation for funcVal
+            symVarStrArr = string(findVars(char(funcVal)));
+            % creates array of system variables as strings
+            varStr = string(intersect(symVarStrArr,depVars));
+            % creates array of parameters as strings
+            paramStr = string(setxor(symVarStrArr,varStr));
+
+            % adding model to Comp
+            % funcName = "BioGovFunc";
+            comp.setModel(funcVal, funcName, paramStr, sys.getDefaultParamVals());
+        end
+
+        % sys: ODESys class ref, compName: string, funcVal: string,
+        % funcName: string, phase: string
+        function addModel(sys, compName, funcVal, funcName, phase)
+            % get component object
+            comp = sys.getCompByName(compName);
+
+            % gets the param expressions of dependent variables
+            depVars = sys.getModelVarNames(["specs","chems","envs","helpers","updateModel","matlabFuncs"]);
+
+            % param and depVar separation for funcVal
+            symVarStrArr = string(findVars(char(funcVal)));
+            % creates array of system variables as strings
+            varStr = string(intersect(symVarStrArr,depVars));
+            % creates array of parameters as strings
+            paramStr = string(setxor(symVarStrArr,varStr));
+
+            % adding model to Comp
+            comp.addModel(funcVal, funcName, paramStr, phase, sys.getDefaultParamVals());
+        end
+
+        % sys: ODESys class ref, compName: string, funcVal: string,
+        % funcName: string
+        function addSuspendedSolidVolumeFunc(sys,compName,funcVal,funcName)
+            % get component object
+            comp = sys.getCompByName(compName);
+
+            % gets the param expressions of dependent variables
+            depVars = sys.getModelVarNames(["specs","chems","envs","helpers","updateModel","matlabFuncs"]);
+
+            % param and depVar separation for funcVal
+            symVarStrArr = string(findVars(char(funcVal)));
+            % creates array of system variables as strings
+            varStr = string(intersect(symVarStrArr,depVars));
+            % creates array of parameters as strings
+            paramStr = string(setxor(symVarStrArr,varStr));
+
+            % adding model to Comp
+            comp.addSuspendedSolidVolumeFunc(funcVal, funcName, paramStr, phase, getDefaultParamVals);
+        end
+
+        % sys: ODESys class ref, compName: string, funcVal: string, phaseA:
+        % string, phaseB: string
+        function setMTModel(sys,compName,funcVal,phaseA,phaseB)
+            comp = sys.getCompByName(compName);
+            
+            % gets the param expressions of dependent variables
+            depVars = sys.getModelVarNames(["specs","chems","envs","helpers","updateModel","matlabFuncs"]);
+
+            % param and depVar separation for funcVal
+            symVarStrArr = string(findVars(char(funcVal)));
+            % creates array of system variables as strings
+            varStr = string(intersect(symVarStrArr,depVars));
+            % creates array of parameters as strings
+            paramStr = string(setxor(symVarStrArr,varStr));
+
+            comp.setMTModel(funcVal,phaseA,phaseB,paramStr,sys.getDefaultParamVals());
+        end
+
+        % sys: ODESys class ref
+        function defaultParamVals = getDefaultParamVals(sys,varargin)
+            % should query the following parameters that aren't editable
+            % within MAGMA:
+            if ~isempty(varargin)
+                comps = [sys.getSpecies('comp'),sys.getChemicals('comp')];
+            else
+                comps = [sys.getSpecies('comp'),sys.getChemicals('comp'), ...
+                    {sys.environs.(sys.activeEnv).getH3OComp(),sys.environs.(sys.activeEnv).getOHComp()}];
+            end
+
+            % 1. MW of each component
+            defaultParamVals = struct('placeholder',1);
+            for k=1:1:length(comps)
+                defaultParamVals.(comps{k}.MW_sym) = comps{k}.MW;
+            end
+            % 2. Density of each component
+            try
+                for k=1:1:length(comps)
+                    defaultParamVals.(comps{k}.den_sym)= comps{k}.den;
+                end
+            catch err
+                disp(err)
+            end
+            % 3. Heat capacities of each component
+            try
+                for k=1:1:length(comps)
+                    defaultParamVals.(comps{k}.Cp_sym) = comps{k}.Cp;
+                    defaultParamVals.(comps{k}.Cpg_sym) = comps{k}.Cpg;
+                end
+            catch err
+                disp(err)
+            end
         end
 
         % sys: ODESys class ref, prop: string
@@ -187,10 +468,10 @@ classdef ODESys < handle
                 case 'name'
                     specs = struct2cell(sys.species);
                     % need to write loop for this
-                    res = cell(length(specs),1);
-                    for i=1:1:length(specs), res{i} = specs{i}.name; end
+                    res = cell(1,length(specs));
+                    for k=1:1:length(specs), res{k} = specs{k}.name; end
                 case 'comp'
-                    res = struct2cell(sys.species);
+                    res = struct2cell(sys.species)';
             end
         end
 
@@ -200,31 +481,24 @@ classdef ODESys < handle
                 case 'name'
                     chems = struct2cell(sys.chemicals);
                     % need to write loop for this
-                    res = cell(length(chems),1);
-                    for i=1:1:length(chems), res{i} = chems{i}.name; end
+                    res = cell(1,length(chems));
+                    % ext_ct = 0;
+                    for k=1:1:length(chems)
+                        res{k} = chems{k}.name;
+                        % if chems{k}.is_vol
+                        %     res{k+ext_ct+1} = [chems{k}.name,' (Gas Phase)'];
+                        %     % res{i+ext_ct+2} = [chems{i+ext_ct}.name,' (Sparge Bubbles)'];
+                        %     ext_ct = ext_ct + 1;
+                        % end
+                    end
                 case 'comp'
-                    res = struct2cell(sys.chemicals);
+                    res = struct2cell(sys.chemicals)';
             end
         end
 
-        % sys: ODESys class ref, modelName: string, chem: string,
-        % interact: string, spec: string, func: string, funcName: string
-        function updateModel(sys, compName, funcVal, funcName, funcCombo, funcType)
-            % get component object
-            comp = sys.getCompByName(compName);
-
-            % gets the param expressions of dependent variables
-            depVars = sys.getModelVarNames();
-
-            % param and depVar separation for funcVal
-            symVarStrArr = string(symvar(str2sym(funcVal)));
-            % creates array of system variables as strings
-            varStr = string(intersect(symVarStrArr,depVars));
-            % creates array of parameters as strings
-            paramStr = string(setxor(symVarStrArr,varStr));
-
-            % adding model to Comp
-            comp.setModel(funcVal, funcName, funcCombo, funcType, paramStr, varStr, sys.editing, sys.currentFuncName);
+        % sys: ODESys class ref
+        function comps = getAllComps(sys)
+            comps = [sys.getSpecies('comp'),sys.getChemicals('comp'),sys.environs.(sys.activeEnv).getAllEnvComps()];
         end
 
         % sys: ODESys class ref, funcName: string
@@ -282,58 +556,74 @@ classdef ODESys < handle
         end
 
         % sys: ODESys class ref, funcName: string
-        function [funcSym,funcVal] = getHelperFunc(sys,funcName)
+        function [funcSym,funcVal,funcIdx] = getHelperFunc(sys,funcName)
             for k=1:1:length(sys.helperFuncs)
                 if strcmp(sys.helperFuncs{k}.getSubFuncName,funcName)
-                    funcSym = sys.helperFunc{k}.getSubFuncSym();
-                    funcVal = sys.helperFunc{k}.getSubFuncVal();
+                    funcSym = sys.helperFuncs{k}.getSubFuncSym();
+                    funcVal = sys.helperFuncs{k}.getSubFuncVal();
+                    funcIdx = k;
                     break;
                 end
             end
         end
 
-        % sys: ODESys class ref, compName: string
-        function funcs = getCompFuncNames(sys,compName,funcCombo)
-            % get comp name
-            comp = sys.getCompByName(compName);
-
-            % get funcs from comp
-            funcs = comp.getFuncNames(funcCombo);
-        end
-
-        % sys: ODESys class ref, compName: string
+        % sys: ODESys class ref, compName: string, phase: string
         function sym = getCompSymByName(sys,compName)
+            % here getting correct phase of correct comp
+            % by the name that it is returned by the UI (e.g.
+            % InteractCompDD)
             comp = sys.getCompByName(compName);
-            sym = comp.getSym();
-        end
-
-        % sys: ODESys class ref, compName: string, funcName: string
-        function funcVal = getCompFuncByFuncName(sys,compName,funcName)
-            comp = sys.getCompByName(compName);
-            funcVal = comp.getFuncValByName(funcName);
-        end
-
-        % sys: ODEsys class ref, compName: string, valName: string,
-        % editing: boolean, editedFunc: string
-        function existFunc = getGovFuncByCompName(sys,compName,funcCombo,valsOrNames)
-            comp = sys.getCompByName(compName);
-            funcs = comp.getGovFuncs(funcCombo,valsOrNames,sys.editing,sys.currentFuncVal,sys.currentFuncName);
-            existFunc = strings(1,length(funcs));
-            for k=1:1:length(funcs)
-                if funcCombo == "Multiplicative"
-                    for l=1:1:length(funcs{k})
-                        existFunc(k) = existFunc(k)+"\left("+latex(str2sym(funcs{k}{l}))+"\right)";
-                    end
-                elseif funcCombo == "Additive"
-                    for l=1:1:length(funcs{k})
-                        if l == 1
-                            existFunc(k) = existFunc(k)+"\left("+latex(str2sym(funcs{k}{l}))+"\right)";
-                        else
-                            existFunc(k) = existFunc(k)+"+\left("+latex(str2sym(funcs{k}{l}))+"\right)";
+            if any(strcmp(compName,{'Temperature','Pressure','Volume','Hydronium','Hydroxide'}))
+                sym = comp.getSym();
+            elseif contains(compName,' (Gas Phase)')
+                sym = comp.getBulkGasSym();
+            elseif contains(compName,' (Liquid Phase)')
+                sym = comp.getSym();
+            else
+                comps = [sys.getSpecies('comp'),sys.getChemicals('comp'),sys.environs.(sys.activeEnv).getAllEnvComps()];
+                for k=1:1:length(comps)
+                    for l=1:1:length(comps{k}.sorpFuncParams)
+                        if contains(compName,comps{k}.sorpFuncParams{l}.solventName)
+                            sym = comps{k}.sorpFuncParams{l}.solventSym;
                         end
                     end
                 end
             end
+        end
+
+        % sys: ODEsys class ref, compName: string, valName: string,
+        % editing: boolean, editedFunc: string
+        function existFunc = getGovFuncByCompName(sys,compName)
+            comp = sys.getCompByName(compName);
+
+            phaseName = '';
+            if any(strcmp(compName,{'Temperature','Pressure','Volume','Hydronium','Hydroxide'}))
+                phase = 'Liquid Phase';
+            elseif contains(compName,'(Liquid Phase)')
+                phase = 'Liquid Phase';
+            elseif contains(compName,'(Gas Phase)')
+                phase = 'Gas Phase';
+            else
+                phase = 'Suspended Solid Phase';
+                for k=1:1:length(comp.sorpFuncParams)
+                    if contains(compName,comp.sorpFuncParams{k}.solventName)
+                        phaseName = comp.sorpFuncParams{k}.solventName;
+                        break;
+                    end
+                end
+            end
+
+            funcs = comp.getGovFuncs(phase,phaseName);
+            existFunc = "";
+            for k=1:1:length(funcs)
+                if isempty(char(existFunc))
+                    operator = "";
+                else
+                    operator = "+";
+                end
+                existFunc = existFunc + operator + funcs{k};
+            end
+            existFunc = uni2latex(char(existFunc));
         end
 
         % sys: ODESys class ref, compName: string, funcCombo: string,
@@ -351,53 +641,23 @@ classdef ODESys < handle
             funcVal = CompDefaults.getDefaultFuncVals(comp,funcCombo,funcType);
         end
 
-        % sys: ODESys class ref, compName: string, funcCombo: string
-        function funcs = getValidFuncs(sys,compName,funcCombo)
-            comp = sys.getCompByName(compName);
-            funcs = CompDefaults.getValidFuncs(comp,funcCombo);
-        end
-
-        % sys: ODESys class ref, currentFuncName:
-        % string, currentFuncVal: string, currentFuncCombo: string,
-        % currentFuncType: string
-        function setCurrent(sys,currentCompName,currentFuncName,currentFuncVal,currentFuncCombo,currentFuncType)
-            if currentFuncName ~= ""
-                sys.currentCompName = currentCompName;
-                sys.currentFuncName = currentFuncName;
-                sys.currentFuncVal = currentFuncVal;
-                sys.currentFuncCombo = currentFuncCombo;
-                sys.currentFuncType = currentFuncType;
-            end
-        end
-
-        % sys: ODESys class ref
-        function [currentCompName,currentFuncName,currentFuncVal,currentFuncCombo,currentFuncType] = getCurrent(sys)
-            currentCompName = sys.currentCompName;
-            currentFuncName = sys.currentFuncName;
-            currentFuncVal = sys.currentFuncVal;
-            currentFuncCombo = sys.currentFuncCombo;
-            currentFuncType = sys.currentFuncType;
-        end
-
-        % sys: ODESys class ref, edited: boolean
-        function setEditing(sys,editing)
-            sys.editing = editing;
-        end
-
-        % sys: ODESys class ref
-        function editing = getEditing(sys)
-            editing = sys.editing;
-        end
-
         % sys: ODESys class ref, paramSym: string,
         % newVal: number, newUnit: string, newParamName: string, funcName:
         % string
-        function updateMultiParams(sys,paramSym,newVal,newUnit,newParamName,funcName)
-            comps = [sys.getSpecies('comp'),sys.getChemicals('comp')];
+        function updateMultiParams(sys,paramSym,newVal,newUnit,newParamName,varargin)
+            comps = [sys.getSpecies('comp'),sys.getChemicals('comp'),sys.environs.(sys.activeEnv).getAllEnvComps()];
+
             for k=1:1:length(comps)
-                grthParams = comps{k}.getGrthParams();
-                if any(strcmp(grthParams(:,3),paramSym))
-                    comps{k}.updateParam(paramSym,newVal,newUnit,newParamName,funcName);
+                % grthParams = comps{k}.getGrthParams();
+                % if any(strcmp(grthParams(:,3),paramSym))
+                fp = [comps{k}.funcParams,comps{k}.gasBulkFuncParams,comps{k}.sorpFuncParams];
+                for l=1:1:length(fp)
+                    for m=1:1:length(fp{l}.params)
+                        if strcmp(fp{l}.params{m}.sym,paramSym)
+                            funcName = fp{l}.funcName;
+                            comps{k}.updateParam(paramSym,newVal,newUnit,newParamName,funcName);
+                        end
+                    end
                 end
             end
 
@@ -413,58 +673,106 @@ classdef ODESys < handle
             end
 
             for k=1:1:length(sys.helperFuncs)
-                if strcmp(sys.helperFuncs{k}.getSubFuncName(),helperFuncName)
-                    helperFuncName = sys.helperFncs{k}.getSubFuncName();
-                    grthParams = sys.getGrthParamsByHelperFuncName(helperFuncName);
-                    if any(strcmp(grthParams(:,3),paramSym))
-                        sys.helperFuncs{k}.updateParams(newParamName,paramSym,newVal,newUnit);
-                    end
+                helperFuncName = sys.helperFuncs{k}.getSubFuncName();
+                grthParams = sys.getGrthParamsByHelperFuncName(helperFuncName);
+                if any(strcmp(grthParams(:,3),paramSym))
+                    sys.helperFuncs{k}.updateParams(newParamName,paramSym,newVal,newUnit,true);
                 end
             end
         end
 
         % sys: ODESys class ref, prop: char, val: string
-        function type = getComponentType(sys, prop, val)
+        function type = getCompType(sys, prop, val)
             % gets all species and chemical names
             specs = sys.getSpecies(prop);
             chems = sys.getChemicals(prop);
-            if any(strcmp(specs,val))
-                type = "spec";
-            elseif any(strcmp(chems,val))
-                type = "chem";
+
+            if val == "Temperature"
+                type = "temp";
+            elseif val == "Pressure"
+                type = "press";
+            elseif val == "Volume"
+                type = "vol";
+            elseif val == "Hydronium"
+                type = "acid";
+            elseif val == "Hydroxide"
+                type = "base";
+            elseif any(contains(val,specs))
+                type = "Biological Solute";
+            elseif any(contains(val,chems))
+                type = "Chemical Solute";
             else
-                type = "none";
+                type = "helper";
             end
         end
 
         % sys: ODESys class ref, compName: string
         function comp = getCompByName(sys,compName)
-            compType = sys.getComponentType('name',compName);
-            if compType == "spec"
-                specName = regexprep(compName, ' ', '_');
-                comp = sys.species.(specName);
-            elseif compType == "chem"
-                chemName = replace(regexprep(regexprep(replace(regexprep(compName,' ','_'),'^','_'),'+','p'),'-','n'),'.','_');
-                comp = sys.chemicals.(chemName);
+            compType = sys.getCompType('name',compName);
+            comp = [];
+            if compType == "Biological Solute"
+                specs = sys.getSpecies('comp');
+                for k=1:1:length(specs)
+                    if contains(compName,specs{k}.getName())
+                        comp = specs{k};
+                    end
+                end
+            elseif compType == "Chemical Solute"
+                chems = sys.getChemicals('comp');
+                for k=1:1:length(chems)
+                    idx = regexp(compName,'\(');
+                    compName = char(compName);
+                    if ~isempty(idx), compName = compName(1:idx-2); end
+                    if contains(compName,chems{k}.getName())
+                        comp = chems{k};
+                    end
+                end
+            elseif compType == "temp"
+                comp = sys.environs.(sys.activeEnv).getTComp();
+            elseif compType == "press"
+                comp = sys.environs.(sys.activeEnv).getPComp();
+            elseif compType == "vol"
+                comp = sys.environs.(sys.activeEnv).getVComp();
+            elseif compType == "acid"
+                comp = sys.environs.(sys.activeEnv).getH3OComp();
+            elseif compType == "base"
+                comp = sys.environs.(sys.activeEnv).getOHComp();
+            elseif compType == "helper"
+                for k=1:1:length(sys.helperFuncs)
+                    if strcmp(compName,sys.helperFuncs{k}.getSubFuncName())
+                        comp = sys.helperFuncs{k};
+                    end
+                end
             else
                 comp = [];
-                disp("Doesn't Work, ODESys.m: line 295");
+                disp("Doesn't Work, ODESys.m: line 605");
                 return;
             end
         end
 
         % sys: ODESys class ref, type: string
         function names = getCompNamesByType(sys,type)
-            if type == "spec"
+            if strcmp(type,"Biological Solute")
                 names = sys.getSpecies('name');
-            elseif type == "chem"
+            elseif strcmp(type,"Chemical Solute")
                 names = sys.getChemicals('name');
+            elseif strcmp(type,"Environ")
+                names = {};
+                comps = sys.environs.(sys.activeEnv).getAllEnvComps();
+                for k=1:1:length(comps)
+                    names{k} = comps{k}.getName(); %#ok<AGROW>
+                end
             end
         end
 
         % sys: ODESys class ref
         function names = getEnvFuncNames(sys)
             names = sys.environs.(sys.activeEnv).getParamNames();
+        end
+
+        % sys: ODESys class ref
+        function [reactorType,params] = getReactorSpecificParams(sys)
+            [reactorType,params] = sys.environs.(sys.activeEnv).getReactorSpecificParams();
         end
 
         % sys: ODESys class ref
@@ -475,6 +783,53 @@ classdef ODESys < handle
             end
         end
 
+        % sys: ODESys class ref, name: string
+        function helperSym = getHelperSymByName(sys,name)
+            for k=1:1:length(sys.helperFuncs)
+                if strcmp(sys.helperFuncs{k}.getSubFuncName(),name)
+                    helperSym = sys.helperFuncs{k}.getSubFuncSym();
+                end
+            end
+        end
+
+        % sys: ODESys class ref, name: string
+        function helperFuncVal = getHelperFuncValByName(sys,name)
+            for k=1:1:length(sys.helperFuncs)
+                if strcmp(sys.helperFuncs{k}.getSubFuncName(),name)
+                    helperFuncVal = uni2latex(char(sys.helperFuncs{k}.getSubFuncVal()));
+                end
+            end
+        end
+
+        % sys: ODESys class ref
+        function names = getEnvAndHelperFuncNames(sys)
+            names = string.empty(0,1);
+            helpers = [sys.helperFuncs,sys.environs.(sys.activeEnv).subfuncs];
+            for k=1:1:length(helpers)
+                names(k,1) = helpers{k}.getSubFuncName();
+            end
+        end
+
+        % sys: ODESys class ref, name: string
+        function helperSym = getEnvAndHelperSymByName(sys,name)
+            helpers = [sys.helperFuncs,sys.environs.(sys.activeEnv).subfuncs];
+            for k=1:1:length(helpers)
+                if strcmp(helpers{k}.getSubFuncName(),name)
+                    helperSym = helpers{k}.getSubFuncSym();
+                end
+            end
+        end
+
+        % sys: ODESys class ref, name: string
+        function helperFuncVal = getEnvAndHelperFuncValByName(sys,name)
+            helpers = [sys.helperFuncs,sys.environs.(sys.activeEnv).subfuncs];
+            for k=1:1:length(helpers)
+                if strcmp(helpers{k}.getSubFuncName(),name)
+                    helperFuncVal = uni2latex(char(helpers{k}.getSubFuncVal()));
+                end
+            end
+        end
+
         % sys: ODESys class ref
         % Model Param Nomenclature:
         % Species concentrations: X1, X2, ... , Xn
@@ -482,60 +837,226 @@ classdef ODESys < handle
         % Light: I
         % Time: t
         % Temperature: T
+        % Pressure: P
         % Environment Volume: V
-        % Environment Surface Area: SA
+        % this method will return the model var names of all biological and
+        % chemical solute species in all phases
+        % intended for CompParamDD.Items and SysVarT.Data,
+        % RegCompParamDD.Items, and RegSysVarDD.Items
         function vars = getModelVarNames(sys,varargin)
             % compiling all parameters from Environment and Species and
-            % Chemical concentrations to push into Model Param Table
+            % Chemical concentrations to push into SysVarT
             specs = struct2cell(sys.species);
             chems = struct2cell(sys.chemicals);
 
-            onlySpecsChem = false;
-            if ~isempty(varargin)
-                onlySpecsChem = varargin{1};
-                vars = cell(length(specs)+length(chems),2); % 5 is from # of Environment properties
+            if isempty(varargin)
+                names_req = ["specs","chems","envs","helpers","updateModel"];
+            elseif strcmp(varargin{1},"plot")
+                names_req = "plot";
             else
-                vars = cell(length(specs)+length(chems)+length(Environment.getParamNames()),2); % 5 is from # of Environment properties
+                names_req = varargin{1};
             end
 
-            % Species Concentrations
-            if length(specs) > 0 %#ok<ISMT> 
-                for i=1:1:length(specs)
-                    vars{i,1} = specs{i}.name;
-                    vars{i,2} = ['X',num2str(i)];
-                end
-            end
-            % Chemical Concentrations
-            if length(chems) > 0 %#ok<ISMT> 
-                for i=1:1:length(chems)
-                    vars{i+length(specs),1} = chems{i}.name;
-                    vars{i+length(specs),2} = ['C',num2str(i)];
-                end
-            end
-            if ~onlySpecsChem
+            vars = {};
+            if any(strcmp(names_req,"envs"))
                 % Environmental parameters
                 envParams = Environment.getParamNames();
-                for i=1:1:size(envParams,1)
-                    vars{i+length(specs)+length(chems),1} = envParams{i,1};
-                    vars{i+length(specs)+length(chems),2} = envParams{i,2};
+                for k=1:1:size(envParams,1)
+                    vars{end+1,1} = envParams{k,1}; %#ok<AGROW>
+                    vars{end,2} = envParams{k,2};
+                end
+            end
+
+            if any(strcmp(names_req,"specs"))
+                vars = sys.getModelSpecVarNames(specs,vars);
+            end
+
+            if any(strcmp(names_req,"chems"))
+                vars = sys.getModelChemVarNames(chems,vars);
+            end
+
+            if any(strcmp(names_req,"helpers"))
+                % Subfuncs
+                for k=1:1:length(sys.helperFuncs)
+                    vars{end+1,1} = char(sys.helperFuncs{k}.getSubFuncName()); %#ok<AGROW>
+                    vars{end,2} = sys.helperFuncs{k}.getSubFuncSym();
+                end
+            end
+
+            if any(strcmp(names_req,"defaultParams"))
+                comps = [sys.getSpecies('comp'),sys.getChemicals('comp'), ...
+                    {sys.environs.(sys.activeEnv).getH3OComp(),sys.environs.(sys.activeEnv).getOHComp()}];
+                % uneditable parameters
+                for k=1:1:length(comps)
+                    vars{end+1,1} = [comps{k}.getName(),' Molecular Weight']; %#ok<AGROW>
+                    vars{end,2} = comps{k}.MW_sym;
+                end
+            end
+
+            if any(strcmp(names_req,"updateModel"))
+                comps = [sys.getSpecies('comp'),sys.getChemicals('comp')];
+                for k=1:1:length(comps)
+                    if strcmp(comps{k}.getType(),'Suspended Solid Sorbent')
+                        vars{end+1,1} = [char(comps{k}.getSym()),' Inlet Volumetric Flow Rate']; %#ok<AGROW>
+                        vars{end,2} = ['L_s_i_',char(comps{k}.sym)];
+                        vars{end+1,1} = [char(comps{k}.getSym()),' Outlet Volumetric Flow Rate']; %#ok<AGROW>
+                        vars{end,2} = ['L_s_o_',char(comps{k}.sym)];
+                    else
+                        vars{end+1,1} = [char(comps{k}.getSym()),' Mass Flow In']; %#ok<AGROW>
+                        vars{end,2} = ['D_i_',char(comps{k}.sym)];
+                        vars{end+1,1} = [char(comps{k}.getSym()),' Liquid Concentration In']; %#ok<AGROW>
+                        vars{end,2} = [char(comps{k}.getSym()),'_i'];
+                        if comps{k}.is_vol
+                            vars{end+1,1} = [char(comps{k}.getSym()),' Inlet Bubble Gas Mol Fraction']; %#ok<AGROW>
+                            vars{end,2} = ['Y_',char(comps{k}.getSym()),'_i'];
+                        end
+                        for l=1:1:length(comps{k}.sorpFuncParams)
+                            vars{end+1,1} = [char(comps{k}.sorpFuncParams{l}.solventSym),' Phase Inlet Concentration']; %#ok<AGROW>
+                            vars{end,2} = [char(comps{k}.sorpFuncParams{l}.solventSym),'_i'];
+                        end
+                    end
+                end
+                % I/O
+                vars{end+1,1} = 'Outlet Pressure Change';
+                vars{end,2} = 'dP_o';
+                vars{end+1,1} = 'Liquid Mass Flow In';
+                vars{end,2} = 'L_i';
+                vars{end+1,1} = 'Liquid Mass Flow Out';
+                vars{end,2} = 'L_o';
+                vars{end+1,1} = 'Gas Mass Flow In';
+                vars{end,2} = 'D_i';
+                % ### STARTHERE: need to fix this so each suspended solid
+                % phase has its own liquid in and out flow
+                % vars{end+1,1} = 'Liquid Mass Flow In';
+                % vars{end,2} = 'L_s_i';
+                % vars{end+1,1} = 'Liquid Mass Flow Out';
+                % vars{end,2} = 'L_s_o';
+            end
+
+            if any(strcmp(names_req,"matlabFuncs"))
+                vars{end+1,1} = 'Log Base 10';
+                vars{end,2} = 'log10';
+                vars{end+1,1} = 'Natural Log';
+                vars{end,2} = 'ln';
+                vars{end+1,1} = 'Natural Exponent';
+                vars{end,2} = 'exp';
+            end
+
+            if any(strcmp(names_req,"plot"))
+                vars = sys.getModelSpecVarNames(specs,vars);
+                vars = sys.getModelChemVarNames(chems,vars);
+
+                % Environmental parameters
+                envParams = Environment.getParamNames();
+                for k=1:1:size(envParams,1)
+                    vars{end+1,1} = envParams{k,1}; %#ok<AGROW>
+                    vars{end,2} = envParams{k,2};
                 end
 
+                % Subfuncs
                 for k=1:1:length(sys.helperFuncs)
-                    vars{k+length(specs)+length(chems)+size(envParams,1),1} = sys.helperFuncs{k}.getSubFuncName();
-                    vars{k+length(specs)+length(chems)+size(envParams,1),2} = sys.helperFuncs{k}.getSubFuncSym();
+                    vars{end+1,1} = char(sys.helperFuncs{k}.getSubFuncName()); %#ok<AGROW>
+                    vars{end,2} = sys.helperFuncs{k}.getSubFuncSym();
+                end
+
+                vars{end+1,1} = 'Model Runtime';
+                vars{end,2} = 't';
+            end
+        end
+
+        % sys: ODESys class ref
+        function vars = getModelVarNamesReg(sys)
+            specs = struct2cell(sys.species);
+            chems = struct2cell(sys.chemicals);
+
+            vars = {};
+            vars = sys.getModelSpecVarNames(specs,vars);
+
+            vars = sys.getModelChemVarNames(chems,vars);
+
+            % Environmental parameters
+            envParams = Environment.getParamNames();
+            for k=1:1:size(envParams,1)
+                vars{end+1,1} = envParams{k,1}; %#ok<AGROW>
+                vars{end,2} = envParams{k,2};
+            end
+        end
+
+        % sys: ODESys class ref, specs: {}, vars: {}
+        function vars = getModelSpecVarNames(~,specs,vars)
+            % Species Concentrations
+            if length(specs) > 0 %#ok<ISMT> 
+                for k=1:1:length(specs)
+                    vars{end+1,1} = [char(specs{k}.name),' (Liquid Phase)']; %#ok<AGROW>
+                    vars{end,2} = char(specs{k}.getSym());
+                end
+            end
+        end
+
+        % sys: ODESys class ref, chems: {}, vars: {}
+        function vars = getModelChemVarNames(sys,chems,vars)
+            % Chemical Concentrations
+            if length(chems) > 0 %#ok<ISMT> 
+                for k=1:1:length(chems)
+                    vars{end+1,1} = [chems{k}.name,' (Liquid Phase)']; %#ok<AGROW>
+                    vars{end,2} = char(chems{k}.getSym());
+                    if chems{k}.is_vol
+                        vars{end+1,1} = [chems{k}.name,' (Gas Phase)']; %#ok<AGROW>
+                        vars{end,2} = char(chems{k}.bulk_gas_sym);
+                        if sys.has_gas_in && ~any(strcmp(names_req,"plot"))
+                            vars{end+1,1} = [chems{k}.name,' (Inlet Bubble Gas Mol Fraction)']; %#ok<AGROW>
+                            vars{end,2} = ['Y_i_',char(chems{k}.sym)];
+                        end
+                    end
+                    solvents = {};
+                    for l=1:1:length(chems{k}.sorpFuncParams)
+                        if ~any(strcmp(solvents,chems{k}.sorpFuncParams{l}.solventName))
+                            vars{end+1,1} = [chems{k}.name,' (',chems{k}.sorpFuncParams{l}.solventName,' Phase)']; %#ok<AGROW>
+                            vars{end,2} = chems{k}.sorpFuncParams{l}.solventSym;
+                            solvents{end+1} = chems{k}.sorpFuncParams{l}.solventName; %#ok<AGROW>
+                        end
+                    end
                 end
             end
         end
 
         % sys: ODESys class ref, name: string
-        function params = getGrthParamsByCompName(sys,name)
-            comp = sys.getCompByName(name);
-            params = comp.getGrthParams();
+        function params = getGrthParamsByCompName(sys,compName)
+            phase = 'Main';
+            comp = sys.getCompByName(compName);
+            if contains(compName,'(Gas Phase)')
+                phase = 'Gas';
+            elseif contains(compName,'(Liquid Phase)')
+                phase = 'Liquid';
+            else
+                comps = [sys.getSpecies('comp'),sys.getChemicals('comp'),sys.environs.(sys.activeEnv).getAllEnvComps()];
+                for k=1:1:length(comps)
+                    for l=1:1:length(comps{k}.sorpFuncParams)
+                        if contains(compName,comps{k}.sorpFuncParams{l}.solventName)
+                            phase = comps{k}.sorpFuncParams{l}.solventName;
+                        end
+                    end
+                end
+            end
+            params = comp.getGrthParams(phase);
         end
 
         % sys: ODESys class ref, envFuncName: string
         function params = getGrthParamsByEnvFuncName(sys,envFuncName)
-            params = sys.environs.(sys.activeEnv).getGrthParamsByEnvFuncName(envFuncName);
+            switch envFuncName
+                case "Temperature"
+                    params = sys.environs.(sys.activeEnv).getTComp().getGrthParams('Main');
+                case "Pressure"
+                    params = sys.environs.(sys.activeEnv).getPComp().getGrthParams('Main');
+                case "Volume"
+                    params = sys.environs.(sys.activeEnv).getVComp().getGrthParams('Main');
+                case "Incident Light"
+                    params = sys.environs.(sys.activeEnv).getGrthParamsByEnvFuncName(envFuncName);
+                case "Hydronium"
+                    params = sys.environs.(sys.activeEnv).getH3OComp().getGrthParams('Main');
+                case "Hydroxide"
+                    params = sys.environs.(sys.activeEnv).getOHComp().getGrthParams('Main');
+            end
         end
 
         % sys: ODESys class ref, helperFuncName: string
@@ -598,12 +1119,37 @@ classdef ODESys < handle
             chemName = chems{chemNum}.name;
         end
 
+        % sys: ODESys class ref, compName: string, newExpr: string, lowLim: number, 
+        % upLim: number, sysVar: string, elseVal: number, lowLimOp: string,
+        % upLimOp: string, phaseA: string, phaseB: string
+        function pwTInfo = addNewPWExpr(sys,compName,newExpr,lowLim,upLim,sysVar,elseVar,lowLimOp,upLimOp,phaseA,phaseB)
+            comp = sys.getCompByName(compName);
+            pwTInfo = comp.addNewPWExpr(newExpr,lowLim,upLim,sysVar,elseVar,lowLimOp,upLimOp,phaseA,phaseB);
+        end
+
+        % sys: ODESys class ref, compName: string, newExpr: string, lowLim: number, 
+        % upLim: number, sysVar: string, elseVal: number, lowLimOp: string,
+        % upLimOp: string, phaseA: string, phaseB: string
+        function pwTInfo = editPWExpr(sys,compName,newExpr,lowLim,upLim,sysVar,elseVar,lowLimOp,upLimOp,phaseA,phaseB)
+            comp = sys.getCompByName(compName);
+            pwTInfo = comp.editPWExpr(newExpr,lowLim,upLim,sysVar,elseVar,lowLimOp,upLimOp,phaseA,phaseB); 
+        end
+
+        % sys: ODESys class ref, compName: string, newExpr: string, lowLim: number, 
+        % upLim: number, sysVar: string, elseVal: number, lowLimOp: string,
+        % upLimOp: string, phaseA: string, phaseB: string
+        function pwTInfo = rmPWExpr(sys,compName,newExpr,lowLim,upLim,sysVar,elseVar,lowLimOp,upLimOp,phaseA,phaseB)
+            comp = sys.getCompByName(compName);
+            pwTInfo = comp.rmPWExpr(newExpr,lowLim,upLim,sysVar,elseVar,lowLimOp,upLimOp,phaseA,phaseB);
+        end
+
+
         % ### FIXME: plot specifications
         % need to add code to allow user to specify a t range and precision
         % of t
 
         % sys: ODEsys class ref, tRange: number[], tPtsNb: number
-        function [tRes,yRes] = compileModel(sys)
+        function compileModel(sys)
             % 1. loop through funcParams in each Component and assemble
             % functions into full governing function
             %   replace each parameter name with p({gloNum})
@@ -615,124 +1161,257 @@ classdef ODESys < handle
             % 3. create ODESys of sym functions
 
             % ### FIXME: need to test to make sure it works
-            % ### FIXME: need to explicitly add multiplication symbol
-            % between multiplicative terms
+            % ### UPDATE: break into pieces so MAGMA can do one piece at a
+            % time as needed
 
-            sys.dydt = "@(t,y,p,f) [";
-            sys.param = [];
-            sys.f = {};
-            comps = [sys.getSpecies('comp');sys.getChemicals('comp')];
-            sysVar = sys.getModelVarNames();
+            try
+                sys.dydt = "@(t,y,p,f,v) [";
+                sys.param = [];
+                sys.f = {};
+    
+                comps = [sys.getSpecies('comp'),sys.getChemicals('comp'),sys.environs.(sys.activeEnv).getAllEnvComps()];
+                sys.var_out_key = cell(length(comps),2);
+                sys.S_nums = {};
+                ext_ct = 0;
+                for k=1:1:length(comps)
+                    sys.var_out_key{k+ext_ct,1} = comps{k}.getName();
+                    sys.var_out_key{k+ext_ct,2} = comps{k}.getSym();
+                    if comps{k}.is_vol  
+                        ext_ct = ext_ct + 1;
+                        sys.var_out_key{k+ext_ct,2} = comps{k}.getName();
+                        sys.var_out_key{k+ext_ct,2} = comps{k}.getBulkGasSym();
+                    end
+                    for l=1:1:length(comps{k}.sorpFuncParams)
+                        ext_ct = ext_ct + 1;
+                        sys.var_out_key{k+ext_ct,2} = comps{k}.getName();
+                        sys.var_out_key{k+ext_ct,2} = comps{k}.sorpFuncParams{l}.solventSym;
+                    end
+                    if strcmp(comps{k}.getType(),'Suspended Solid Sorbent')
+                        sys.S_nums{end+1} = comps{k}.getNum();
+                    end
+                end
+    
+                in_syms = sys.getModelVarNames("updateModel");
+                in_syms = in_syms(:,2);
+                sys.var_in_key = {};
+                num_spec = length(sys.getSpecies('comp'));
+                num_spec_chem = length([sys.getSpecies('comp'),sys.getChemicals('comp')]);
+    
+                % ### UPDATE: updating V_m value, will later find better way to
+                % do this: either use a helper function, or automatically
+                % incorporate this value into a function
+                % sys.updateMultiParams('V_m',sys.PBR_max_vol,'L','Maximum Volume');
+                subfuncs = [sys.environs.(sys.activeEnv).subfuncs,sys.helperFuncs];
+                for k=1:1:length(comps) % should be length(comps) + length(environSubfuncs)
+                    % add logic to compile component gov funcs in order that
+                    % allows for growth-associated product funcs to be a
+                    % function of biomass funcs, and substrate funcs to be a
+                    % function of biomass and product funcs
+                    % ### FIXME: requires special logic/restrictions in the
+                    % governing function portion
+    
+                    % if component is_vol == true:
+                    % in comp.compileGovFunc() do a pre-compilation of
+                    % all of the components, then keep the compileModel portion
+                    % the same
+                    [govFunc, params, ~] = comps{k}.compileGovFunc(length(sys.param),sys.reg_param_ct,{},false);
+                    for l=1:1:length(subfuncs)
+                        if ~strcmp(subfuncs{l}.getSubFuncSym(),"t")
+                            govFunc = regexprep(govFunc,subfuncs{l}.getSubFuncSym(),"f{"+l+"}(t,y,p,f,v)");
+                        end
+                    end
+                    % loop through all in_syms and replace with v(#), and track
+                    % which # is for which syms
+                    for l=1:1:length(in_syms)
+                        if ~isempty(regexp(govFunc,in_syms{l},'once'))
+                            sys.var_in_key{end+1} = in_syms{l};
+                            govFunc = replace(govFunc,in_syms{l},['v(',char(string(length(sys.var_in_key))),')']);
+                        end
+                    end
+                    ext_ct = 0;
+                    for l=1:1:length(comps)
+                        if l <= num_spec
+                            govFunc = regexprep(govFunc,"X_"+string(comps{l}.getNum()),"y("+l+")");
+                        elseif l > num_spec && l <= num_spec_chem
+                            govFunc = replace(govFunc,['C_',char(string(comps{l}.getNum()))],"y("+(l+ext_ct)+")");
+                            govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],['_C_',char(string(comps{l}.getNum()))]);
+                            govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],['C_',char(string(comps{l}.getNum())),'_']);
+                            if comps{l}.is_vol
+                                ext_ct = ext_ct + 1;
+                                govFunc = regexprep(govFunc,"P_"+(comps{l}.getNum()),"y("+string(l+ext_ct)+")");
+                            end
+                            phases = comps{l}.getSorpPhases();
+                            for m=1:1:length(phases)
+                                ext_ct = ext_ct + 1;
+                                govFunc = regexprep(govFunc,phases{m},"y("+(l+ext_ct)+")");
+                                govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],['_',phases{m}]);
+                                govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],[phases{m},'_']);
+                            end
+                            if strcmp(comps{l}.getType(),'Suspended Solid Sorbent')
+                                govFunc = replace(govFunc,['V_S_',char(string(comps{l}.getNum()))],"y("+(l+ext_ct)+")");
+                                govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],['_V_S_',char(string(comps{l}.getNum()))]);
+                                govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],['V_S_',char(string(comps{l}.getNum())),'_']);
+                            end
+                        elseif l == num_spec_chem + 1
+                            govFunc = regexprep(govFunc,'T',['y(',char(string(l+ext_ct)),')']);
+                        elseif l == num_spec_chem + 2
+                            govFunc = regexprep(govFunc,'P',['y(',char(string(l+ext_ct)),')']);
+                            govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],'P_');
+                        elseif l == num_spec_chem + 3
+                            govFunc = regexprep(govFunc,'V',['y(',char(string(l+ext_ct)),')']);
+                            govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],'V_');
+                        elseif l == num_spec_chem + 4
+                            govFunc = replace(govFunc,'H3O',['y(',char(string(l+ext_ct)),')']);
+                            govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],'_H3O');
+                        elseif l == num_spec_chem + 5
+                            govFunc = replace(govFunc,'OH',['y(',char(string(l+ext_ct)),')']);
+                            govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],'_OH');
+                        end
+                    end
+    
+                    if k ~= length(comps)
+                        sys.dydt = sys.dydt + govFunc + ";";
+                    else
+                        sys.dydt = sys.dydt + govFunc + "]";
+                    end
+                    sys.param = [sys.param,params];
+                end
+    
+                % creating functions for environmental conditions
+                for k=1:1:length(subfuncs)
+                    ext_ct = 0;
+                    subfuncParamCt = 1;
+                    govFunc = string(subfuncs{k}.getSubFuncVal());
+                    for l=1:1:length(comps)
+                        if l <= num_spec
+                            govFunc = replace(govFunc,"X_"+string(comps{l}.getNum()),"y("+l+")");
+                        elseif l > num_spec && l <= num_spec_chem
+                            govFunc = replace(govFunc,['C_',char(string(comps{l}.getNum()))],"y("+(l+ext_ct)+")");
+                            govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],['_C_',char(string(comps{l}.getNum()))]);
+                            govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],['C_',char(string(comps{l}.getNum())),'_']);
+                            if comps{l}.is_vol
+                                ext_ct = ext_ct + 1;
+                                govFunc = replace(govFunc,"P_"+(comps{l}.getNum()),"y("+string(l+ext_ct)+")");
+                            end
+                            phases = comps{l}.getSorpPhases();
+                            for m=1:1:length(phases)
+                                ext_ct = ext_ct + 1;
+                                govFunc = replace(govFunc,phases{m},"y("+(l+ext_ct)+")");
+                                govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],['_',phases{m}]);
+                                govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],[phases{m},'_']);
+                            end
+                            if strcmp(comps{l}.getType(),'Suspended Solid Sorbent')
+                                govFunc = replace(govFunc,['V_S_',char(string(comps{l}.getNum()))],"y("+(l+ext_ct)+")");
+                                govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],['_V_S_',char(string(comps{l}.getNum()))]);
+                                govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],['V_S_',char(string(comps{l}.getNum())),'_']);
+                            end
+                        elseif l == num_spec_chem + 1
+                            govFunc = regexprep(govFunc,'T',['y(',char(string(l+ext_ct)),')']);
+                        elseif l == num_spec_chem + 2
+                            govFunc = regexprep(govFunc,'P',['y(',char(string(l+ext_ct)),')']);
+                            govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],'P_');
+                        elseif l == num_spec_chem + 3
+                            govFunc = regexprep(govFunc,'V',['y(',char(string(l+ext_ct)),')']);
+                            govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],'V_');
+                        elseif l == num_spec_chem + 4
+                            govFunc = replace(govFunc,'H3O',['y(',char(string(l+ext_ct)),')']);
+                            govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],'_H3O');
+                        elseif l == num_spec_chem + 5
+                            govFunc = replace(govFunc,'OH',['y(',char(string(l+ext_ct)),')']);
+                            govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],'_OH');
+                        end
+                    end
+                    for l=1:1:length(subfuncs)
+                        if ~strcmp(subfuncs{l}.getSubFuncSym(),"t")
+                            govFunc = regexprep(govFunc,subfuncs{l}.getSubFuncSym(),"f{"+l+"}(t,y,p,f,v)");
+                        end
+                    end
+                    % making sure the in_syms are tracked accurately from
+                    % component govFuncs
+                    for l=1:1:length(in_syms)
+                        if ~isempty(regexp(govFunc,in_syms{l},'once'))
+                            if any(strcmp(sys.var_in_key,in_syms{l}))
+                                govFunc = replace(govFunc,in_syms{l},['v(',char(string(find([sys.var_in_key{:}] == in_syms{l}))),')']);
+                            else
+                                sys.var_in_key{end+1} = in_syms{l};
+                                govFunc = replace(govFunc,in_syms{l},['v(',char(string(length(sys.var_in_key))),')']);
+                            end
+                        end
+                    end
+    
+                    syms = subfuncs{k}.getSubFuncParamSyms();
+                    govFuncLength = strlength(govFunc);
+                    for l=1:1:length(syms)
+                        for m=1:1:length(govFunc)
+                            if strlength(govFunc(m)) > 1 || govFuncLength == 1
+                                govFunc(m) = regexprep(govFunc(m),syms(l),"#("+(length(sys.param)+subfuncParamCt)+")");
+                            end
+                        end
+                        subfuncParamCt = subfuncParamCt + 1;
+                    end
+                    govFunc = replace(govFunc,'#','p');
+                    funcArgText = "@(t,y,p,f,v)";
+                    sys.f{end+1,1} = subfuncs{k}.getSubFuncName();
+                    sys.f{end,2} = subfuncs{k}.getSubFuncSym();
+                    sys.f{end,3} = str2func(funcArgText+govFunc);
+                    sys.param = [sys.param,subfuncs{k}.getSubFuncParamVals()'];
+                end
+    
+                % converting to function_handle
+                sys.dydt = str2func(sys.dydt');
+                disp(sys.dydt)
+                disp('worked')
+                
+                % setting initial conditions
+                sys.setInitCond();
+            catch err
+                disp(sys.dydt)
+                err.stack.line
+            end
+        end
+
+        % set initial conditions for all phases of
+        % all components, evaluate the equilibrium helper functions of each
+        % component
+        % sys: ODESys class ref
+        function setInitCond(sys)
+            sys.y0 = [];
+            comps = [sys.getSpecies('comp'),sys.getChemicals('comp'),sys.environs.(sys.activeEnv).getAllEnvComps()];
+            ext_ct = 0;
+            for k=1:1:(length(comps))
+                sys.y0(k+ext_ct) = double(string(comps{k}.getInitConc()));
+                if comps{k}.is_vol, ext_ct = ext_ct + 1; end
+                if ~isempty(comps{k}.sorpFuncParams), ext_ct = ext_ct + 1; end
+            end
+            ext_ct = 0;
             for k=1:1:length(comps)
-                % add logic to compile component gov funcs in order that
-                % allows for growth-associated product funcs to be a
-                % function of biomass funcs, and substrate funcs to be a
-                % function of biomass and product funcs
-                % ### FIXME: requires special logic/restrictions in the
-                % governing function portion
-                [govFunc, params, ~] = comps{k}.compileGovFunc(length(sys.param),sys.reg_param_ct,{},false);
-                for l=1:1:length(sys.helperFuncs)
-                    govFunc = regexprep(govFunc,sys.helperFuncs{l}.getSubFuncSym(),"f{"+(l+length(sys.environs.(sys.activeEnv).subfuncs))+"}(y,t,p,f)");
+                if comps{k}.is_vol
+                    ext_ct = ext_ct + 1;
+                    helperName = ['Gas Phase Partial Pressure of ',char(comps{k}.getName()),' in Equilibrium with Liquid Phase'];
+                    [~,~,helperIdx] = sys.getHelperFunc(helperName);
+                    eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
+                    % ### FIXME?: unable to access initial conditions for
+                    % variables inputted from Simulink, will assume 0 for
+                    % all
+                    sys.y0(k+ext_ct) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
                 end
-                for l=1:1:length(sys.environs.(sys.activeEnv).subfuncs)
-                    if ~strcmp(sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"t")
-                        govFunc = regexprep(govFunc,sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"f{"+l+"}(y,t,p,f)");
-                    end
-                end
-                for l=1:1:length(comps)
-                    if l <= length(sys.getSpecies('comp'))
-                        govFunc = regexprep(govFunc,"X"+l,"y("+l+")");
-                    else
-                        govFunc = regexprep(govFunc,"C"+(l-length(sys.getSpecies('comp'))),"y("+l+")");
-                    end
-                end
-
-                if k ~= length(comps)
-                    sys.dydt = sys.dydt + govFunc + ";";
-                else
-                    sys.dydt = sys.dydt + govFunc + "]";
-                end
-                sys.param = [sys.param,params];
-            end
-
-            % creating functions for environmental conditions
-            env_param_ct = 1;
-            for k=1:1:length(sys.environs.(sys.activeEnv).subfuncs)
-                % ### FIXME: add feature to define helpers with another
-                % helper (this is very complicated, for now just don't let
-                % helpers be defined by helpers)
-                govFunc = string(sys.environs.(sys.activeEnv).subfuncs{k}.getSubFuncVal());
-                for l=1:1:length(comps)
-                    if l <= length(sys.getSpecies('comp'))
-                        govFunc = regexprep(govFunc,"X"+l,"y("+l+")");
-                    else
-                        govFunc = regexprep(govFunc,"C"+(l-length(sys.getSpecies('comp'))),"y("+l+")");
-                    end
-                end
-                for l=1:1:length(sys.environs.(sys.activeEnv).subfuncs)
-                    if ~strcmp(sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"t")
-                        govFunc = regexprep(govFunc,sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"f{"+l+"}(y,t,p,f)");
-                    end
-                end
-                syms = sys.environs.(sys.activeEnv).subfuncs{k}.getSubFuncParamSyms();
-                govFuncLength = strlength(govFunc);
-                govFunc = split(govFunc,"#");
-                for l=1:1:length(syms)
-                    for m=1:1:length(govFunc)
-                        if strlength(govFunc(m)) > 1 || govFuncLength == 1
-                            govFunc(m) = regexprep(govFunc(m),syms(l),"p("+(length(sys.param)+env_param_ct)+")");
+                solvents = {};
+                if ~isempty(comps{k}.sorpFuncParams)
+                    for l=1:1:length(comps{k}.sorpFuncParams)
+                        if ~any(strcmp(solvents,comps{k}.sorpFuncParams{l}.solventName))
+                            ext_ct = ext_ct + 1;
+                            helperName = [char(comps{k}.name),' Concentration in ',comps{k}.sorpFuncParams{l}.solventName,' Phase in Equilibrium with Liquid Phase'];
+                            [~,~,helperIdx] = sys.getHelperFunc(helperName);
+                            eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
+                            sys.y0(k+ext_ct) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
+                            solvents{end+1} = comps{k}.sorpFuncParams{l}.solventName; %#ok<AGROW>
                         end
                     end
-                    env_param_ct = env_param_ct + 1;
                 end
-                govFunc = strrep(strrep(strjoin(govFunc),"#","")," ","");
-                funcArgText = "@(y,t,p,f)";
-                sys.f{end+1} = str2func(funcArgText+govFunc);
-                sys.param = [sys.param,sys.environs.(sys.activeEnv).subfuncs{k}.getSubFuncParamVals()];
             end
+        end
 
-            % creating functions for helper functions
-            helper_param_ct = 1;
-            for k=1:1:length(sys.helperFuncs)
-                % ### FIXME: add feature to define helpers with another
-                % helper (this is very complicated, for now just don't let
-                % helpers be defined by helpers)
-                govFunc = string(sys.helperFuncs{k}.getSubFuncVal());
-                for l=1:1:length(sys.helperFuncs)
-                    govFunc = regexprep(govFunc,sys.helperFuncs{l}.getSubFuncSym(),"f{"+l+"}(y,t,p,f)");
-                end
-                syms = sys.helperFuncs{k}.getSubFuncParamSyms();
-                govFuncLength = strlength(govFunc);
-                govFunc = split(govFunc,"#");
-                for l=1:1:length(syms)
-                    for m=1:1:length(govFunc)
-                        if strlength(govFunc(m)) > 1 || govFuncLength == 1
-                            govFunc(m) = regexprep(govFunc(m),syms(l),"p("+(length(sys.param)+helper_param_ct)+")");
-                        end
-                    end
-                    helper_param_ct = helper_param_ct + 1;
-                end
-                govFunc = strrep(strrep(strjoin(govFunc),"#","")," ","");
-                for l=1:1:length(sys.environs.(sys.activeEnv).subfuncs)
-                    if ~strcmp(sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"t")
-                        govFunc = regexprep(govFunc,sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"f{"+l+"}(y,t,p,f)");
-                    end
-                end
-                for l=1:1:length(comps)
-                    if l <= length(sys.getSpecies('comp'))
-                        govFunc = regexprep(govFunc,"X"+l,"y("+l+")");
-                    else
-                        govFunc = regexprep(govFunc,"C"+(l-length(sys.getSpecies('comp'))),"y("+l+")");
-                    end
-                end
-                funcArgText = "@(y,t,p,f)";
-                sys.f{end+1} = str2func(funcArgText+govFunc);
-                sys.param = [sys.param,sys.helperFuncs{k}.getSubFuncParamVals()];
-            end
-
-            % converting to function_handle
-            sys.dydt = str2func(sys.dydt');
-
+        function generatePlots(sys)
             % running model for each plot
             % ### FIXME: need to be able to plot all system variables
             % ### FIXME: include all system variables in ODE system?
@@ -742,17 +1421,16 @@ classdef ODESys < handle
             
             % ### FIXME: add feature to allow user to specify time
             % precision of model
-            tEnd = sys.environs.(sys.activeEnv).getModelTime();
+            tEnd = sys.model_runtime;
             tSmooth = linspace(0,tEnd,100);
+            sysVar = sys.getModelVarNames("plot");
             for k=1:1:length(sys.plots)
                 plot_obj = sys.plots{k};
                 axes = plot_obj.axes;
                 if plot_obj.getPlotProp("display") == true || plot_obj.getPlotProp("download") == true
                     for l=1:1:length(axes)-1
-                        disp(axes{k})
                         if axes{k}.varIsIC
                             % run computation for each plot
-                            y0_span_arr = {0,0}
                             y0_var_num = {0,0};
                             for m=1:1:length(axes)
                                 if ~axes{m}.isDV
@@ -782,13 +1460,9 @@ classdef ODESys < handle
                                 end
                             end
                         else
-                            y0 = [];
-                            comps = [sys.getSpecies('comp');sys.getChemicals('comp')];
-                            for m=1:1:length(comps)
-                                y0(m) = comps{m}.getInitConc(); %#ok<AGROW>
-                            end
-                            [tRes,yRes] = sys.runModel(tSmooth,y0);
-                            res{1,1} = [yRes,tRes];
+                            [tRes,yRes] = sys.runModel(tSmooth);
+                            fRes = sys.calculateHelperVals(tRes,yRes);
+                            res{1,1} = [yRes,fRes,tRes];
                         end
                     end
 
@@ -802,6 +1476,14 @@ classdef ODESys < handle
                         for l=1:1:length(axes{2}.varNames)
                             yVarIdx(l) = find(strcmp(sysVar(:,2),axes{2}.varNames{l}));
                         end
+                        % test2 = varSym(1)
+                        % test3 = axes{2}.varNames
+                        % test4 = sysVar(:,2)
+                        % test5 = xVarIdx
+                        % test6 = yVarIdx
+                        % test9 = size(res{1,1}(:,xVarIdx))
+                        % test10 = size(res{1,1}(:,yVarIdx))
+                        % test11 = res{1,1}(:,xVarIdx)
                         plot(res{1,1}(:,xVarIdx),res{1,1}(:,yVarIdx));
                     elseif length(axes) == 3
                         % interpolation query points
@@ -810,7 +1492,7 @@ classdef ODESys < handle
                         [qGridXVals,qGridYVals] = meshgrid(qXVals,qYVals);
                         
                         % 2D interpolation
-                        res
+                        % res
                         % ### FIXME: need to add functionality to consider
                         % the time of evaluation if both IVs are ICs
                         DVVals = zeros(size(res));
@@ -829,19 +1511,13 @@ classdef ODESys < handle
                     for l=1:1:length(plot_obj.axes)
                         if l == 1
                             xlabel(axes{l}.title);
-                            if ~axes{l}.useDefR
-                                xlim(plot_obj.getDispLims(axes{l}));
-                            end
+                            if ~axes{l}.useDefR, xlim([axes{l}.loDispLim,axes{l}.upDispLim]); end
                         elseif l == 2
                             ylabel(axes{l}.title);
-                            if ~axes{l}.useDefR
-                                ylim(plot_obj.getDispLims(axes{l}));
-                            end
+                            if ~axes{l}.useDefR, ylim([axes{l}.loDispLim,axes{l}.upDispLim]); end
                         elseif l == 3
                             zlabel(axes{l}.title);
-                            if ~axes{l}.useDefR
-                                zlim(plot_obj.getDispLims(axes{l}));
-                            end
+                            if ~axes{l}.useDefR, zlim([axes{l}.loDispLim,axes{l}.upDispLim]); end
                         end
                     end
                     legend(axes{end}.varNames);
@@ -850,8 +1526,6 @@ classdef ODESys < handle
                     if plot_obj.getPlotProp("display") == false
                         close;
                     end
-                    disp(plot_obj.getPlotProp("download"))
-                    disp(plot_obj)
                     if plot_obj.getPlotProp("download") == true
                         plot_obj.downloadPlot(fig);
                     end
@@ -860,186 +1534,274 @@ classdef ODESys < handle
         end
 
         % sys: ODESys class ref, t: number[]
-        function [tRes,yRes] = runModel(sys,t,y0)
+        function [tRes,yRes] = runModel(sys,tspan)
             % iterating over BatchFunction with ode45
-            opts = odeset('RelTol',1e-6,'AbsTol',1e-6);
-            [tRes,yRes] = ode45(@(t,y) sys.dydt(t,y,sys.param,sys.f),t,y0,opts);
+            opts = odeset('RelTol',1E-6,'AbsTol',1E-6);
+            [tRes,yRes] = ode45(@(t,y) sys.dydt(t,y,sys.param,sys.f(:,3),zeros(size(sys.var_in_key))),tspan,sys.y0,opts);
+        end
+
+        % sys: ODESys class ref, tRes: num[], yRes: num[]
+        function fRes = calculateHelperVals(sys,tRes,yRes)
+            fRes = zeros(size(tRes,1),size(sys.f,1));
+            for k=1:1:size(sys.f,1)
+                for l=1:1:size(tRes,1)
+                    fRes(l,k) = sys.f{k,3}(tRes(l),yRes(l,:),sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
+                end
+            end
         end
 
         % sys: ODESys class ref,
         function regStats = compileRegression(sys)
-            sys.dydt = "@(t,y,p,f,r) [";
-            sys.param = [];
-            sys.reg_param_ct = 1;
-            sys.f = {};
-            comps = [sys.getSpecies('comp');sys.getChemicals('comp')];
-            sysVar = sys.getModelVarNames();
-            for k=1:1:length(comps)
-                % add logic to compile component gov funcs in order that
-                % allows for growth-associated product funcs to be a
-                % function of biomass funcs, and substrate funcs to be a
-                % function of biomass and product funcs
-                % ### FIXME: requires special logic/restrictions in the
-                % governing function portion
-                sys.regParamList
-                [govFunc, params, sys.reg_param_ct, regPUpdate] = comps{k}.compileGovFunc(length(sys.param),sys.reg_param_ct,sys.regParamList(:,[1,6]),true);
-                for l=1:1:size(regPUpdate,1)
-                    if regPUpdate{l,1}, sys.regParamList{regPUpdate{l,2},6} = regPUpdate{l,3}; end
-                end
-                for l=1:1:length(sys.helperFuncs)
-                    govFunc = regexprep(govFunc,sys.helperFuncs{l}.getSubFuncSym(),"f{"+(l+length(sys.environs.(sys.activeEnv).subfuncs))+"}(y,t,p,f,r)");
-                end
-                for l=1:1:length(sys.environs.(sys.activeEnv).subfuncs)
-                    if ~strcmp(sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"t")
-                        govFunc = regexprep(govFunc,sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"f{"+l+"}(y,t,p,f,r)");
-                    end
-                end
-                for l=1:1:length(comps)
-                    if l <= length(sys.getSpecies('comp'))
-                        govFunc = regexprep(govFunc,"X"+l,"y("+l+")");
-                    else
-                        govFunc = regexprep(govFunc,"C"+(l-length(sys.getSpecies('comp'))),"y("+l+")");
-                    end
-                end
+            % try
+                sys.dydt = "@(t,y,p,f,v,r) [";
+                sys.param = [];
+                sys.reg_param_ct = 1;
+                sys.f = {};
 
-                if k ~= length(comps)
-                    sys.dydt = sys.dydt + govFunc + ";";
-                else
-                    sys.dydt = sys.dydt + govFunc + "]";
-                end
-                sys.param = [sys.param,params];
-            end
-
-            % creating functions for environmental conditions
-            env_param_ct = 1;
-            for k=1:1:length(sys.environs.(sys.activeEnv).subfuncs)
-                % ### FIXME: add feature to define helpers with another
-                % helper (this is very complicated, for now just don't let
-                % helpers be defined by helpers)
-                govFunc = string(sys.environs.(sys.activeEnv).subfuncs{k}.getSubFuncVal());
-                for l=1:1:length(comps)
-                    if l <= length(sys.getSpecies('comp'))
-                        govFunc = regexprep(govFunc,"X"+l,"y("+l+")");
-                    else
-                        govFunc = regexprep(govFunc,"C"+(l-length(sys.getSpecies('comp'))),"y("+l+")");
+                comps = [sys.getSpecies('comp'),sys.getChemicals('comp'),sys.environs.(sys.activeEnv).getAllEnvComps()];
+                sys.var_out_key = cell(length(comps),2);
+                sys.S_nums = {};
+                ext_ct = 0;
+                for k=1:1:length(comps)
+                    sys.var_out_key{k+ext_ct,1} = comps{k}.getName();
+                    sys.var_out_key{k+ext_ct,2} = comps{k}.getSym();
+                    if comps{k}.is_vol  
+                        ext_ct = ext_ct + 1;
+                        sys.var_out_key{k+ext_ct,2} = comps{k}.getName();
+                        sys.var_out_key{k+ext_ct,2} = comps{k}.getBulkGasSym();
+                    end
+                    for l=1:1:length(comps{k}.sorpFuncParams)
+                        ext_ct = ext_ct + 1;
+                        sys.var_out_key{k+ext_ct,2} = comps{k}.getName();
+                        sys.var_out_key{k+ext_ct,2} = comps{k}.sorpFuncParams{l}.solventSym;
+                    end
+                    if strcmp(comps{k}.getType(),'Suspended Solid Sorbent')
+                        sys.S_nums{end+1} = comps{k}.getNum();
                     end
                 end
-                for l=1:1:length(sys.environs.(sys.activeEnv).subfuncs)
-                    if ~strcmp(sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"t")
-                        govFunc = regexprep(govFunc,sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"f{"+l+"}(y,t,p,f,r)");
+    
+                in_syms = sys.getModelVarNames("updateModel");
+                in_syms = in_syms(:,2);
+                sys.var_in_key = {};
+                num_spec = length(sys.getSpecies('comp'));
+                num_spec_chem = length([sys.getSpecies('comp'),sys.getChemicals('comp')]);
+    
+                sysVar = sys.getModelVarNames("plot");
+                subfuncs = [sys.environs.(sys.activeEnv).subfuncs,sys.helperFuncs];
+                for k=1:1:length(comps)
+                    % add logic to compile component gov funcs in order that
+                    % allows for growth-associated product funcs to be a
+                    % function of biomass funcs, and substrate funcs to be a
+                    % function of biomass and product funcs
+                    % ### FIXME: requires special logic/restrictions in the
+                    % governing function portion
+                    [govFunc, params, sys.reg_param_ct, regPUpdate] = comps{k}.compileGovFunc(length(sys.param),sys.reg_param_ct,sys.regParamList(:,[1,6]),true);
+                    for l=1:1:size(regPUpdate,2)
+                        if regPUpdate{1,l}, sys.regParamList{regPUpdate{2,l},6} = regPUpdate{3,l}; end
                     end
-                end
-                syms = sys.environs.(sys.activeEnv).subfuncs{k}.getSubFuncParamSyms();
-                govFuncLength = strlength(govFunc);
-                govFunc = split(govFunc,"#");
-                for l=1:1:length(syms)
-                    for m=1:1:length(govFunc)
-                        if strlength(govFunc(m)) > 1 || govFuncLength == 1
-                            govFunc(m) = regexprep(govFunc(m),syms(l),"p("+(length(sys.param)+env_param_ct)+")");
+                    for l=1:1:length(subfuncs)
+                        if ~strcmp(subfuncs{l}.getSubFuncSym(),"t")
+                            govFunc = regexprep(govFunc,subfuncs{l}.getSubFuncSym(),"f{"+l+"}(t,y,p,f,v,r)");
                         end
                     end
-                    env_param_ct = env_param_ct + 1;
-                end
-                govFunc = strrep(strrep(strjoin(govFunc),"#","")," ","");
-                funcArgText = "@(y,t,p,f,r)";
-                sys.f{end+1} = str2func(funcArgText+govFunc);
-                sys.param = [sys.param,sys.environs.(sys.activeEnv).subfuncs{k}.getSubFuncParamVals()];
-            end
-
-            % creating functions for helper functions
-            helper_param_ct = 1;
-            for k=1:1:length(sys.helperFuncs)
-                % ### FIXME: add feature to define helpers with another
-                % helper (this is very complicated, for now just don't let
-                % helpers be defined by helpers)
-                govFunc = string(sys.helperFuncs{k}.getSubFuncVal());
-                for l=1:1:length(sys.helperFuncs)
-                    govFunc = regexprep(govFunc,sys.helperFuncs{l}.getSubFuncSym(),"f{"+l+"}(y,t,p,f,r)");
-                end
-                syms = sys.helperFuncs{k}.getSubFuncParamSyms();
-                govFuncLength = strlength(govFunc);
-                govFunc = split(govFunc,"#");
-                for l=1:1:length(syms)
-                    for m=1:1:length(govFunc)
-                        if strlength(govFunc(m)) > 1 || govFuncLength == 1
-                            govFunc(m) = regexprep(govFunc(m),syms(l),"p("+(length(sys.param)+helper_param_ct)+")");
+                    % for l=1:1:length(sys.helperFuncs)
+                    %     govFunc = regexprep(govFunc,sys.helperFuncs{l}.getSubFuncSym(),"f{"+(l+length(sys.environs.(sys.activeEnv).subfuncs))+"}(y,t,p,f,v,r)");
+                    % end
+                    % for l=1:1:length(sys.environs.(sys.activeEnv).subfuncs)
+                    %     if ~strcmp(sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"t")
+                    %         govFunc = regexprep(govFunc,sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"f{"+l+"}(y,t,p,f,v,r)");
+                    %     end
+                    % end
+                    % loop through all in_syms and replace with v(#), and track
+                    % which # is for which syms
+                    for l=1:1:length(in_syms)
+                        if ~isempty(regexp(govFunc,in_syms{l},'once'))
+                            sys.var_in_key{end+1} = in_syms{l};
+                            govFunc = replace(govFunc,in_syms{l},['v(',char(string(length(sys.var_in_key))),')']);
                         end
                     end
-                    helper_param_ct = helper_param_ct + 1;
-                end
-                govFunc = strrep(strrep(strjoin(govFunc),"#","")," ","");
-                for l=1:1:length(sys.environs.(sys.activeEnv).subfuncs)
-                    if ~strcmp(sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"t")
-                        govFunc = regexprep(govFunc,sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"f{"+l+"}(y,t,p,f,r)");
+
+                    ext_ct = 0;
+                    for l=1:1:length(comps)
+                        if l <= num_spec
+                            govFunc = regexprep(govFunc,"X_"+string(comps{l}.getNum()),"y("+l+")");
+                        elseif l > num_spec && l <= num_spec_chem
+                            govFunc = replace(govFunc,['C_',char(string(comps{l}.getNum()))],"y("+(l+ext_ct)+")");
+                            govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],['_C_',char(string(comps{l}.getNum()))]);
+                            govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],['C_',char(string(comps{l}.getNum())),'_']);
+                            if comps{l}.is_vol
+                                ext_ct = ext_ct + 1;
+                                govFunc = regexprep(govFunc,"P_"+(comps{l}.getNum()),"y("+string(l+ext_ct)+")");
+                            end
+                            phases = comps{l}.getSorpPhases();
+                            for m=1:1:length(phases)
+                                ext_ct = ext_ct + 1;
+                                govFunc = regexprep(govFunc,phases{m},"y("+(l+ext_ct)+")");
+                                govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],['_',phases{m}]);
+                                govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],[phases{m},'_']);
+                            end
+                            if strcmp(comps{l}.getType(),'Suspended Solid Sorbent')
+                                govFunc = replace(govFunc,['V_S_',char(string(comps{l}.getNum()))],"y("+(l+ext_ct)+")");
+                                govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],['_V_S_',char(string(comps{l}.getNum()))]);
+                                govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],['V_S_',char(string(comps{l}.getNum())),'_']);
+                            end
+                        elseif l == num_spec_chem + 1
+                            govFunc = regexprep(govFunc,'T',['y(',char(string(l+ext_ct)),')']);
+                        elseif l == num_spec_chem + 2
+                            govFunc = regexprep(govFunc,'P',['y(',char(string(l+ext_ct)),')']);
+                            govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],'P_');
+                        elseif l == num_spec_chem + 3
+                            govFunc = regexprep(govFunc,'V',['y(',char(string(l+ext_ct)),')']);
+                            govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],'V_');
+                        elseif l == num_spec_chem + 4
+                            govFunc = replace(govFunc,'H3O',['y(',char(string(l+ext_ct)),')']);
+                            govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],'_H3O');
+                        elseif l == num_spec_chem + 5
+                            govFunc = replace(govFunc,'OH',['y(',char(string(l+ext_ct)),')']);
+                            govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],'_OH');
+                        end
                     end
-                end
-                for l=1:1:length(comps)
-                    if l <= length(sys.getSpecies('comp'))
-                        govFunc = regexprep(govFunc,"X"+l,"y("+l+")");
+    
+                    if k ~= length(comps)
+                        sys.dydt = sys.dydt + govFunc + ";";
                     else
-                        govFunc = regexprep(govFunc,"C"+(l-length(sys.getSpecies('comp'))),"y("+l+")");
+                        sys.dydt = sys.dydt + govFunc + "]";
+                    end
+                    sys.param = [sys.param,params];
+                end
+    
+                % creating functions for environmental conditions
+                for k=1:1:length(subfuncs)
+                    % ### FIXME: add feature to define helpers with another
+                    % helper (this is very complicated, for now just don't let
+                    % helpers be defined by helpers)
+                    ext_ct = 0;
+                    subfuncParamCt = 1;
+                    govFunc = string(subfuncs{k}.getSubFuncVal());
+                    for l=1:1:length(comps)
+                        if l <= num_spec
+                            govFunc = replace(govFunc,"X_"+string(comps{l}.getNum()),"y("+l+")");
+                        elseif l > num_spec && l <= num_spec_chem
+                            govFunc = replace(govFunc,['C_',char(string(comps{l}.getNum()))],"y("+(l+ext_ct)+")");
+                            govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],['_C_',char(string(comps{l}.getNum()))]);
+                            govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],['C_',char(string(comps{l}.getNum())),'_']);
+                            if comps{l}.is_vol
+                                ext_ct = ext_ct + 1;
+                                govFunc = replace(govFunc,"P_"+(comps{l}.getNum()),"y("+string(l+ext_ct)+")");
+                            end
+                            phases = comps{l}.getSorpPhases();
+                            for m=1:1:length(phases)
+                                ext_ct = ext_ct + 1;
+                                govFunc = replace(govFunc,phases{m},"y("+(l+ext_ct)+")");
+                                govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],['_',phases{m}]);
+                                govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],[phases{m},'_']);
+                            end
+                            if strcmp(comps{l}.getType(),'Suspended Solid Sorbent')
+                                govFunc = replace(govFunc,['V_S_',char(string(comps{l}.getNum()))],"y("+(l+ext_ct)+")");
+                                govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],['_V_S_',char(string(comps{l}.getNum()))]);
+                                govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],['V_S_',char(string(comps{l}.getNum())),'_']);
+                            end
+                        elseif l == num_spec_chem + 1
+                            govFunc = regexprep(govFunc,'T',['y(',char(string(l+ext_ct)),')']);
+                        elseif l == num_spec_chem + 2
+                            govFunc = regexprep(govFunc,'P',['y(',char(string(l+ext_ct)),')']);
+                            govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],'P_');
+                        elseif l == num_spec_chem + 3
+                            govFunc = regexprep(govFunc,'V',['y(',char(string(l+ext_ct)),')']);
+                            govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],'V_');
+                        elseif l == num_spec_chem + 4
+                            govFunc = replace(govFunc,'H3O',['y(',char(string(l+ext_ct)),')']);
+                            govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],'_H3O');
+                        elseif l == num_spec_chem + 5
+                            govFunc = replace(govFunc,'OH',['y(',char(string(l+ext_ct)),')']);
+                            govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],'_OH');
+                        end
+                    end
+                    for l=1:1:length(subfuncs)
+                        if ~strcmp(subfuncs{l}.getSubFuncSym(),"t")
+                            govFunc = regexprep(govFunc,subfuncs{l}.getSubFuncSym(),"f{"+l+"}(t,y,p,f,v,r)");
+                        end
+                    end
+                    % making sure the in_syms are tracked accurately from
+                    % component govFuncs
+                    for l=1:1:length(in_syms)
+                        if ~isempty(regexp(govFunc,in_syms{l},'once'))
+                            if any(strcmp(sys.var_in_key,in_syms{l}))
+                                govFunc = replace(govFunc,in_syms{l},['v(',char(string(find([sys.var_in_key{:}] == in_syms{l}))),')']);
+                            else
+                                sys.var_in_key{end+1} = in_syms{l};
+                                govFunc = replace(govFunc,in_syms{l},['v(',char(string(length(sys.var_in_key))),')']);
+                            end
+                        end
+                    end
+    
+                    syms = subfuncs{k}.getSubFuncParamSyms();
+                    govFuncLength = strlength(govFunc);
+                    for l=1:1:length(syms)
+                        for m=1:1:length(govFunc)
+                            if strlength(govFunc(m)) > 1 || govFuncLength == 1
+                                govFunc(m) = regexprep(govFunc(m),syms(l),"#("+(length(sys.param)+subfuncParamCt)+")");
+                            end
+                        end
+                        subfuncParamCt = subfuncParamCt + 1;
+                    end
+                    govFunc = replace(govFunc,'#','p');
+                    funcArgText = "@(t,y,p,f,v,r)";
+                    sys.f{end+1,1} = subfuncs{k}.getSubFuncName();
+                    sys.f{end,2} = subfuncs{k}.getSubFuncSym();
+                    sys.f{end,3} = str2func(funcArgText+govFunc);
+                    sys.param = [sys.param,subfuncs{k}.getSubFuncParamVals()'];
+                end
+    
+                % converting to function_handle
+                sys.dydt = str2func(sys.dydt');
+                test = sys.dydt
+    
+                sys.importedDataIdx = [];
+                for k=1:1:length(sys.matchedVarsList)
+                    matchIdx = strcmp(cellstr(sysVar(:,1)),sys.matchedVarsList{k}.sysVarName);
+                    varSyms = cellstr(sysVar(:,1));
+                    if any(matchIdx) && ~strcmp("Model Runtime",varSyms{matchIdx})
+                        sys.importedDataIdx(end+1) = find(matchIdx);
                     end
                 end
-                funcArgText = "@(y,t,p,f,r)";
-                sys.f{end+1} = str2func(funcArgText+govFunc);
-                sys.param = [sys.param,sys.helperFuncs{k}.getSubFuncParamVals()];
-            end
-
-            % converting to function_handle
-            sys.dydt = str2func(sys.dydt');
-            sys.dydt = char(sys.dydt);
-            sys.dydt(end) = ']';
-            sys.dydt = string(sys.dydt);
-
-            % converting to function_handle
-            sys.dydt = str2func(sys.dydt');
-
-            sys.importedDataIdx = [];
-            for k=1:1:length(sys.matchedVarsList)
-                matchIdx = strcmp(cellstr(sysVar(:,2)),sys.matchedVarsList{k}.sysVarName);
-                varSyms = cellstr(sysVar(:,2));
-                if any(matchIdx) && ~strcmp("t",varSyms{matchIdx})
-                    sys.importedDataIdx(end+1) = find(matchIdx);
+                IVs = zeros((size(sys.importedData,2)-1).*size(sys.importedData,1),1);
+                DVs = zeros((size(sys.importedData,2)-1).*size(sys.importedData,1),1);
+                for k=2:1:size(sys.importedData,2)
+                    IVs((1:1:size(sys.importedData,1))+((k-2).*size(sys.importedData,1)),1) = [sys.importedData{:,1}];
+                    DVs((1:1:size(sys.importedData,1))+((k-2).*size(sys.importedData,1)),1) = [sys.importedData{:,k}];
                 end
-            end
-            IVs = zeros((size(sys.importedData,2)-1).*size(sys.importedData,1),1);
-            DVs = zeros((size(sys.importedData,2)-1).*size(sys.importedData,1),1);
-            for k=2:1:size(sys.importedData,2)
-                IVs((1:1:size(sys.importedData,1))+((k-2).*size(sys.importedData,1)),1) = [sys.importedData{:,1}];
-                DVs((1:1:size(sys.importedData,1))+((k-2).*size(sys.importedData,1)),1) = [sys.importedData{:,k}];
-            end
-            % ### FIXME: upgrade later to allow automatic testing of
-            % various starting guesses for each parameter
-            beta0 = sys.regSpecs.paramIGs;
-
-            % ### FIXME: upgrade to fitnlm (more recent/robust nonlin
-            % fitter?)
-            y0 = [];
-            comps = [sys.getSpecies('comp');sys.getChemicals('comp')];
-            for m=1:1:(length(fieldnames(sys.species))+length(fieldnames(sys.chemicals)))
-                y0(m) = comps{m}.getInitConc(); %#ok<AGROW>
-            end
-            test = @(reg_param,t) sys.nLinRegHandler(reg_param,t,y0)
-            [sys.reg_analytics.beta,sys.reg_analytics.R,sys.reg_analytics.J, ...
-                sys.reg_analytics.CovB,sys.reg_analytics.MSE,sys.reg_analytics.ErrorModelInfo] = ...
-                nlinfit(IVs,DVs,@(reg_param,t) sys.nLinRegHandler(reg_param,t,y0),beta0,sys.regSpecs);
-
-%             sys.reg_analytics.R
-
-            [tRes,yRes] = sys.runRegModel(IVs,y0,sys.reg_analytics.beta);
-            sys.regData = [tRes,yRes];
-            regStats = struct('importedDataIdx',sys.importedDataIdx, ...
-                'beta',sys.reg_analytics.beta,'R',sys.reg_analytics.R, ...
-                'J',sys.reg_analytics.J,'CovB',sys.reg_analytics.CovB,'MSE',sys.reg_analytics.MSE, ...
-                'ErrorModelInfo',sys.reg_analytics.ErrorModelInfo, ...
-                'IVs',sys.importedData{:,1},'DVs',sys.importedData{:,2:end},'tRes',tRes,'yRes',yRes);
+                % ### FIXME: upgrade later to allow automatic testing of
+                % various starting guesses for each parameter
+                beta0 = sys.regSpecs.paramIGs
+    
+                % ### FIXME: upgrade to fitnlm (more recent/robust nonlin
+                % fitter?)
+                sys.setInitCond();
+                [sys.reg_analytics.beta,sys.reg_analytics.R,sys.reg_analytics.J, ...
+                    sys.reg_analytics.CovB,sys.reg_analytics.MSE,sys.reg_analytics.ErrorModelInfo] = ...
+                    nlinfit(IVs,DVs,@(reg_param,t) sys.nLinRegHandler(reg_param,t),beta0,sys.regSpecs);
+    
+    %             sys.reg_analytics.R
+    
+                [tRes,yRes] = sys.runRegModel(IVs,sys.y0,sys.reg_analytics.beta);
+                sys.regData = [tRes,yRes];
+                regStats = struct('importedDataIdx',sys.importedDataIdx, ...
+                    'beta',sys.reg_analytics.beta,'R',sys.reg_analytics.R, ...
+                    'J',sys.reg_analytics.J,'CovB',sys.reg_analytics.CovB,'MSE',sys.reg_analytics.MSE, ...
+                    'ErrorModelInfo',sys.reg_analytics.ErrorModelInfo, ...
+                    'IVs',sys.importedData{:,1},'DVs',sys.importedData{:,2:end},'tRes',tRes,'yRes',yRes);
+            % catch err
+            %     err.stack.line
+            %     test3 = sys.y0
+            % end
         end
 
         % sys: ODESys class ref, param: number[], t: number[]
-        function yRes = nLinRegHandler(sys,reg_param,t,y0)
-            opts = odeset('RelTol',1e-2,'AbsTol',1e-6);
-            tspan = t(1:size(sys.importedData,1));
-            [~,yRes_all] = ode45(@(t,y) sys.dydt(t,y,sys.param,sys.f,reg_param),tspan,y0,opts)
+        function yRes = nLinRegHandler(sys,reg_param,t)
+            opts = odeset('RelTol',1e-6,'AbsTol',1e-6);
+            tspan = unique(t);
+            [~,yRes_all] = ode45(@(t,y) sys.dydt(t,y,sys.param,sys.f(:,3),zeros(size(sys.var_in_key,2)),reg_param),tspan,sys.y0,opts);
             yRes = zeros((size(sys.importedData,2)-1).*size(sys.importedData,1),1);
             for k=1:1:size(sys.importedData,2)-1
                 yRes((1:1:size(sys.importedData,1))+((k-1).*size(sys.importedData,1)),1) = yRes_all(:,sys.importedDataIdx(k));
@@ -1050,8 +1812,8 @@ classdef ODESys < handle
         function [tRes,yRes] = runRegModel(sys,t,y0,reg_param)
             % iterating over BatchFunction with ode45
             opts = odeset('RelTol',1e-6,'AbsTol',1e-6);
-            tspan = t(1:size(sys.importedData,1));
-            [tRes,yRes] = ode45(@(t,y) sys.dydt(t,y,sys.param,sys.f,reg_param),tspan,y0,opts);
+            tspan = [t(1),t(end)];
+            [tRes,yRes] = ode45(@(t,y) sys.dydt(t,y,sys.param,sys.f(:,3),zeros(size(sys.var_in_key,2)),reg_param),tspan,y0,opts);
         end
 
         % sys: ODESys class ref
@@ -1110,7 +1872,7 @@ classdef ODESys < handle
         % number, predIntType: string
         function predCI = calcPredCI(sys,tval,calcType,alpha,simBnds,predIntType)
             predCI = cell(length(sys.matchedVarsList)-1,3);
-            comps = [sys.getSpecies('comp'),sys.getChemicals('comp')];
+            comps = [sys.getSpecies('comp'),sys.getChemicals('comp'),sys.environs.(sys.activeEnv).getAllEnvComps()];
             y0 = zeros(size(comps));
             for m=1:1:length(comps), y0(m) = comps{m}.getInitConc(); end
             if predIntType == "Curve", predIntType = 'curve'; else, predIntType = 'observation'; end
@@ -1172,7 +1934,8 @@ classdef ODESys < handle
 
         % sys: ODESys class ref
         function [plot,axes] = createNewPlot(sys)
-            sys.plots{end+1} = Plot("Plot "+(length(sys.plots)+1),sys.getModelVarNames(),sys.getModelVarNames(true));
+            [group,slot] = sys.getNextSubplotSlot();
+            sys.plots{end+1} = Plot("Plot "+(length(sys.plots)+1),sys.getModelVarNames("plot"),sys.getModelVarNames("plot"),group,slot);
             plot = sys.plots{end}.getAllPlotProps();
             axes = sys.plots{end}.getAllAxProps();
         end
@@ -1230,32 +1993,61 @@ classdef ODESys < handle
             plot.updatePlot(prop,val);
         end
 
-        % sys: ODESyss class ref
+        % sys: ODESys class ref
         function clearPlotDispDownload(sys)
             for k=1:1:length(sys.plots)
                 sys.plots{k}.updatePlot("display",false);
                 sys.plots{k}.updatePlot("download",false);
             end
         end
-        
-        % sys: ODESys class ref, plotName: string, axesDir: string, title:
-        % string, varName: string, loDispLim: string | number, upDispLim:
-        % string | number, useDefR: boolean
-%         function updateAxProps(sys,plotName,axesDir,title,varName,loDispLim,upDispLim,useDefR)
-%             plot = sys.getPlotByName(plotName);
-%             if axesDir == "X"
-%                 axesDir = 1;
-%             elseif axesDir == "Y"
-%                 axesDir = 2;
-%             elseif axesDir == "Z"
-%                 axesDir = 3;
-%             end
-%             props = ["title","varName","loDispLim","upDispLim","useDefR"];
-%             vals = {title,varName,loDispLim,upDispLim,useDefR};
-%             for k=1:1:length(props)
-%                 plot.updateAx(axesDir,props(k),vals{k});
-%             end
-%         end
+
+        % sys: ODESys class ref, plotName: string, group: number, slot: number
+        function updatePlotGroupSlot(sys,plotName,group,slot)
+            plot = sys.getPlotByName(plotName);
+            plot.subplotGroup = group;
+            plot.subplotSlot = slot;
+        end
+
+        % sys: ODESys class ref
+        function [group,slot] = getNextSubplotSlot(sys)
+            filled_slots = [];
+            if isempty(sys.plots)
+                group = 1;
+                slot = 1;
+            else
+                for k=1:1:length(sys.plots)
+                    [group,slot] = sys.plots{k}.getSubplotGroupAndSlot();
+                    % ### STARTHERE: how to get this to work?
+                    filled_slots(group) = concat(filled_slots,slot); %#ok<AGROW>
+                end
+                for k=1:1:length(filled_slots), filled_slots = sort(filled_slots(k)); end
+                for k=1:1:length(filled_slots)
+                    if length(filled_slots(k)) < (sys.subplot_row_ct*sys.subplot_col_ct)
+                        group = k;
+                        non_intersects = setxor(linspace(1,sys.subplot_row_ct*sys.subplot_col_ct,sys.subplot_row_ct*sys.subplot_col_ct),filled_slots(k));
+                        slot = non_intersects(1);
+                    end
+                end
+    
+                % if all slots are full, throw an error
+            end
+        end
+
+        % sys: ODESys class ref, group: number
+        function updateSubplotPropsinPlot(sys,group)
+            for k=1:1:length(sys.plots)
+                if sys.plots{k}.subplotGroup == group
+                    sys.plots{k}.subplotGroup = 0;
+                    sys.plots{k}.subplotSlot = 0;
+                end
+            end
+        end
+
+        % sys: ODESys class ref, subplotNum: number
+        function [row,col] = getSubplotRowsAndCols(sys,subplotNum)
+            row = sys.subplot_row_ct(subplotNum);
+            col = sys.subplot_col_ct(subplotNum);
+        end
 
         % sys: ODESys class ref, plotName: string, axesDir: string, title:
         % string
@@ -1402,8 +2194,8 @@ classdef ODESys < handle
         function params = updateRegParamList(sys,compName,paramSym,updateType)
             % ### FIXME: add functionality to include capability to update
             % for envs and helpers
-            comp = sys.getCompByName(compName);
-            paramList = comp.getGrthParams();
+            % comp = sys.getCompByName(compName);
+            paramList = sys.getGrthParamsByCompName(compName);
             cancel = false;
             if updateType == "Add"
                 for k=1:1:size(sys.regParamList)
@@ -1427,15 +2219,15 @@ classdef ODESys < handle
                     sys.regParamList{end,6} = "";
                     sys.regParamList{end,7} = regParam{6};
 
-                    sys.regSpecs.DerivStep(end+1) = eps^(1/3);
-                    sys.regSpecs.paramIGs(end+1) = regParam{5};
+                    sys.regSpecs.DerivStep(end+1,1) = eps^(1/3);
+                    sys.regSpecs.paramIGs(end+1,1) = regParam{5};
                 end
             elseif updateType == "Remove"
                 for k=1:1:size(sys.regParamList,1)
                     if strcmp(sys.regParamList{k,1},paramSym)
                         sys.regParamList(k,:) = [];
-                        sys.regSpecs.DerivStep(k) = [];
-                        sys.regSpecs.paramIGs(k) = [];
+                        sys.regSpecs.DerivStep(k,1) = [];
+                        sys.regSpecs.paramIGs(k,1) = [];
                         break;
                     end
                 end
@@ -1522,16 +2314,436 @@ classdef ODESys < handle
         function setRegSpecs(sys,regSpecs)
             sys.regSpecs = regSpecs;
         end
+
+        % sys: ODESys class ref, compName: string, phaseA: string, phaseB:
+        % string
+        function currRawGovFunc = getMTGovFunc(sys,compName,phaseA,phaseB)
+            comp = sys.getCompByName([compName,' (Liquid Phase)']);
+            currRawGovFunc = comp.getMTGovFunc(phaseA,phaseB);
+        end
+
+        % sys: ODESys class ref, strm_types: {}
+        function sys = setStrmTypes(sys,strm_types)
+            if strcmp(strm_types,'Liquid Flow In'), sys.has_liq_in = true; else, sys.has_liq_in = false; end
+            if strcmp(strm_types,'Liquid Flow Out'), sys.has_liq_out = true; else, sys.has_liq_out = false; end
+            if strcmp(strm_types,'Gas Flow In'), sys.has_gas_in = true; else, sys.has_gas_in = false; end
+            if strcmp(strm_types,'Gas Flow Out'), sys.has_gas_out = true; else, sys.has_gas_out = false; end
+        end
+
+        % sys: ODESys class ref, dir: string, phase: string
+        function streams = getStreams(sys,dir,phase)
+            streams = {};
+            if dir == "in" && phase == "L"
+                instreams = sys.input_streams;
+                for k=1:1:length(instreams)
+                    if instreams{k}.getPhase() == "L", streams{end+1} = instreams{k}; end %#ok<AGROW>
+                end
+            elseif dir == "in" && phase == "G"
+                instreams = sys.input_streams;
+                for k=1:1:length(instreams)
+                    if instreams{k}.getPhase() == "G", streams{end+1} = instreams{k}; end %#ok<AGROW>
+                end
+            elseif dir == "out" && phase == "L"
+                outstreams = sys.output_streams;
+                for k=1:1:length(outstreams)
+                    if outstreams{k}.getPhase() == "L", streams{end+1} = outstreams{k}; end %#ok<AGROW>
+                end
+            elseif dir == "out" && phase == "G"
+                outstreams = sys.output_streams;
+                for k=1:1:length(outstreams)
+                    if outstreams{k}.getPhase() == "G", streams{end+1} = outstreams{k}; end %#ok<AGROW>
+                end
+            end
+        end
+
+        % sys: ODESys class ref, strmName: string
+        function strm = getStrmByName(sys,strm)
+            for k=1:1:length(sys.input_streams)
+                if strcmp(strm,sys.input_streams{k}.getName())
+                    strm = sys.input_streams{k};
+                    return;
+                end
+            end
+            for k=1:1:length(sys.output_streams)
+                if strcmp(strm,sys.output_streams{k}.getName())
+                    strm = sys.output_streams{k};
+                    return;
+                end
+            end
+        end
+
+        % sys: ODESys classs ref
+        function strmData = getStrmTData(sys)
+            strmData = cell(size(sys.input_streams,1)+size(sys.output_streams,1),4);
+            for k=1:1:length(sys.input_streams)
+                strm = sys.input_streams{k};
+                strmData{k,1} = strm.getName();
+                strmData{k,2} = strm.getSym();
+                strmData{k,3} = strm.getPhase();
+                strmData{k,4} = strm.getDir();
+            end
+            for k=length(sys.input_streams)+1:1:length(sys.input_streams)+length(sys.output_streams)
+                strm = sys.output_streams{k-length(sys.input_streams)};
+                strmData{k,1} = strm.getName();
+                strmData{k,2} = strm.getSym();
+                strmData{k,3} = strm.getPhase();
+                strmData{k,4} = strm.getDir();
+            end
+        end
+
+        % sys: ODESys class ref, strmName: string, dir: string,
+        % phase: string
+        function addStream(sys,strmName,dir,phase)
+            strmNum = length(sys.input_streams) + length(sys.output_streams) + 1;
+            if strcmp(dir,'in')
+                sys.input_streams{end+1} = Stream(strmName,phase,dir,strmNum);
+            elseif strcmp(dir,'out')
+                sys.output_streams{end+1} = Stream(strmName,phase,dir,strmNum);
+            end
+
+            sys.inportCt = length(sys.input_streams);
+            sys.outportCt = length(sys.output_streams);
+        end
+
+        % sys: ODESys class ref, strmName: string, dir: string, phase:
+        % string
+        function removeStream(sys,strmName,dir,phase)
+            if dir == "in"
+                for k=1:1:length(sys.input_streams)
+                    if strcmp(sys.input_streams{k}.getName(),strmName) && ...
+                            strcmp(sys.input_streams{k}.getPhase(),phase)
+                        sys.input_streams(k) = [];
+                        return;
+                    end
+                end
+            elseif dir == "out"
+                for k=1:1:length(sys.output_streams)
+                    if strcmp(sys.output_streams{k}.getName(),strmName) && ...
+                            strcmp(sys.output_streams{k}.getPhase(),phase)
+                        sys.output_streams(k) = [];
+                        return;
+                    end
+                end
+            end
+
+            sys.inportCt = length(sys.input_streams);
+            sys.outportCt = length(sys.output_streams);
+        end
+
+        % sys: ODESys class ref
+        function updateIOFunc(sys)
+            % adds liquid volume IO to all relevant governing functions
+            % V, X_j, C_j
+            V_comp = sys.environs.(sys.activeEnv).getVComp();
+            % ### FIXME: SV: for each SV, need to loop through and add the
+            % proper terms for adjusting the volume due to I/O
+            SV_comps = {};
+            chems = sys.getChemicals('comp');
+            for k=1:1:length(chems)
+                if strcmp(chems{k}.getType(),'Suspended Solid Sorbent')
+                    SV_comps{end+1} = chems{k}; %#ok<AGROW>
+                end
+            end
+            % adding input/output functions for the SV
+            % based on total liquid mass flow in and mass fraction of SV.
+            % also need to create functions that modify the suspended solid
+            % concentration, giving an average of the suspended solid
+            % particles of different concentrations of solute
+            % removes all I/O funcs from V_comp and SV_comps
+            for k=2:1:length(V_comp.funcParams)
+                fp = V_comp.funcParams{k};
+                V_comp.removeModel(fp.funcVal,fp.funcName,'Main');
+            end
+            for k=1:1:length(SV_comps)
+                for l=1:1:length(SV_comps{k}.funcParams)
+                    fp = SV_comps{k}.funcParams{1};
+                    SV_comps{l}.rmSuspendedSolidVolumeFunc(fp.funcVal,fp.funcName);
+                end
+            end
+            % addsd liquid I/O flow func variable syms to V_comp
+            if sys.has_liq_in && sys.has_liq_out
+                sys.addModel(V_comp.getName(),"0",'Liquid Flow Function','Main');
+                for k=1:1:length(SV_comps)
+                    sys.addSuspendedSolidVolumeFunc(SV_comps{k}.getName(),"0",'Liquid Flow Function');
+                end
+            else
+                if sys.has_liq_in
+                    sys.addModel(V_comp.getName(),"L_i",'Liquid Flow In','Main');
+                    for k=1:1:length(SV_comps)
+                        sys.addSuspendedSolidVolumeFunc(SV_comps{k}.getName(),"L_s"+SV_comps{k}.getNum()+"_i",'Liquid Flow In');
+                    end
+                end
+                if sys.has_liq_out
+                    sys.addModel(V_comp.getName(),"-L_o",'Liquid Flow Out','Main');
+                    for k=1:1:length(SV_comps)
+                        sys.addSuspendedSolidVolumeFunc(SV_comps{k}.getName(),"-L_s"+SV_comps{k}.getNum()+"_o",'Liquid Flow Out');
+                    end
+                end
+            end
+            % loops through each liquid-phase component, checks whether
+            % liquid flow I/O func variable syms need to be added or
+            % removed
+            comps = [sys.getSpecies('comp'),sys.getChemicals('comp'), ...
+                {sys.environs.(sys.activeEnv).getH3OComp(),sys.environs.(sys.activeEnv).getOHComp()}];
+            for k=1:1:length(comps)
+                fp2 = comps{k}.funcParams;
+                has_lfi = false;
+                for l=1:1:length(fp2)
+                    if strcmp(fp2{l}.funcName,'Liquid Flow In')
+                       has_lfi = true;
+                    end
+                end
+                % adding term for liquid input flow into each component
+                if sys.has_liq_in
+                    if ~has_lfi
+                        sys.addModel(comps{k}.getName(),"L_i/V*"+comps{k}.getSym()+"_i",'Liquid Flow In','Liquid');
+                        for l=1:1:length(SV_comps)
+                            if any(strcmp(SV_comps{l}.sorpTInfo(:,1),comps{k}.getName()))
+                                sys.addModel(comps{k}.getName(),"L_s"+SV_comps{l}.getNum()+"_i/V_s*"+comps{k}.getSym()+"_i",'Liquid Flow In','Suspended Solid');
+                            end
+                        end
+                    end
+                else
+                    % removing term for liquid input flow from each
+                    % component
+                    if has_lfi
+                        comps{k}.removeModel("L_i/V*"+comps{k}.getSym()+"_i",'Liquid Flow In','Liquid');
+                        for l=1:1:length(SV_comps)
+                            if any(strcmp(SV_comps{l}.sorpTInfo(:,1),comps{k}.getName()))
+                                comps{k}.removeModel("L_s"+SV_comps{l}.getNum()+"_i/V_s*S_"+comps{k}.getNum()+ ...
+                                    "_"+SV_comps{l}.getNum()+"_i",'Liquid Flow In','Suspended Solid');
+                            end
+                        end
+                    end
+                end
+                has_lfo = false;
+                for l=1:1:length(fp2)
+                    if strcmp(fp2{l}.funcName,'Liquid Flow Out')
+                       has_lfo = true;
+                    end
+                end
+                % adding term for liquid output flow to each component
+                if sys.has_liq_out
+                    if ~has_lfo
+                        sys.addModel(comps{k}.getName(),"-L_o/V*"+comps{k}.getSym(),'Liquid Flow Out','Liquid');
+                        for l=1:1:length(SV_comps)
+                            if any(strcmp(SV_comps{l}.sorpTInfo(:,1),comps{k}.getName()))
+                                sys.addModel(comps{k}.getName(),"-L_s"+SV_comps{l}.getNum()+"_o/V_s*S_"+comps{k}.getNum()+ ...
+                                    "_"+SV_comps{l}.getNum(),'Liquid Flow In','Suspended Solid');
+                            end
+                        end
+                    end
+                else
+                    % removing term for liquid output flow from each
+                    % component
+                    if has_lfo
+                        comps{k}.removeModel("-L_o/V*"+comps{k}.getSym(),'Liquid Flow Out','Liquid');
+                        for l=1:1:length(SV_comps)
+                            if any(strcmp(SV_comps{l}.sorpTInfo(:,1),comps{k}.getName()))
+                                comps{k}.removeModel("-L_s"+SV_comps{l}.getNum()+"_o/V_s*S_"+comps{k}.getNum()+ ...
+                                    "_"+SV_comps{l}.getNum(),'Liquid Flow In','Suspended Solid');
+                            end
+                        end
+                    end
+                end
+            end
+
+            % adds gas volume IO to all relevant governing functions
+            % P, P_j
+            P_comp = sys.environs.(sys.activeEnv).getPComp();
+            chems = sys.getChemicals('comp');
+            for k=1:1:length(chems)
+                fp3 = chems{k}.funcParams;
+                has_gfi = false;
+                for l=1:1:length(fp3)
+                    if strcmp(fp3{l}.funcName,'Gas Flow In')
+                       has_gfi = true;
+                    end
+                end
+                if sys.has_gas_in
+                    if ~has_gfi
+                        % ### UPDATE: need to be updating the model in the
+                        % chemicals and P_comp
+                        if chems{k}.is_vol
+                            % adding function to P_comp for bub flow input
+                            % to bulk gas phase
+                            sys.addModel(P_comp.getName(), ...
+                            "(R*T)/((V_m-V_tot)*"+chems{k}.MW_sym+")*(D_i_+"+chems{k}.getSym()+"-(P_i*Y_i_"+chems{k}.sym+"/"+chems{k}.h_const_sym+"-"+chems{k}.sym+"_bubf))/tau*V", ...
+                                'Gas Flow In','Main');
+                            % adding function to chem for bub flow input
+                            % to bulk gas phase
+                            sys.addModel(chems{k}.getName(), ...
+                            "(R*T)/((V_m-V_tot)*"+chems{k}.MW_sym+")*(D_i_+"+chems{k}.getSym()+"-(P_i*Y_i_"+chems{k}.sym+"/"+chems{k}.h_const_sym+"-"+chems{k}.sym+"_bubf))/tau*V", ...
+                                'Gas Flow In','Gas');
+                            % adding helper function for final bub
+                            % concentration
+                            C_bub_f_val = chems{k}.sym+"+(P_i*Y_i_"+chems{k}.number+"/"+chems{k}.h_const_sym+"-"+chems{k}.sym+")*exp(-tau_"+chems{k}.sym+"*k_"+chems{k}.sym+")";
+                            sys.addRmHelperFuncs([char(chems{k}.name),' Bubble Final Concentration'],char(chems{k}.sym+"_bubf"),C_bub_f_val,true);
+                            % adding function to chem for bub to liq
+                            sys.addModel(chems{k}.getName(), ...
+                            "(P_i*Y_i_"+chems{k}.sym+"/"+chems{k}.h_const_sym+"-"+chems{k}.sym+"_bubf))/tau*V", ...
+                                'Gas Flow In','Liquid');
+                        end
+                    end
+                else
+                    if has_gfi
+                        if chems{k}.is_vol
+                            % removing function from P_comp for bub flow input
+                            % to bulk gas phase
+                            P_comp.removeModel("(R*T)/((V_m-V_tot)*"+chems{k}.MW_sym+")*(D_i_+"+chems{k}.getSym()+"-(P_i*Y_i_"+chems{k}.sym+"/"+chems{k}.h_const_sym+"-"+chems{k}.sym+"_bubf))/tau*V", ...
+                                'Gas Flow In','Main');
+                            % removing function from chem for bub flow input
+                            % to bulk gas phase
+                            chems{k}.removeModel("(R*T)/((V_m-V_tot)*"+chems{k}.MW_sym+")*(D_i_+"+chems{k}.getSym()+"-(P_i*Y_i_"+chems{k}.sym+"/"+chems{k}.h_const_sym+"-"+chems{k}.sym+"_bubf))/tau*V", ...
+                                'Gas Flow In','Gas');
+                            % removing helper function for final bub
+                            % concentration
+                            C_bub_f_val = chems{k}.sym+"+(P_i*Y_i_"+chems{k}.number+"/"+chems{k}.h_const_sym+"-"+chems{k}.sym+")*exp(-tau_"+chems{k}.sym+"*k_"+chems{k}.sym+")";
+                            sys.addRmHelperFuncs([char(chems{k}.name),' Bubble Final Concentration'],char(chems{k}.sym+"_bubf"),C_bub_f_val,false);
+                            % removing function from chem for bub to liq
+                            chems{k}.removeModel("(P_i*Y_i_"+chems{k}.sym+"/"+chems{k}.h_const_sym+"-"+chems{k}.sym+"_bubf))/tau*V", ...
+                                'Gas Flow In','Liquid');
+                        end
+                    end
+                end
+                has_gfo = false;
+                for l=1:1:length(fp3)
+                    if strcmp(fp3{l}.funcName,'Gas Flow Out')
+                       has_gfo = true;
+                    end
+                end
+                if sys.has_gas_out
+                    if ~has_gfo
+                        if chems{k}.is_vol
+                            % adding function to P_comp for bub flow output
+                            % from bulk gas phase
+                            sys.updateModel(P_comp.getName(),"-D_o*R*T/(V_m-V_tot)*"+chems{k}.bulk_gas_sym+"/(P*"+chems{k}.MW_sym+")", ...
+                                'Gas Flow Out','Main');
+                            % adding function to chem for bub flow output
+                            % from bulk gas phase
+                            sys.updateModel(chems{k}.getName(),"-D_o*R*T/(V_m-V_tot)*"+chems{k}.bulk_gas_sym+"/(P*"+chems{k}.MW_sym+")", ...
+                                'Gas Flow Out','Gas');
+                        end
+                    end
+                else
+                    if has_gfo
+                        % removing function from P_comp for bub flow output
+                        % to bulk gas phase
+                        P_comp.removeModel("-D_o*R*T/(V_m-V_tot)*"+chems{k}.bulk_gas_sym+"/(P*"+chems{k}.MW_sym+")",'Gas Flow Out','Main');
+                        % removing function from chem for bub flow output
+                        % to bulk gas phase 
+                        chems{k}.removeModel("-D_o*R*T/(V_m-V_tot)*"+chems{k}.bulk_gas_sym+"/(P*"+chems{k}.MW_sym+")",'Gas Flow Out','Gas');
+                    end
+                end
+            end
+        end
+
+        % sys: ODESys class ref, solventName: string, soluteName: string,
+        % modelName: string, param1Val: num, param2Val: num, param3Val: num
+        function sorpTInfo = addSorptionEq(sys,solventName,soluteName,modelName,param1Val,param2Val,param3Val)
+            solvComp = sys.getCompByName(solventName);
+            soluComp = sys.getCompByName(soluteName);
+            solventNum = sys.getChemicalNumFromName(solventName);
+            soluteNum = sys.getChemicalNumFromName(soluteName);
+            % keeps track of governing functions for equilibrium and mass
+            % transfer
+            sorpHelpers = soluComp.addSorptionEq(solventName,solventNum,soluteName,soluteNum,modelName,param1Val,param2Val,param3Val,sys.getDefaultParamVals());
+            % keeps track of sorpTInfo
+            sorpTInfo = solvComp.addSorptionEq(soluteName,solventNum,soluteName,soluteNum,modelName,param1Val,param2Val,param3Val,sys.getDefaultParamVals());
+
+            % add sorption helpers
+            helperFuncNames = sys.getHelperFuncNames();
+            for k=1:1:length(sorpHelpers)
+                if ~any(strcmp(helperFuncNames,sorpHelpers{k}.getSubFuncName()))
+                    sys.addRmHelperFuncs(sorpHelpers{k}.funcName,sorpHelpers{k}.funcSym,sorpHelpers{k}.funcVal,true);
+                end
+                [~,~,helperIdx] = sys.getHelperFunc(sorpHelpers{k}.getSubFuncName());
+                paramNames = sorpHelpers{k}.getSubFuncParamNames();
+                paramSyms = sorpHelpers{k}.getSubFuncParamSyms();
+                paramVals = sorpHelpers{k}.getSubFuncParamVals();
+                paramUnits = sorpHelpers{k}.getSubFuncParamUnits();
+                for l=1:1:length(paramNames)
+                    sys.helperFuncs{helperIdx}.updateParams(paramNames(l),paramSyms(l),paramVals(l),paramUnits(l),false,sys.getDefaultParamVals());
+                end
+            end
+            % test4 = sys.helperFuncs
+        end
+
+        % sys: ODESys class ref, solventName: string, soluteName: string,
+        % modelName: string, param1Val: num, param2Val: num, param3Val: num
+        function sorpTInfo = rmSorptionEq(sys,solventName,soluteName,modelName,param1Val,param2Val,param3Val)
+            solvComp = sys.getCompByName(solventName);
+            soluComp = sys.getCompByName(soluteName);
+            solventNum = sys.getChemicalNumFromName(solventName);
+            % returns helper functions that need to be removed
+            sorpHelpers = soluComp.rmSorptionEq(solventName,solventNum,soluteName,modelName,param1Val,param2Val,param3Val);
+            % soluteNum = sys.getChemicalNumFromName(soluteName);
+            % keeps track of sorpTInfo
+            sorpTInfo = solvComp.rmSorptionEq(solventName,solventNum,soluteName,modelName,param1Val,param2Val,param3Val);
+
+            % remove sorption helpers
+            for k=1:1:length(sorpHelpers)
+                sys.addRmHelperFuncs(sorpHelpers{k}.funcName,sorpHelpers{k}.funcSym,sorpHelpers{k}.funcVal,false);
+            end
+        end
+
+        % sys: ODESys class ref
+        function res = getInteractCompDDItems(sys)
+            comps = [sys.getSpecies('comp'),sys.getChemicals('comp'),sys.environs.(sys.activeEnv).getAllEnvComps()];
+            res = cell(length(comps),2);
+            for k=1:1:length(comps)
+                if length(comps) - k >= 5
+                    name = [char(comps{k}.getName()),' (Liquid Phase)'];
+                else
+                    name = char(comps{k}.getName());
+                end
+                res{k,1} = name;
+                res{k,2} = comps{k}.getSym();
+            end
+        end
+
+        % sys: ODESys class ref
+        function res = getAllBioChemSolutes(sys)
+            comps = [sys.getSpecies('comp'),sys.getChemicals('comp')];
+            res = cell(length(comps)+4,2);
+            res{1,1} = 'Temperature';
+            res{1,2} = 'T';
+            res{2,1} = 'Pressure';
+            res{2,2} = 'P';
+            res{3,1} = 'Volume';
+            res{3,2} = 'V';
+            res{4,1} = 'Hydronium';
+            res{4,2} = 'H3O';
+            res{5,1} = 'Hydroxide';
+            res{5,2} = 'OH';
+            for k=1:1:length(comps)
+                res{k+5,1} = char(comps{k}.getName());
+                res{k+5,2} = comps{k}.getSym();
+            end
+        end
+
+        % sys: ODESys class ref
+        function res = getRegCompNames(sys)
+            comps = [sys.getSpecies('comp'),sys.getChemicals('comp'),sys.environs.(sys.activeEnv).getAllEnvComps()];
+            res = cell(length(comps),2);
+            for k=1:1:length(comps)
+                if any(contains({'T','P','V'},comps{k}.getSym()))
+                    ext = '';
+                else
+                    ext = ' (Liquid Phase)';
+                end
+                res{k,1} = [char(comps{k}.getName()),ext];
+                res{k,2} = comps{k}.getSym();
+            end
+        end
     end
 
     methods (Static)
         % funcAsStr: Boolean
         function [paramVals, paramUnits] = getDefaultEnvironParams(funcAsStr)
             custDefault = EnvDefaults();
-            vals = custDefault.Custom_Env;
-            units = custDefault.Units;
-            disp({units.lightFunc;units.tempFunc;units.culVol;units.culSA;units.modelTime})
-            paramVals = {vals.lightFunc;vals.tempFunc;vals.culVol;vals.culSA;vals.modelTime};
+            paramVals = custDefault.Values;
+            paramUnits = custDefault.Units;
             if funcAsStr
                 for i=1:1:length(paramVals)
                     if isa(paramVals{i},"function_handle")
@@ -1539,7 +2751,6 @@ classdef ODESys < handle
                     end
                 end
             end
-            paramUnits = {units.lightFunc;units.tempFunc;units.culVol;units.culSA;units.modelTime};
         end
 
         % funcStr: string

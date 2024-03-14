@@ -8,6 +8,8 @@ classdef Plot < handle
     properties
         title = ""; % title of plot
         axes = {}; % axes objects
+        subplotGroup = 1;
+        subplotSlot = 1;
 
         axesNb = 2; % number of axes on plot
 
@@ -20,7 +22,7 @@ classdef Plot < handle
 
     methods
         % title: string, varNames: string[]
-        function plot = Plot(title,varNames,DVNames)
+        function plot = Plot(title,varNames,DVNames,group,slot)
             plot.title = title;
             for k=1:1:2
                 % ### FIXME
@@ -33,21 +35,18 @@ classdef Plot < handle
                     title = "Y Axis Title";
                     isDV = true;
                 end
-%                 DVNames
-%                 varNames
                 ICNames = string.empty(0,1);
                 for l=1:1:size(DVNames,1)
                     ICNames(l,1) = string(DVNames(l,2))+"_{Init-Cond}";
                 end
-                mins = string.empty(0,1);
-                maxes = string.empty(0,1);
-                for l=1:1:size(varNames,1)
-                    mins(l,1) = "min("+string(varNames(l,2))+")";
-                    maxes(l,1) = "max("+string(varNames(l,2))+")";
-                end
-                plot.axes{k} = plot.createNewAxes(k,title,string(varNames(k,2)),string(varNames(:,2)),mins(k,1),maxes(k,1), ...
-                    true,{0},0,0,50,isDV,false,ICNames,mins,maxes); % ### FIXME: can't make Z-axis
+                min = 0;
+                max = 100;
+                plot.axes{k} = plot.createNewAxes(k,title,string(varNames(k,2)),string(varNames(:,2)),min,max, ...
+                    true,{0},0,0,50,isDV,false,ICNames); % ### FIXME: can't make Z-axis
             end
+
+            plot.subplotGroup = group;
+            plot.subplotSlot = slot;
         end
 
         % plot: Plot class ref, prop: string, val: any
@@ -63,9 +62,9 @@ classdef Plot < handle
         function plotProps = getAllPlotProps(plot)
             plotProps = {};
             props = plot.getPlotPropNames();
-                for k=1:1:length(props)
-                    plotProps{k} = plot.getPlotProp(props(k)); %#ok<AGROW> 
-                end
+            for k=1:1:length(props)
+                plotProps{k} = plot.getPlotProp(props(k)); %#ok<AGROW> 
+            end
         end
 
         % plot: Plot class ref, dir: string, prop: string, val: any
@@ -90,6 +89,12 @@ classdef Plot < handle
         end
 
         % plot: Plot class ref
+        function [group,slot] = getSubplotGroupAndSlot(plot)
+            group = plot.subplotGroup;
+            slot = plot.subplotSlot;
+        end
+
+        % plot: Plot class ref
         function downloadPlot(plot,fig)
             % download plot to plot.directory
             try
@@ -111,14 +116,10 @@ classdef Plot < handle
             varNames = plot.axes{1}.varNameOpts;
             ICNames = plot.axes{1}.ICNames;
 
-            mins = string.empty(0,1);
-            maxes = string.empty(0,1);
-            for l=1:1:size(varNames,1)
-                mins(l,1) = "min("+string(varNames(l))+")";
-                maxes(l,1) = "max("+string(varNames(l))+")";
-            end
-            plot.axes{3} = plot.createNewAxes(3,"Z-Axis Title",varNames(3),varNames,"min("+varNames(3)+")","max("+varNames(3)+")", ...
-                true,1,0,0,50,true,false,ICNames,mins,maxes);
+            min = 0;
+            max = 100;
+            plot.axes{3} = plot.createNewAxes(3,"Z-Axis Title",varNames(3),varNames,min,max, ...
+                true,1,0,0,50,true,false,ICNames);
             plot.updateAx(2,"isDV",false);
         end
 
@@ -209,12 +210,6 @@ classdef Plot < handle
                 end
             end
         end
-
-        % plot: Plot class ref, axes: axes object
-        function lims = getDispLims(plot,axes)
-            % ### FIXME: code to interpret the lim value from the lim value
-            % string
-        end
     end
 
     methods (Static)
@@ -222,7 +217,7 @@ classdef Plot < handle
         % string, loDispLim: number, upDispLim: number, useDefR: boolean,
         % lowEvalLim: number, upEvalLim: number, nbEvalPts: number, isDV:
         % boolean
-        function newAxes = createNewAxes(dir,title,varName,varNameOpts,loDispLim,upDispLim,useDefR,evaltVal,loEvalLim,upEvalLim,nbEvalPts,isDV,varIsIC,ICNames,mins,maxes)
+        function newAxes = createNewAxes(dir,title,varName,varNameOpts,loDispLim,upDispLim,useDefR,evaltVal,loEvalLim,upEvalLim,nbEvalPts,isDV,varIsIC,ICNames)
             newAxes = struct( ...
                 'dir',dir, ...
                 'title',title, ...
@@ -237,9 +232,7 @@ classdef Plot < handle
                 'nbEvalPts',nbEvalPts, ...
                 'isDV',isDV, ...
                 'varIsIC',varIsIC, ...
-                'ICNames',ICNames, ...
-                'mins',mins, ...
-                'maxes',maxes ...
+                'ICNames',ICNames ...
             );
         end
 
@@ -270,9 +263,7 @@ classdef Plot < handle
                 "nbEvalPts", ...
                 "isDV", ...
                 "varIsIC", ...
-                "ICNames", ...
-                "mins", ...
-                "maxes", ...
+                "ICNames" ...
             ];
         end
     end

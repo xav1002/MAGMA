@@ -140,6 +140,14 @@ classdef SubFunc < handle
         function setSubFuncSym(subf,funcSym)
             subf.funcSym = funcSym;
         end
+
+        % subf: SubFunc class ref
+        function paramEditable = getSubFuncParamEditable(subf)
+            paramEditable = {};
+            for k=1:1:length(subf.params)
+                paramEditable{k} = subf.params{k}.editable; %#ok<AGROW>
+            end
+        end
     end
 
     methods (Static)
