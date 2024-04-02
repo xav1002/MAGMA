@@ -42,6 +42,9 @@ classdef ODESys < handle
         subplot_ct = 1;
         subplot_row_ct = [1];
         subplot_col_ct = [1];
+        subplots = {};
+        data_export_dir = "";
+        data_export_tables = {};
         PBR_max_vol = 1; % L
         environ_vars = {};
         var_in_key = {};
@@ -62,22 +65,23 @@ classdef ODESys < handle
         importedDataColNames = {}; % column names for user imported data
         regParamList = {}; % list of parameters for easy access
         matchedVarsList = {}; % list of parameters that are matched in regression
-        regSpecs = statset; % struct for regression specifications
+        regSpecs = struct;
+        % regSpecs = struct( ...
+        %     'params',{}, ...
+        %     'paramIGs',[], ...
+        %     'solverSpecs',struct([]) ...
+        % ); % struct for regression specifications
         importedDataIdx = []; % for picking out which data to match in nlinfit
         regData = []; % storing regressed data
         reg_param_ct = 1;
         reg_analytics = struct( ...
-                'beta',[], ...
-                'R', [], ...
-                'J', [], ...
-                'CovB', [], ...
-                'MSE', 0, ...
-                'ErrorModelInfo', [] ...
-            );
-    end
-
-    properties(Constant)
-        sysFuncDef = containers.Map('KeyType','single','ValueType','char'); % containers.Map to track what Species or Chemical each function in dydt represents
+            'beta',[], ...
+            'R', [], ...
+            'J', [], ...
+            'CovB', [], ...
+            'MSE', 0, ...
+            'ErrorModelInfo', [] ...
+        );
     end
 
     methods
@@ -97,6 +101,10 @@ classdef ODESys < handle
             sys.addRmHelperFuncs("Total Solvent Volume",'V_tot',"V",true);
 
             sys.regSpecs.paramIGs = [];
+            sys.regSpecs.params = {};
+            sys.regSpecs.solverSpecs = struct( ...
+                'solver','nlinfit' ...
+            );
         end
 
         % sys: ODESys class ref, num: number, name: string, initConc:
@@ -104,10 +112,11 @@ classdef ODESys < handle
         function sys = addSpecies(sys, num, name, initConc)
             % increases the degree of the ODE system
             sys.degree = sys.degree + 1;
-            % maps Species to number in ODE system
-            sys.sysFuncDef(sys.degree) = name;
             % instantiates Species, stores in ODESys Map
             specName = regexprep(name, ' ', '_');
+            % ### DEBUG: add logic here to make sure that "~" doesn't
+            % appear in any names - throw error if user tries to use "~"
+            % in names
             sys.species.(specName) = Component(name,num,initConc,"Biological Solute",false,0,0,'',0,'',sys.getDefaultParamVals());
         end
 
@@ -115,8 +124,6 @@ classdef ODESys < handle
         function sys = addChemical(sys, num, name, initConc, type, is_vol, MW, h_const, h_const_u, dh_const, dh_const_u)
             % increases the degree of the ODE system
             sys.degree = sys.degree + 1;
-            % maps Chemical to number in ODE system
-            sys.sysFuncDef(sys.degree) = name;
             % instantiates Chemical, stores in ODESys Map
             chemName = replace(regexprep(regexprep(replace(regexprep(name,' ','_'),'^','_'),'+','p'),'-','n'),'.','_');
             
@@ -751,16 +758,52 @@ classdef ODESys < handle
         end
 
         % sys: ODESys class ref, type: string
-        function names = getCompNamesByType(sys,type)
-            if strcmp(type,"Biological Solute")
-                names = sys.getSpecies('name');
-            elseif strcmp(type,"Chemical Solute")
-                names = sys.getChemicals('name');
-            elseif strcmp(type,"Environ")
-                names = {};
-                comps = sys.environs.(sys.activeEnv).getAllEnvComps();
-                for k=1:1:length(comps)
-                    names{k} = comps{k}.getName(); %#ok<AGROW>
+        function names = getCompNamesByType(sys,type,allPhases)
+            if allPhases
+                if strcmp(type,"Biological Solute")
+                    specs = sys.getSpecies('comp');
+                    names = {};
+                    for k=1:1:length(specs)
+                        names{end+1} = [char(specs{k}.getName()),' (Liquid Phase)']; %#ok<AGROW>
+                    end
+                elseif strcmp(type,"Chemical Solute")
+                    chems = sys.getChemicals('comp');
+                    names = {};
+                    for k=1:1:length(chems)
+                        names{end+1} = [char(chems{k}.getName()),' (Liquid Phase)']; %#ok<AGROW>
+                        if chems{k}.is_vol
+                            names{end+1} = [char(chems{k}.getName()),' (Gas Phase)']; %#ok<AGROW>
+                        end
+                        for l=1:1:length(chems{k}.sorpFuncParams)
+                            names{end+1} = [char(chems{k}.getName()),' (',chems{k}.sorpFuncParams{l}.solventName,')']; %#ok<AGROW>
+                        end
+                    end
+                elseif strcmp(type,"Environ")
+                    names = {};
+                    comps = sys.environs.(sys.activeEnv).getAllEnvComps();
+                    for k=1:1:length(comps)
+                        names{k} = comps{k}.getName(); %#ok<AGROW>
+                    end
+                end
+            else
+                if strcmp(type,"Biological Solute")
+                    specs = sys.getSpecies('comp');
+                    names = {};
+                    for k=1:1:length(specs)
+                        names{end+1} = char(specs{k}.getName()); %#ok<AGROW>
+                    end
+                elseif strcmp(type,"Chemical Solute")
+                    chems = sys.getChemicals('comp');
+                    names = {};
+                    for k=1:1:length(chems)
+                        names{end+1} = char(chems{k}.getName()); %#ok<AGROW>
+                    end
+                elseif strcmp(type,"Environ")
+                    names = {};
+                    comps = sys.environs.(sys.activeEnv).getAllEnvComps();
+                    for k=1:1:length(comps)
+                        names{k} = comps{k}.getName(); %#ok<AGROW>
+                    end
                 end
             end
         end
@@ -1359,7 +1402,6 @@ classdef ODESys < handle
     
                 % converting to function_handle
                 sys.dydt = str2func(sys.dydt');
-                disp(sys.dydt)
                 disp('worked')
                 
                 % setting initial conditions
@@ -1380,11 +1422,6 @@ classdef ODESys < handle
             ext_ct = 0;
             for k=1:1:(length(comps))
                 sys.y0(k+ext_ct) = double(string(comps{k}.getInitConc()));
-                if comps{k}.is_vol, ext_ct = ext_ct + 1; end
-                if ~isempty(comps{k}.sorpFuncParams), ext_ct = ext_ct + 1; end
-            end
-            ext_ct = 0;
-            for k=1:1:length(comps)
                 if comps{k}.is_vol
                     ext_ct = ext_ct + 1;
                     helperName = ['Gas Phase Partial Pressure of ',char(comps{k}.getName()),' in Equilibrium with Liquid Phase'];
@@ -1413,100 +1450,375 @@ classdef ODESys < handle
 
         function generatePlots(sys)
             % running model for each plot
-            % ### FIXME: need to be able to plot all system variables
-            % ### FIXME: include all system variables in ODE system?
-            % ### FIXME: test the plotting functionality
-            % ### FIXME: need to code in logic for only having one IV be
-            % ICs
+            sys.compileModel();
+
+            % creating separate figures for each subplot
+            sys.subplots = {};
+            for k=1:1:sys.subplot_ct
+                sys.subplots{k} = figure(k);
+                tiledlayout(sys.subplots{k},sys.subplot_row_ct,sys.subplot_col_ct);
+            end
             
             % ### FIXME: add feature to allow user to specify time
             % precision of model
             tEnd = sys.model_runtime;
-            tSmooth = linspace(0,tEnd,100);
+            tSmooth = [0,tEnd];
             sysVar = sys.getModelVarNames("plot");
             for k=1:1:length(sys.plots)
                 plot_obj = sys.plots{k};
                 axes = plot_obj.axes;
                 if plot_obj.getPlotProp("display") == true || plot_obj.getPlotProp("download") == true
-                    for l=1:1:length(axes)-1
-                        if axes{k}.varIsIC
-                            % run computation for each plot
-                            y0_var_num = {0,0};
-                            for m=1:1:length(axes)
-                                if ~axes{m}.isDV
-                                    y0_span_arr{m} = linspace(axes{m}.loEvalLim,axes{m}.upEvalLim,axes{m}.nbEvalPts);
-                                    y0_var_num{m} = find(strcmp(sysVar,axes{m}.varNames));
+                    if length(axes) == 3
+                        if axes{1}.varIsIC && axes{2}.varIsIC
+                            y0_span_x = linspace(axes{1}.loEvalLim,axes{1}.upEvalLim,axes{1}.nbEvalPts);
+                            y0_span_y = linspace(axes{2}.loEvalLim,axes{2}.upEvalLim,axes{2}.nbEvalPts);
+                            % maybe remove these and just use y0_mesh_X and
+                            % y0_mesh_Y for the interpolation query points
+                            % as well?
+                            y0_span_qx = linspace(axes{1}.loEvalLim,axes{1}.upEvalLim,axes{1}.nbEvalPts*5);
+                            y0_span_qy = linspace(axes{2}.loEvalLim,axes{2}.upEvalLim,axes{2}.nbEvalPts*5);
+                            [y0_mesh_X,y0_mesh_Y] = meshgrid(y0_span_x,y0_span_y);
+                            [y0_mesh_qX,y0_mesh_qY] = meshgrid(y0_span_qx,y0_span_qy);
+
+                            res_1 = cell(length(y0_span_y),length(y0_span_x));
+
+                            % creating array that maps y0 to variable name
+                            y0_2_name = [];
+                            y0_other_phase = [];
+                            comps = [sys.getSpecies('comp'),sys.getChemicals('comp'),sys.environs.(sys.activeEnv).getAllEnvComps()];
+                            ext_ct = 0;
+                            for l=1:1:length(comps)
+                                y0_2_name(l+ext_ct) = string([comps{l}.getName(),' (Liquid Phase)']); %#ok<AGROW>
+                                if comps{l}.is_vol
+                                    ext_ct = ext_ct + 1;
+                                    % helperName = ['Gas Phase Partial Pressure of ',char(comps{l}.getName()),' in Equilibrium with Liquid Phase'];
+                                    % [~,~,helperIdx] = sys.getHelperFunc(helperName);
+                                    % eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
+                                    % % ### FIXME?: unable to access initial conditions for
+                                    % % variables inputted from Simulink, will assume 0 for
+                                    % % all
+                                    % sys.y0(k+ext_ct) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
+
+                                    y0_2_name(l+ext_ct) = string([comps{l}.getName(),' (Gas Phase)']); %#ok<AGROW>
+                                    y0_other_phase(end+1) = l; %#ok<AGROW>
                                 end
-                            end
-        
-                            % ### FIXME: need to add the specifications to control
-                            % whether this is for var IC or for var values
-                            res = cell(length(y0_span_arr{1}),length(y0_span_arr{2}))
-                            for m=1:1:length(y0_span_arr{1})
-                                for n=1:1:length(y0_span_arr{2})
-                                    y0 = [];
-                                    comps = [sys.getSpecies('comp'),sys.getChemicals('comp')];
-                                    for o=1:1:(length(fieldnames(sys.species))+length(fieldnames(sys.chemicals)))
-                                        if o == y0_var_num{1}
-                                            y0(o) = y0_span_arr{1}{m}; %#ok<AGROW> 
-                                        elseif o == y0_var_num{2}
-                                            y0(o) = y0_span_arr{2}{n}; %#ok<AGROW> 
-                                        else
-                                            y0(o) = comps{o}.getInitConc(); %#ok<AGROW>
+                                solvents = {};
+                                if ~isempty(comps{k}.sorpFuncParams)
+                                    for m=1:1:length(comps{k}.sorpFuncParams)
+                                        if ~any(strcmp(solvents,comps{k}.sorpFuncParams{l}.solventName))
+                                            ext_ct = ext_ct + 1;
+                                            % helperName = [char(comps{k}.name),' Concentration in ',comps{k}.sorpFuncParams{l}.solventName,' Phase in Equilibrium with Liquid Phase'];
+                                            % [~,~,helperIdx] = sys.getHelperFunc(helperName);
+                                            % eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
+                                            % sys.y0(k+ext_ct) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
+
+                                            y0_2_name(l+ext_ct) = string([comps{l}.getName(),' (',comps{k}.sorpFuncParams{l}.solventName,' Phase)']); %#ok<AGROW>
+                                            y0_other_phase(end+1) = l; %#ok<AGROW>
+                                            solvents{end+1} = comps{k}.sorpFuncParams{l}.solventName; %#ok<AGROW>
                                         end
                                     end
-                                    [tRes,yRes] = sys.runModel(tSmooth,y0);
-                                    res{m,n} = [yRes,tRes];
+                                end
+                            end
+
+                            y0_var_num_x = strcmp(y0_2_name,erase(axes{1}.getPlotProp("varNames"),"~(IC)"));
+                            y0_var_num_y = strcmp(y0_2_name,erase(axes{2}.getPlotProp("varNames"),"~(IC)"));
+
+                            multiple_x = length(find(y0_other_phase(y0_var_num_x) == y0_other_phase));
+                            multiple_y = length(find(y0_other_phase(y0_var_num_y) == y0_other_phase));
+
+                            for l=1:1:length(y0_span_y)
+                                for m=1:1:length(y0_span_x)
+                                    y0_1 = sys.y0;
+                                    % ### FIXME: need to write logic to edit the
+                                    % changes in initial conditions when there are
+                                    % chemical solutes in different phases
+                                    y0_1(y0_var_num_x) = y0_span_(m);
+                                    if multiple_x
+                                        first_x_idx = find(y0_other_phase(y0_var_num_x) == y0_other_phase,1);
+                                        % setting comp
+                                        comp = comps{y0_other_phase(first_x_idx)};
+                                        if first_x_idx + 1 == y0_var_num_x
+                                            helperName = ['Liquid Phase Concentration of ',char(comp.name),' in Equilibrium with Gas Phase'];
+                                            [~,~,helperIdx] = sys.getHelperFunc(helperName);
+                                            eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
+                                            y0_1(first_x_idx) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
+                                        elseif first_x_idx ~= y0_var_num_x
+                                            for n=1:1:length(comp.sorpFuncParams)
+                                                if contains(axes{1}.getPlotProp("varNames"),comp.sorpFuncParams{n}.solventName)
+                                                    solventName = comp.sorpFuncParams{n}.solventName;
+                                                end
+                                            end
+                                            helperName = [char(comp.name),' Concentration in Liquid Phase in Equilibrium with ',solventName];
+                                            [~,~,helperIdx] = sys.getHelperFunc(helperName);
+                                            eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
+                                            y0_1(first_x_idx) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
+                                        end
+
+                                        % now update the other phases
+                                        ext_ct = 0;
+                                        if comp.is_vol
+                                            ext_ct = ext_ct + 1;
+                                            helperName = ['Gas Phase Partial Pressure of ',char(comp.getName()),' in Equilibrium with Liquid Phase'];
+                                            [~,~,helperIdx] = sys.getHelperFunc(helperName);
+                                            eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
+                                            % ### FIXME?: unable to access initial conditions for
+                                            % variables inputted from Simulink, will assume 0 for
+                                            % all
+                                            y0_1(first_x_idx+ext_ct) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
+                                        end
+                                        solvents = {};
+                                        if ~isempty(comp.sorpFuncParams)
+                                            for n=1:1:length(comp.sorpFuncParams)
+                                                if ~any(strcmp(solvents,comp.sorpFuncParams{n}.solventName))
+                                                    ext_ct = ext_ct + 1;
+                                                    helperName = [char(comp.name),' Concentration in ',comp.sorpFuncParams{n}.solventName,' Phase in Equilibrium with Liquid Phase'];
+                                                    [~,~,helperIdx] = sys.getHelperFunc(helperName);
+                                                    eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
+                                                    y0_1(first_x_idx+ext_ct) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
+                                                    solvents{end+1} = comp.sorpFuncParams{n}.solventName; %#ok<AGROW>
+                                                end
+                                            end
+                                        end
+                                    end
+                                    y0_1(y0_var_num_y) = y0_span_y(l);
+                                    if multiple_y
+                                        first_y_idx = find(y0_other_phase(y0_var_num_y) == y0_other_phase,1);
+                                        % setting comp
+                                        comp = comps{y0_other_phase(first_y_idx)};
+                                        if first_y_idx + 1 == y0_var_num_y
+                                            helperName = ['Liquid Phase Concentration of ',char(comp.name),' in Equilibrium with Gas Phase'];
+                                            [~,~,helperIdx] = sys.getHelperFunc(helperName);
+                                            eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
+                                            y0_1(first_y_idx) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
+                                        elseif first_y_idx ~= y0_var_num_y
+                                            for n=1:1:length(comp.sorpFuncParams)
+                                                if contains(axes{1}.getPlotProp("varNames"),comp.sorpFuncParams{n}.solventName)
+                                                    solventName = comp.sorpFuncParams{n}.solventName;
+                                                end
+                                            end
+                                            helperName = [char(comp.name),' Concentration in Liquid Phase in Equilibrium with ',solventName];
+                                            [~,~,helperIdx] = sys.getHelperFunc(helperName);
+                                            eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
+                                            y0_1(first_y_idx) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
+                                        end
+
+                                        % now update the other phases
+                                        ext_ct = 0;
+                                        if comp.is_vol
+                                            ext_ct = ext_ct + 1;
+                                            helperName = ['Gas Phase Partial Pressure of ',char(comp.getName()),' in Equilibrium with Liquid Phase'];
+                                            [~,~,helperIdx] = sys.getHelperFunc(helperName);
+                                            eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
+                                            % ### FIXME?: unable to access initial conditions for
+                                            % variables inputted from Simulink, will assume 0 for
+                                            % all
+                                            y0_1(first_y_idx+ext_ct) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
+                                        end
+                                        solvents = {};
+                                        if ~isempty(comp.sorpFuncParams)
+                                            for n=1:1:length(comp.sorpFuncParams)
+                                                if ~any(strcmp(solvents,comp.sorpFuncParams{n}.solventName))
+                                                    ext_ct = ext_ct + 1;
+                                                    helperName = [char(comp.name),' Concentration in ',comp.sorpFuncParams{n}.solventName,' Phase in Equilibrium with Liquid Phase'];
+                                                    [~,~,helperIdx] = sys.getHelperFunc(helperName);
+                                                    eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
+                                                    y0_1(first_y_idx+ext_ct) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
+                                                    solvents{end+1} = comp.sorpFuncParams{n}.solventName; %#ok<AGROW>
+                                                end
+                                            end
+                                        end
+                                    end
+
+                                    [tRes,yRes] = sys.runModel(tSmooth,y0_1);
+                                    fRes = sys.calculateHelperVals(tRes,yRes);
+                                    res_1{l,m} = [yRes,fRes,tRes];
+                                end
+                            end
+
+                            res_2 = {};
+                            evalt = sys.plots{k}.getPlotProp("evaltVal");
+                            for l=1:1:length(axes{3}.getPlotProp("varNames"))
+                                yVarIdx = strcmp(sysVar(:,1),axes{3}.varNames{l});
+                                res_2{l} = zeros(size(res_1)); %#ok<AGROW>
+                                for m=1:1:size(res_2,1)
+                                    for n=1:1:size(res_2,2)
+                                        % ### FIXME: add more methods for
+                                        % interpolation?
+                                        res_2{l}(m,n) = interp1(res_1{m,n}(:,end),res_1{m,n}(:,yVarIdx),evalt,'makima');
+                                    end
+                                end
+                            end
+                        elseif axes{1}.varIsIC || axes{2}.varIsIC
+                            if axes{1}.varIsIC
+                                y0_span = linspace(axes{1}.loEvalLim,axes{1}.upEvalLim,axes{1}.nbEvalPts);
+                                ICax = 1;
+                                ICax_obj = axes{1};
+                                nonICAx = 2;
+                                nonICAx_obj = axes{2};
+                            else
+                                y0_span = linspace(axes{2}.loEvalLim,axes{2}.upEvalLim,axes{2}.nbEvalPts);
+                                ICax = 2;
+                                ICax_obj = axes{2};
+                                nonICAx = 1;
+                                nonICax_obj = axes{1};
+                            end
+
+                            res_1 = cell(length(y0_span),1);
+
+                            % creating array that maps y0 to variable name
+                            y0_2_name = [];
+                            y0_other_phase = [];
+                            comps = [sys.getSpecies('comp'),sys.getChemicals('comp'),sys.environs.(sys.activeEnv).getAllEnvComps()];
+                            ext_ct = 0;
+                            for l=1:1:length(comps)
+                                y0_2_name(l+ext_ct) = string([comps{l}.getName(),' (Liquid Phase)']); %#ok<AGROW>
+                                if comps{l}.is_vol
+                                    ext_ct = ext_ct + 1;
+                                    y0_2_name(l+ext_ct) = string([comps{l}.getName(),' (Gas Phase)']); %#ok<AGROW>
+                                    y0_other_phase(end+1) = l; %#ok<AGROW>
+                                end
+                                solvents = {};
+                                if ~isempty(comps{k}.sorpFuncParams)
+                                    for m=1:1:length(comps{k}.sorpFuncParams)
+                                        if ~any(strcmp(solvents,comps{k}.sorpFuncParams{l}.solventName))
+                                            ext_ct = ext_ct + 1;
+                                            y0_2_name(l+ext_ct) = string([comps{l}.getName(),' (',comps{k}.sorpFuncParams{l}.solventName,' Phase)']); %#ok<AGROW>
+                                            y0_other_phase(end+1) = l; %#ok<AGROW>
+                                            solvents{end+1} = comps{k}.sorpFuncParams{l}.solventName; %#ok<AGROW>
+                                        end
+                                    end
+                                end
+                            end
+
+                            y0_var_num = strcmp(y0_2_name,erase(plot_obj.getAxProp(ICax,"varNames"),"~(IC)"));
+
+                            multiple_num = length(find(y0_other_phase(y0_var_num) == y0_other_phase));
+
+                            test4 = y0_span
+                            for l=1:1:length(y0_span)
+                                y0_1 = sys.y0;
+                                y0_1(y0_var_num) = y0_span(l);
+                                if multiple_num
+                                    first_idx = find(y0_other_phase(y0_var_num) == y0_other_phase,1);
+                                    % setting comp
+                                    comp = comps{y0_other_phase(first_idx)};
+                                    if first_idx + 1 == y0_var_num
+                                        helperName = ['Liquid Phase Concentration of ',char(comp.name),' in Equilibrium with Gas Phase'];
+                                        [~,~,helperIdx] = sys.getHelperFunc(helperName);
+                                        eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
+                                        y0_1(first_idx) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
+                                    elseif first_idx ~= y0_var_num
+                                        for m=1:1:length(comp.sorpFuncParams)
+                                            if contains(axes{1}.getPlotProp("varNames"),comp.sorpFuncParams{m}.solventName)
+                                                solventName = comp.sorpFuncParams{m}.solventName;
+                                            end
+                                        end
+                                        helperName = [char(comp.name),' Concentration in Liquid Phase in Equilibrium with ',solventName];
+                                        [~,~,helperIdx] = sys.getHelperFunc(helperName);
+                                        eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
+                                        y0_1(first_idx) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
+                                    end
+
+                                    % now update the other phases
+                                    ext_ct = 0;
+                                    if comp.is_vol
+                                        ext_ct = ext_ct + 1;
+                                        helperName = ['Gas Phase Partial Pressure of ',char(comp.getName()),' in Equilibrium with Liquid Phase'];
+                                        [~,~,helperIdx] = sys.getHelperFunc(helperName);
+                                        eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
+                                        y0_1(first_idx+ext_ct) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
+                                    end
+                                    solvents = {};
+                                    if ~isempty(comp.sorpFuncParams)
+                                        for m=1:1:length(comp.sorpFuncParams)
+                                            if ~any(strcmp(solvents,comp.sorpFuncParams{m}.solventName))
+                                                ext_ct = ext_ct + 1;
+                                                helperName = [char(comp.name),' Concentration in ',comp.sorpFuncParams{m}.solventName,' Phase in Equilibrium with Liquid Phase'];
+                                                [~,~,helperIdx] = sys.getHelperFunc(helperName);
+                                                eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
+                                                y0_1(first_idx+ext_ct) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
+                                                solvents{end+1} = comp.sorpFuncParams{m}.solventName; %#ok<AGROW>
+                                            end
+                                        end
+                                    end
+
+                                    [tRes,yRes] = sys.runModel(tSmooth,y0_1);
+                                    fRes = sys.calculateHelperVals(tRes,yRes);
+                                    res_1{l,1} = [yRes,fRes,tRes];
+                                end
+                            end
+
+                            res_2 = {};
+                            nonICVarIdx = strcmp(sysVar(:,1),nonICax_obj.varNames);
+                            for l=1:1:length(plot_obj.getAxProp(3,"varNames"))
+                                zVarIdx = strcmp(sysVar(:,1),axes{3}.varNames{l});
+                                res_2{l} = zeros(size(res_1)); %#ok<AGROW>
+                                for m=1:1:size(res_2,1)
+                                    % ### FIXME: add more methods for
+                                    % interpolation?
+                                    test5 = res_1{l}
+                                    res_2{l}(m,1) = interp1(res_1{m,1}(:,nonICVarIdx),res_1{m,1}(:,zVarIdx), ...
+                                        linspace(min(res_1{m,1}(:,nonICVarIdx)),max((res_1{m,1}(:,nonICVarIdx)),size(res_1{m,1},1))),'makima');
                                 end
                             end
                         else
                             [tRes,yRes] = sys.runModel(tSmooth);
                             fRes = sys.calculateHelperVals(tRes,yRes);
-                            res{1,1} = [yRes,fRes,tRes];
+                            res_1{1,1} = [yRes,fRes,tRes];
+
+                            xVarIdx = strcmp(sysVar(:,1),axes{1}.varNames);
+                            yVarIdx = strcmp(sysVar(:,1),axes{2}.varNames);
+                            zVarIdx = zeros(size(axes{3}.varNames));
+                            for l=1:1:length(axes{3}.varNames)
+                                zVarIdx(l) = strcmp(sysVar(:,1),axes{2}.varNames{l});
+                            end
+
+                            y0_span_x = res_1{1,1}(:,xVarIdx);
+                            y0_span_y = res_1{1,1}(:,yVarIdx);
+                            y0_span_z = res_1{1,1}(:,zVarIdx);
                         end
+                    else
+                        [tRes,yRes] = sys.runModel(tSmooth,sys.y0);
+                        fRes = sys.calculateHelperVals(tRes,yRes);
+                        res_1{1,1} = [yRes,fRes,tRes];
                     end
 
                     % plot models on fig
-                    fig = figure('Name',plot_obj.title);
-                    hold on;
+                    % ### IMPROVEMENT: give user option to span multiple
+                    % slots?
+                    fig = figure(sys.plots{k}.subplotGroup);
+                    group = sys.plots{k}.subplotGroup;
+                    slot = sys.plots{k}.subplotSlot;
+                    ax = nexttile(sys.subplots{group}.Children(1),slot);
+                    hold(ax,"on");
                     if length(axes) == 2
-                        varSym = split(axes{1}.varNames,'_');
-                        xVarIdx = strcmp(sysVar(:,2),varSym(1));
+                        xVarIdx = strcmp(sysVar(:,1),axes{1}.varNames);
                         yVarIdx = zeros(size(axes{2}.varNames));
                         for l=1:1:length(axes{2}.varNames)
-                            yVarIdx(l) = find(strcmp(sysVar(:,2),axes{2}.varNames{l}));
+                            yVarIdx(l) = find(strcmp(sysVar(:,1),axes{2}.varNames{l}));
                         end
-                        % test2 = varSym(1)
-                        % test3 = axes{2}.varNames
-                        % test4 = sysVar(:,2)
-                        % test5 = xVarIdx
-                        % test6 = yVarIdx
-                        % test9 = size(res{1,1}(:,xVarIdx))
-                        % test10 = size(res{1,1}(:,yVarIdx))
-                        % test11 = res{1,1}(:,xVarIdx)
-                        plot(res{1,1}(:,xVarIdx),res{1,1}(:,yVarIdx));
-                    elseif length(axes) == 3
-                        % interpolation query points
-                        qXVals = linspace(y0_span_arr{1}(1),y0_span_arr{1}(end),axes{1}.nbEvalPts);
-                        qYVals = linspace(y0_span_arr{2}(1),y0_span_arr{2}(end),axes{2}.nbEvalPts)';
-                        [qGridXVals,qGridYVals] = meshgrid(qXVals,qYVals);
-                        
-                        % 2D interpolation
-                        % res
-                        % ### FIXME: need to add functionality to consider
-                        % the time of evaluation if both IVs are ICs
-                        DVVals = zeros(size(res));
-                        DVIdx = strcmp(sysVar(2),{axes{3}.varNames});
-                        for l=1:1:size(res,1)
-                            for m=1:1:size(res,2)
-                                DVVals(l,m) = res{l,m}(axes{3}.evaltVal,DVIdx);
+                        plot(res_1{1,1}(:,xVarIdx),res_1{1,1}(:,yVarIdx));
+                    elseif length(axes) == 3          
+                        if axes{1}.varIsIC && axes{2}.varIsIC
+                            for l=1:1:length(res_2)
+                                % 2D interpolation
+                                interpZGrid = interp2(y0_mesh_X, y0_mesh_Y, res_2{l}, y0_mesh_qX, y0_mesh_qY, 'makima');
+                                % plotting surface
+                                surf(qGridXVals,qGridYVals,interpZGrid);
                             end
+                        elseif axes{1}.varIsIC || axes{2}.varIsIC
+                            for l=1:1:length(res_2)
+                                % 2D interpolation
+                                interpZGrid = interp2(y0_mesh_X, y0_mesh_Y, res_2{l}, y0_mesh_qX, y0_mesh_qY, 'makima');
+                                % plotting surface
+                                surf(qGridXVals,qGridYVals,interpZGrid);
+                            end
+                        else
+                            % plotting lines in 3D
+                            plot3(y0_span_x,y0_span_y,y0_span_z);
                         end
-                        interpZGrid = interp2(y0_span_arr{1}, y0_span_arr{2}, DVVals, qXVals, qYVals, 'makima');
-                    
-                        % plotting surface
-                        surf(qGridXVals,qGridYVals,interpZGrid);
                     end
+
                     title(plot_obj.title);
                     for l=1:1:length(plot_obj.axes)
                         if l == 1
@@ -1521,7 +1833,7 @@ classdef ODESys < handle
                         end
                     end
                     legend(axes{end}.varNames);
-                    hold off;
+                    hold(ax,"off");
 
                     if plot_obj.getPlotProp("display") == false
                         close;
@@ -1534,10 +1846,13 @@ classdef ODESys < handle
         end
 
         % sys: ODESys class ref, t: number[]
-        function [tRes,yRes] = runModel(sys,tspan)
-            % iterating over BatchFunction with ode45
+        function [tRes,yRes] = runModel(sys,tspan,y0)
             opts = odeset('RelTol',1E-6,'AbsTol',1E-6);
-            [tRes,yRes] = ode45(@(t,y) sys.dydt(t,y,sys.param,sys.f(:,3),zeros(size(sys.var_in_key))),tspan,sys.y0,opts);
+            test1 = sys.param
+            test2 = sys.f(:,3)
+            test3 = tspan
+            test4 = sys.y0
+            [tRes,yRes] = ode45(@(t,y) sys.dydt(t,y,sys.param,sys.f(:,3),zeros(size(sys.var_in_key))),tspan,y0,opts);
         end
 
         % sys: ODESys class ref, tRes: num[], yRes: num[]
@@ -1552,266 +1867,301 @@ classdef ODESys < handle
 
         % sys: ODESys class ref,
         function regStats = compileRegression(sys)
-            % try
-                sys.dydt = "@(t,y,p,f,v,r) [";
-                sys.param = [];
-                sys.reg_param_ct = 1;
-                sys.f = {};
+            sys.dydt = "@(t,y,p,f,v,r) [";
+            sys.param = [];
+            sys.reg_param_ct = 1;
+            sys.f = {};
+            for k=1:1:size(sys.regParamList,1), sys.regParamList{k,6} = ""; end
 
-                comps = [sys.getSpecies('comp'),sys.getChemicals('comp'),sys.environs.(sys.activeEnv).getAllEnvComps()];
-                sys.var_out_key = cell(length(comps),2);
-                sys.S_nums = {};
-                ext_ct = 0;
-                for k=1:1:length(comps)
-                    sys.var_out_key{k+ext_ct,1} = comps{k}.getName();
-                    sys.var_out_key{k+ext_ct,2} = comps{k}.getSym();
-                    if comps{k}.is_vol  
-                        ext_ct = ext_ct + 1;
-                        sys.var_out_key{k+ext_ct,2} = comps{k}.getName();
-                        sys.var_out_key{k+ext_ct,2} = comps{k}.getBulkGasSym();
-                    end
-                    for l=1:1:length(comps{k}.sorpFuncParams)
-                        ext_ct = ext_ct + 1;
-                        sys.var_out_key{k+ext_ct,2} = comps{k}.getName();
-                        sys.var_out_key{k+ext_ct,2} = comps{k}.sorpFuncParams{l}.solventSym;
-                    end
-                    if strcmp(comps{k}.getType(),'Suspended Solid Sorbent')
-                        sys.S_nums{end+1} = comps{k}.getNum();
+            comps = [sys.getSpecies('comp'),sys.getChemicals('comp'),sys.environs.(sys.activeEnv).getAllEnvComps()];
+            sys.var_out_key = cell(length(comps),2);
+            sys.S_nums = {};
+            ext_ct = 0;
+            for k=1:1:length(comps)
+                sys.var_out_key{k+ext_ct,1} = comps{k}.getName();
+                sys.var_out_key{k+ext_ct,2} = comps{k}.getSym();
+                if comps{k}.is_vol  
+                    ext_ct = ext_ct + 1;
+                    sys.var_out_key{k+ext_ct,2} = comps{k}.getName();
+                    sys.var_out_key{k+ext_ct,2} = comps{k}.getBulkGasSym();
+                end
+                for l=1:1:length(comps{k}.sorpFuncParams)
+                    ext_ct = ext_ct + 1;
+                    sys.var_out_key{k+ext_ct,2} = comps{k}.getName();
+                    sys.var_out_key{k+ext_ct,2} = comps{k}.sorpFuncParams{l}.solventSym;
+                end
+                if strcmp(comps{k}.getType(),'Suspended Solid Sorbent')
+                    sys.S_nums{end+1} = comps{k}.getNum();
+                end
+            end
+
+            in_syms = sys.getModelVarNames("updateModel");
+            in_syms = in_syms(:,2);
+            sys.var_in_key = {};
+            num_spec = length(sys.getSpecies('comp'));
+            num_spec_chem = length([sys.getSpecies('comp'),sys.getChemicals('comp')]);
+
+            sysVar = sys.getModelVarNames("plot");
+            subfuncs = [sys.environs.(sys.activeEnv).subfuncs,sys.helperFuncs];
+            for k=1:1:length(comps)
+                % add logic to compile component gov funcs in order that
+                % allows for growth-associated product funcs to be a
+                % function of biomass funcs, and substrate funcs to be a
+                % function of biomass and product funcs
+                % ### FIXME: requires special logic/restrictions in the
+                % governing function portion
+                [govFunc, params, sys.reg_param_ct, regPUpdate] = comps{k}.compileGovFunc(length(sys.param),sys.reg_param_ct,sys.regParamList(:,[1,6]),true);
+                for l=1:1:size(regPUpdate,2)
+                    if regPUpdate{1,l}, sys.regParamList{regPUpdate{2,l},6} = regPUpdate{3,l}; end
+                end
+                for l=1:1:length(subfuncs)
+                    if ~strcmp(subfuncs{l}.getSubFuncSym(),"t")
+                        govFunc = regexprep(govFunc,subfuncs{l}.getSubFuncSym(),"f{"+l+"}(t,y,p,f,v,r)");
                     end
                 end
-    
-                in_syms = sys.getModelVarNames("updateModel");
-                in_syms = in_syms(:,2);
-                sys.var_in_key = {};
-                num_spec = length(sys.getSpecies('comp'));
-                num_spec_chem = length([sys.getSpecies('comp'),sys.getChemicals('comp')]);
-    
-                sysVar = sys.getModelVarNames("plot");
-                subfuncs = [sys.environs.(sys.activeEnv).subfuncs,sys.helperFuncs];
-                for k=1:1:length(comps)
-                    % add logic to compile component gov funcs in order that
-                    % allows for growth-associated product funcs to be a
-                    % function of biomass funcs, and substrate funcs to be a
-                    % function of biomass and product funcs
-                    % ### FIXME: requires special logic/restrictions in the
-                    % governing function portion
-                    [govFunc, params, sys.reg_param_ct, regPUpdate] = comps{k}.compileGovFunc(length(sys.param),sys.reg_param_ct,sys.regParamList(:,[1,6]),true);
-                    for l=1:1:size(regPUpdate,2)
-                        if regPUpdate{1,l}, sys.regParamList{regPUpdate{2,l},6} = regPUpdate{3,l}; end
+                for l=1:1:length(in_syms)
+                    if ~isempty(regexp(govFunc,in_syms{l},'once'))
+                        sys.var_in_key{end+1} = in_syms{l};
+                        govFunc = replace(govFunc,in_syms{l},['v(',char(string(length(sys.var_in_key))),')']);
                     end
-                    for l=1:1:length(subfuncs)
-                        if ~strcmp(subfuncs{l}.getSubFuncSym(),"t")
-                            govFunc = regexprep(govFunc,subfuncs{l}.getSubFuncSym(),"f{"+l+"}(t,y,p,f,v,r)");
+                end
+
+                ext_ct = 0;
+                for l=1:1:length(comps)
+                    if l <= num_spec
+                        govFunc = regexprep(govFunc,"X_"+string(comps{l}.getNum()),"y("+l+")");
+                    elseif l > num_spec && l <= num_spec_chem
+                        govFunc = replace(govFunc,['C_',char(string(comps{l}.getNum()))],"y("+(l+ext_ct)+")");
+                        govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],['_C_',char(string(comps{l}.getNum()))]);
+                        govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],['C_',char(string(comps{l}.getNum())),'_']);
+                        if comps{l}.is_vol
+                            ext_ct = ext_ct + 1;
+                            govFunc = regexprep(govFunc,"P_"+(comps{l}.getNum()),"y("+string(l+ext_ct)+")");
                         end
+                        phases = comps{l}.getSorpPhases();
+                        for m=1:1:length(phases)
+                            ext_ct = ext_ct + 1;
+                            govFunc = regexprep(govFunc,phases{m},"y("+(l+ext_ct)+")");
+                            govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],['_',phases{m}]);
+                            govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],[phases{m},'_']);
+                        end
+                        if strcmp(comps{l}.getType(),'Suspended Solid Sorbent')
+                            govFunc = replace(govFunc,['V_S_',char(string(comps{l}.getNum()))],"y("+(l+ext_ct)+")");
+                            govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],['_V_S_',char(string(comps{l}.getNum()))]);
+                            govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],['V_S_',char(string(comps{l}.getNum())),'_']);
+                        end
+                    elseif l == num_spec_chem + 1
+                        govFunc = regexprep(govFunc,'T',['y(',char(string(l+ext_ct)),')']);
+                    elseif l == num_spec_chem + 2
+                        govFunc = regexprep(govFunc,'P',['y(',char(string(l+ext_ct)),')']);
+                        govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],'P_');
+                    elseif l == num_spec_chem + 3
+                        govFunc = regexprep(govFunc,'V',['y(',char(string(l+ext_ct)),')']);
+                        govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],'V_');
+                    elseif l == num_spec_chem + 4
+                        govFunc = replace(govFunc,'H3O',['y(',char(string(l+ext_ct)),')']);
+                        govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],'_H3O');
+                    elseif l == num_spec_chem + 5
+                        govFunc = replace(govFunc,'OH',['y(',char(string(l+ext_ct)),')']);
+                        govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],'_OH');
                     end
-                    % for l=1:1:length(sys.helperFuncs)
-                    %     govFunc = regexprep(govFunc,sys.helperFuncs{l}.getSubFuncSym(),"f{"+(l+length(sys.environs.(sys.activeEnv).subfuncs))+"}(y,t,p,f,v,r)");
-                    % end
-                    % for l=1:1:length(sys.environs.(sys.activeEnv).subfuncs)
-                    %     if ~strcmp(sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"t")
-                    %         govFunc = regexprep(govFunc,sys.environs.(sys.activeEnv).subfuncs{l}.getSubFuncSym(),"f{"+l+"}(y,t,p,f,v,r)");
-                    %     end
-                    % end
-                    % loop through all in_syms and replace with v(#), and track
-                    % which # is for which syms
-                    for l=1:1:length(in_syms)
-                        if ~isempty(regexp(govFunc,in_syms{l},'once'))
+                end
+
+                if k ~= length(comps)
+                    sys.dydt = sys.dydt + govFunc + ";";
+                else
+                    sys.dydt = sys.dydt + govFunc + "]";
+                end
+                sys.param = [sys.param,params];
+            end
+
+            % creating functions for environmental conditions
+            for k=1:1:length(subfuncs)
+                % ### FIXME: add feature to define helpers with another
+                % helper (this is very complicated, for now just don't let
+                % helpers be defined by helpers)
+                ext_ct = 0;
+                subfuncParamCt = 1;
+                govFunc = string(subfuncs{k}.getSubFuncVal());
+                for l=1:1:length(comps)
+                    if l <= num_spec
+                        govFunc = replace(govFunc,"X_"+string(comps{l}.getNum()),"y("+l+")");
+                    elseif l > num_spec && l <= num_spec_chem
+                        govFunc = replace(govFunc,['C_',char(string(comps{l}.getNum()))],"y("+(l+ext_ct)+")");
+                        govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],['_C_',char(string(comps{l}.getNum()))]);
+                        govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],['C_',char(string(comps{l}.getNum())),'_']);
+                        if comps{l}.is_vol
+                            ext_ct = ext_ct + 1;
+                            govFunc = replace(govFunc,"P_"+(comps{l}.getNum()),"y("+string(l+ext_ct)+")");
+                        end
+                        phases = comps{l}.getSorpPhases();
+                        for m=1:1:length(phases)
+                            ext_ct = ext_ct + 1;
+                            govFunc = replace(govFunc,phases{m},"y("+(l+ext_ct)+")");
+                            govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],['_',phases{m}]);
+                            govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],[phases{m},'_']);
+                        end
+                        if strcmp(comps{l}.getType(),'Suspended Solid Sorbent')
+                            govFunc = replace(govFunc,['V_S_',char(string(comps{l}.getNum()))],"y("+(l+ext_ct)+")");
+                            govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],['_V_S_',char(string(comps{l}.getNum()))]);
+                            govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],['V_S_',char(string(comps{l}.getNum())),'_']);
+                        end
+                    elseif l == num_spec_chem + 1
+                        govFunc = regexprep(govFunc,'T',['y(',char(string(l+ext_ct)),')']);
+                    elseif l == num_spec_chem + 2
+                        govFunc = regexprep(govFunc,'P',['y(',char(string(l+ext_ct)),')']);
+                        govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],'P_');
+                    elseif l == num_spec_chem + 3
+                        govFunc = regexprep(govFunc,'V',['y(',char(string(l+ext_ct)),')']);
+                        govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],'V_');
+                    elseif l == num_spec_chem + 4
+                        govFunc = replace(govFunc,'H3O',['y(',char(string(l+ext_ct)),')']);
+                        govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],'_H3O');
+                    elseif l == num_spec_chem + 5
+                        govFunc = replace(govFunc,'OH',['y(',char(string(l+ext_ct)),')']);
+                        govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],'_OH');
+                    end
+                end
+                for l=1:1:length(subfuncs)
+                    if ~strcmp(subfuncs{l}.getSubFuncSym(),"t")
+                        govFunc = regexprep(govFunc,subfuncs{l}.getSubFuncSym(),"f{"+l+"}(t,y,p,f,v,r)");
+                    end
+                end
+                % making sure the in_syms are tracked accurately from
+                % component govFuncs
+                for l=1:1:length(in_syms)
+                    if ~isempty(regexp(govFunc,in_syms{l},'once'))
+                        if any(strcmp(sys.var_in_key,in_syms{l}))
+                            govFunc = replace(govFunc,in_syms{l},['v(',char(string(find([sys.var_in_key{:}] == in_syms{l}))),')']);
+                        else
                             sys.var_in_key{end+1} = in_syms{l};
                             govFunc = replace(govFunc,in_syms{l},['v(',char(string(length(sys.var_in_key))),')']);
                         end
                     end
+                end
 
-                    ext_ct = 0;
-                    for l=1:1:length(comps)
-                        if l <= num_spec
-                            govFunc = regexprep(govFunc,"X_"+string(comps{l}.getNum()),"y("+l+")");
-                        elseif l > num_spec && l <= num_spec_chem
-                            govFunc = replace(govFunc,['C_',char(string(comps{l}.getNum()))],"y("+(l+ext_ct)+")");
-                            govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],['_C_',char(string(comps{l}.getNum()))]);
-                            govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],['C_',char(string(comps{l}.getNum())),'_']);
-                            if comps{l}.is_vol
-                                ext_ct = ext_ct + 1;
-                                govFunc = regexprep(govFunc,"P_"+(comps{l}.getNum()),"y("+string(l+ext_ct)+")");
-                            end
-                            phases = comps{l}.getSorpPhases();
-                            for m=1:1:length(phases)
-                                ext_ct = ext_ct + 1;
-                                govFunc = regexprep(govFunc,phases{m},"y("+(l+ext_ct)+")");
-                                govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],['_',phases{m}]);
-                                govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],[phases{m},'_']);
-                            end
-                            if strcmp(comps{l}.getType(),'Suspended Solid Sorbent')
-                                govFunc = replace(govFunc,['V_S_',char(string(comps{l}.getNum()))],"y("+(l+ext_ct)+")");
-                                govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],['_V_S_',char(string(comps{l}.getNum()))]);
-                                govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],['V_S_',char(string(comps{l}.getNum())),'_']);
-                            end
-                        elseif l == num_spec_chem + 1
-                            govFunc = regexprep(govFunc,'T',['y(',char(string(l+ext_ct)),')']);
-                        elseif l == num_spec_chem + 2
-                            govFunc = regexprep(govFunc,'P',['y(',char(string(l+ext_ct)),')']);
-                            govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],'P_');
-                        elseif l == num_spec_chem + 3
-                            govFunc = regexprep(govFunc,'V',['y(',char(string(l+ext_ct)),')']);
-                            govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],'V_');
-                        elseif l == num_spec_chem + 4
-                            govFunc = replace(govFunc,'H3O',['y(',char(string(l+ext_ct)),')']);
-                            govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],'_H3O');
-                        elseif l == num_spec_chem + 5
-                            govFunc = replace(govFunc,'OH',['y(',char(string(l+ext_ct)),')']);
-                            govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],'_OH');
+                syms = subfuncs{k}.getSubFuncParamSyms();
+                govFuncLength = strlength(govFunc);
+                for l=1:1:length(syms)
+                    for m=1:1:length(govFunc)
+                        if strlength(govFunc(m)) > 1 || govFuncLength == 1
+                            govFunc(m) = regexprep(govFunc(m),syms(l),"#("+(length(sys.param)+subfuncParamCt)+")");
                         end
                     end
-    
-                    if k ~= length(comps)
-                        sys.dydt = sys.dydt + govFunc + ";";
-                    else
-                        sys.dydt = sys.dydt + govFunc + "]";
-                    end
-                    sys.param = [sys.param,params];
+                    subfuncParamCt = subfuncParamCt + 1;
                 end
-    
-                % creating functions for environmental conditions
-                for k=1:1:length(subfuncs)
-                    % ### FIXME: add feature to define helpers with another
-                    % helper (this is very complicated, for now just don't let
-                    % helpers be defined by helpers)
-                    ext_ct = 0;
-                    subfuncParamCt = 1;
-                    govFunc = string(subfuncs{k}.getSubFuncVal());
-                    for l=1:1:length(comps)
-                        if l <= num_spec
-                            govFunc = replace(govFunc,"X_"+string(comps{l}.getNum()),"y("+l+")");
-                        elseif l > num_spec && l <= num_spec_chem
-                            govFunc = replace(govFunc,['C_',char(string(comps{l}.getNum()))],"y("+(l+ext_ct)+")");
-                            govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],['_C_',char(string(comps{l}.getNum()))]);
-                            govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],['C_',char(string(comps{l}.getNum())),'_']);
-                            if comps{l}.is_vol
-                                ext_ct = ext_ct + 1;
-                                govFunc = replace(govFunc,"P_"+(comps{l}.getNum()),"y("+string(l+ext_ct)+")");
-                            end
-                            phases = comps{l}.getSorpPhases();
-                            for m=1:1:length(phases)
-                                ext_ct = ext_ct + 1;
-                                govFunc = replace(govFunc,phases{m},"y("+(l+ext_ct)+")");
-                                govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],['_',phases{m}]);
-                                govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],[phases{m},'_']);
-                            end
-                            if strcmp(comps{l}.getType(),'Suspended Solid Sorbent')
-                                govFunc = replace(govFunc,['V_S_',char(string(comps{l}.getNum()))],"y("+(l+ext_ct)+")");
-                                govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],['_V_S_',char(string(comps{l}.getNum()))]);
-                                govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],['V_S_',char(string(comps{l}.getNum())),'_']);
-                            end
-                        elseif l == num_spec_chem + 1
-                            govFunc = regexprep(govFunc,'T',['y(',char(string(l+ext_ct)),')']);
-                        elseif l == num_spec_chem + 2
-                            govFunc = regexprep(govFunc,'P',['y(',char(string(l+ext_ct)),')']);
-                            govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],'P_');
-                        elseif l == num_spec_chem + 3
-                            govFunc = regexprep(govFunc,'V',['y(',char(string(l+ext_ct)),')']);
-                            govFunc = regexprep(govFunc,['y\(',char(string(l+ext_ct)),'\)_'],'V_');
-                        elseif l == num_spec_chem + 4
-                            govFunc = replace(govFunc,'H3O',['y(',char(string(l+ext_ct)),')']);
-                            govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],'_H3O');
-                        elseif l == num_spec_chem + 5
-                            govFunc = replace(govFunc,'OH',['y(',char(string(l+ext_ct)),')']);
-                            govFunc = regexprep(govFunc,['_y\(',char(string(l+ext_ct)),'\)'],'_OH');
-                        end
-                    end
-                    for l=1:1:length(subfuncs)
-                        if ~strcmp(subfuncs{l}.getSubFuncSym(),"t")
-                            govFunc = regexprep(govFunc,subfuncs{l}.getSubFuncSym(),"f{"+l+"}(t,y,p,f,v,r)");
-                        end
-                    end
-                    % making sure the in_syms are tracked accurately from
-                    % component govFuncs
-                    for l=1:1:length(in_syms)
-                        if ~isempty(regexp(govFunc,in_syms{l},'once'))
-                            if any(strcmp(sys.var_in_key,in_syms{l}))
-                                govFunc = replace(govFunc,in_syms{l},['v(',char(string(find([sys.var_in_key{:}] == in_syms{l}))),')']);
-                            else
-                                sys.var_in_key{end+1} = in_syms{l};
-                                govFunc = replace(govFunc,in_syms{l},['v(',char(string(length(sys.var_in_key))),')']);
-                            end
-                        end
-                    end
-    
-                    syms = subfuncs{k}.getSubFuncParamSyms();
-                    govFuncLength = strlength(govFunc);
-                    for l=1:1:length(syms)
-                        for m=1:1:length(govFunc)
-                            if strlength(govFunc(m)) > 1 || govFuncLength == 1
-                                govFunc(m) = regexprep(govFunc(m),syms(l),"#("+(length(sys.param)+subfuncParamCt)+")");
-                            end
-                        end
-                        subfuncParamCt = subfuncParamCt + 1;
-                    end
-                    govFunc = replace(govFunc,'#','p');
-                    funcArgText = "@(t,y,p,f,v,r)";
-                    sys.f{end+1,1} = subfuncs{k}.getSubFuncName();
-                    sys.f{end,2} = subfuncs{k}.getSubFuncSym();
-                    sys.f{end,3} = str2func(funcArgText+govFunc);
-                    sys.param = [sys.param,subfuncs{k}.getSubFuncParamVals()'];
+                govFunc = replace(govFunc,'#','p');
+                funcArgText = "@(t,y,p,f,v,r)";
+                sys.f{end+1,1} = subfuncs{k}.getSubFuncName();
+                sys.f{end,2} = subfuncs{k}.getSubFuncSym();
+                sys.f{end,3} = str2func(funcArgText+govFunc);
+                sys.param = [sys.param,subfuncs{k}.getSubFuncParamVals()'];
+            end
+
+            % converting to function_handle
+            sys.dydt = str2func(sys.dydt');
+            test = sys.dydt
+            test2 = sys.param
+
+            sys.importedDataIdx = [];
+            for k=1:1:length(sys.matchedVarsList)
+                matchIdx = strcmp(cellstr(sysVar(:,1)),sys.matchedVarsList{k}.sysVarName);
+                varSyms = cellstr(sysVar(:,1));
+                if any(matchIdx) && ~strcmp("Model Runtime",varSyms{matchIdx})
+                    sys.importedDataIdx(end+1) = find(matchIdx);
                 end
-    
-                % converting to function_handle
-                sys.dydt = str2func(sys.dydt');
-                test = sys.dydt
-    
-                sys.importedDataIdx = [];
-                for k=1:1:length(sys.matchedVarsList)
-                    matchIdx = strcmp(cellstr(sysVar(:,1)),sys.matchedVarsList{k}.sysVarName);
-                    varSyms = cellstr(sysVar(:,1));
-                    if any(matchIdx) && ~strcmp("Model Runtime",varSyms{matchIdx})
-                        sys.importedDataIdx(end+1) = find(matchIdx);
-                    end
-                end
-                IVs = zeros((size(sys.importedData,2)-1).*size(sys.importedData,1),1);
-                DVs = zeros((size(sys.importedData,2)-1).*size(sys.importedData,1),1);
-                for k=2:1:size(sys.importedData,2)
-                    IVs((1:1:size(sys.importedData,1))+((k-2).*size(sys.importedData,1)),1) = [sys.importedData{:,1}];
-                    DVs((1:1:size(sys.importedData,1))+((k-2).*size(sys.importedData,1)),1) = [sys.importedData{:,k}];
-                end
-                % ### FIXME: upgrade later to allow automatic testing of
-                % various starting guesses for each parameter
-                beta0 = sys.regSpecs.paramIGs
-    
-                % ### FIXME: upgrade to fitnlm (more recent/robust nonlin
-                % fitter?)
-                sys.setInitCond();
-                [sys.reg_analytics.beta,sys.reg_analytics.R,sys.reg_analytics.J, ...
-                    sys.reg_analytics.CovB,sys.reg_analytics.MSE,sys.reg_analytics.ErrorModelInfo] = ...
-                    nlinfit(IVs,DVs,@(reg_param,t) sys.nLinRegHandler(reg_param,t),beta0,sys.regSpecs);
-    
-    %             sys.reg_analytics.R
-    
-                [tRes,yRes] = sys.runRegModel(IVs,sys.y0,sys.reg_analytics.beta);
-                sys.regData = [tRes,yRes];
-                regStats = struct('importedDataIdx',sys.importedDataIdx, ...
-                    'beta',sys.reg_analytics.beta,'R',sys.reg_analytics.R, ...
-                    'J',sys.reg_analytics.J,'CovB',sys.reg_analytics.CovB,'MSE',sys.reg_analytics.MSE, ...
-                    'ErrorModelInfo',sys.reg_analytics.ErrorModelInfo, ...
-                    'IVs',sys.importedData{:,1},'DVs',sys.importedData{:,2:end},'tRes',tRes,'yRes',yRes);
-            % catch err
-            %     err.stack.line
-            %     test3 = sys.y0
-            % end
+            end
+            IVs = zeros((size(sys.importedData,2)-1).*size(sys.importedData,1),1);
+            DVs = zeros((size(sys.importedData,2)-1).*size(sys.importedData,1),1);
+            for k=2:1:size(sys.importedData,2)
+                IVs((1:1:size(sys.importedData,1))+((k-2).*size(sys.importedData,1)),1) = [sys.importedData{:,1}];
+                DVs((1:1:size(sys.importedData,1))+((k-2).*size(sys.importedData,1)),1) = [sys.importedData{:,k}];
+            end
+            % ### FIXME: upgrade later to allow automatic testing of
+            % various starting guesses for each parameter
+            beta0 = sys.regSpecs.paramIGs;
+
+            sys.setInitCond();
+            % test4 = sys.regSpecs.solverSpecs.solver
+            % set proper reg specs based on solver
+            switch sys.regSpecs.solverSpecs.solver
+                case "nlinfit"
+                    nlinfitSpecs = statset;
+                    nlinfitSpecs.Display = 'iter';
+                    % nlinfitSpecs.MaxFunEvals = sys.regSpecs.solverSpecs.Maximum_Function_Evaluations;
+                    % nlinfitSpecs.MaxIter = sys.regSpecs.solverSpecs.Maximum_Iterations;
+                    nlinfitSpecs.MaxIter = 1E5;
+                    nlinfitSpecs.TolFun = sys.regSpecs.solverSpecs.TolFun;
+                    nlinfitSpecs.TolX = sys.regSpecs.solverSpecs.TolX;
+                    nlinfitSpecs.DerivStep = sys.regSpecs.solverSpecs.DerivStep;
+                    % nlinfitSpecs.FunValCheck = sys.regSpecs.solverSpecs.checkNanInf;
+                    % nlinfitSpecs.RobustWgtFun = sys.regSpecs.solverSpecs.Weight_Function;
+                    % nlinfitSpecs.Tune = sys.regSpecs.solverSpecs.Tuning_Constant;
+                    [sys.reg_analytics.beta,sys.reg_analytics.R,sys.reg_analytics.J, ...
+                        sys.reg_analytics.CovB,sys.reg_analytics.MSE,sys.reg_analytics.ErrorModelInfo] = ...
+                        nlinfit(IVs,DVs,@(reg_param,t) sys.nlinfitHandler(reg_param,t),beta0,nlinfitSpecs);
+
+                case "lsqcurvefit"
+
+
+                case "fminsearch"
+                    fminsearchSpecs = optimset;
+                    fminsearchSpecs.Display = 'iter';
+                    fminsearchSpecs.FunValCheck = sys.regSpecs.solverSpecs.checkComplexInf;
+                    fminsearchSpecs.MaxFunEvals = sys.regSpecs.solverSpecs.Maximum_Function_Evaluations;
+                    fminsearchSpecs.MaxIter = sys.regSpecs.solverSpecs.Maximum_Iterations;
+                    fminsearchSpecs.PlotFcns = sys.regSpecs.solverSpecs.PlotFcns;
+                    fminsearchSpecs.TolFun = sys.regSpecs.solverSpecs.TolFun;
+                    fminsearchSpecs.TolX = sys.regSpecs.solverSpecs.TolX;
+                    sys.reg_analytics.beta = fminsearch(@(reg_param) sys.fminsearchHandler(IVs,reg_param),beta0,fminsearchSpecs);
+                    % sys.reg_analytics.R = (DVs-sys.runRegModel(IVs,sys.y0,sys.reg_analytics.beta));
+                    % sys.reg_analytics.MSE = mean((DVs-sys.runRegModel(IVs,sys.y0,sys.reg_analytics.beta)).^2,"all");
+
+                case "fmincon"
+
+
+            end
+
+            [tRes,yRes] = sys.runRegModel(IVs,sys.y0,sys.reg_analytics.beta);
+            sys.regData = [tRes,yRes];
+            regStats = struct('importedDataIdx',sys.importedDataIdx, ...
+                'beta',sys.reg_analytics.beta,'R',sys.reg_analytics.R, ...
+                'J',sys.reg_analytics.J,'CovB',sys.reg_analytics.CovB,'MSE',sys.reg_analytics.MSE, ...
+                'ErrorModelInfo',sys.reg_analytics.ErrorModelInfo, ...
+                'IVs',sys.importedData{:,1},'DVs',sys.importedData{:,2:end},'tRes',tRes,'yRes',yRes);
         end
 
         % sys: ODESys class ref, param: number[], t: number[]
-        function yRes = nLinRegHandler(sys,reg_param,t)
-            opts = odeset('RelTol',1e-6,'AbsTol',1e-6);
-            tspan = unique(t);
+        function yRes = nlinfitHandler(sys,reg_param,t)
+            opts = odeset('RelTol',1E-6,'AbsTol',1E-6,'NonNegative',1);
+            tspan = unique(t)
+            test = sys.y0
+            test2 = sys.dydt
             [~,yRes_all] = ode45(@(t,y) sys.dydt(t,y,sys.param,sys.f(:,3),zeros(size(sys.var_in_key,2)),reg_param),tspan,sys.y0,opts);
-            yRes = zeros((size(sys.importedData,2)-1).*size(sys.importedData,1),1);
+            yRes = zeros((size(sys.importedData,2)-1).*size(sys.importedData,1),1)
             for k=1:1:size(sys.importedData,2)-1
-                yRes((1:1:size(sys.importedData,1))+((k-1).*size(sys.importedData,1)),1) = yRes_all(:,sys.importedDataIdx(k));
+                yRes((1:1:size(sys.importedData,1))+((k-1).*size(sys.importedData,1)),1) = yRes_all(:,sys.importedDataIdx(k))
             end
+        end
+
+        % sys: ODESys class ref, x: number[]
+        function SSE = fminsearchHandler(sys,IVs,reg_param)
+            opts = odeset('RelTol',1E-5,'AbsTol',1E-5,'NonNegative',1);
+            tspan = unique(IVs);
+            [~,yRes_all] = ode45(@(t,y) sys.dydt(t,y,sys.param,sys.f(:,3),zeros(size(sys.var_in_key,2)),reg_param),tspan,sys.y0,opts);
+            yRes = zeros(size(table2array(sys.importedData(:,2:end))));
+            for k=1:1:size(sys.importedData,2)-1
+                yRes(:,k) = yRes_all(:,sys.importedDataIdx(k));
+            end
+            % test3 = (yRes)
+            % test4 = (table2array(sys.importedData(:,2:end)))
+            SSE = sum((table2array(sys.importedData(:,2:end))-yRes).^2,"all");
         end
 
         % sys: ODESys class ref, t: number[]
         function [tRes,yRes] = runRegModel(sys,t,y0,reg_param)
             % iterating over BatchFunction with ode45
-            opts = odeset('RelTol',1e-6,'AbsTol',1e-6);
+            opts = odeset('RelTol',1E-5,'AbsTol',1E-5,'NonNegative',1);
             tspan = [t(1),t(end)];
             [tRes,yRes] = ode45(@(t,y) sys.dydt(t,y,sys.param,sys.f(:,3),zeros(size(sys.var_in_key,2)),reg_param),tspan,y0,opts);
         end
@@ -1879,7 +2229,7 @@ classdef ODESys < handle
             if simBnds == "On", simBnds = 'on'; else, simBnds = 'off'; end
             switch calcType
                 case "Covariance"
-                    res = nlpredci(@(reg_param,t) sys.nLinRegHandler(reg_param,t,y0,true),[tval,tval.*1.001],sys.reg_analytics.beta, ...
+                    res = nlpredci(@(reg_param,t) sys.nlinfitHandler(reg_param,t,y0,true),[tval,tval.*1.001],sys.reg_analytics.beta, ...
                         sys.reg_analytics.R,'covariance',sys.reg_analytics.CovB,'alpha',alpha, ...
                         'ErrorModelInfo',sys.reg_analytics.ErrorModelInfo,'MSE',sys.reg_analytics.MSE, ...
                         'PredOpt',predIntType,'SimOpt',simBnds,'Weights',sys.regSpecs.RobustWgtFun);
@@ -1888,7 +2238,7 @@ classdef ODESys < handle
                         predCI{k,3} = res(k,2);
                     end
                 case "Jacobian"
-                    res = nlpredci(@(reg_param,t) sys.nLinRegHandler(reg_param,t,y0,true),[tval,tval.*1.001],sys.reg_analytics.beta, ...
+                    res = nlpredci(@(reg_param,t) sys.nlinfitHandler(reg_param,t,y0,true),[tval,tval.*1.001],sys.reg_analytics.beta, ...
                         sys.reg_analytics.R,'jacobian',sys.reg_analytics.J,'alpha',alpha, ...
                         'ErrorModelInfo',sys.reg_analytics.ErrorModelInfo,'MSE',sys.reg_analytics.MSE, ...
                         'PredOpt',predIntType,'SimOpt',simBnds,'Weights',sys.regSpecs.RobustWgtFun);
@@ -2010,7 +2360,10 @@ classdef ODESys < handle
 
         % sys: ODESys class ref
         function [group,slot] = getNextSubplotSlot(sys)
-            filled_slots = [];
+            filled_slots = cell(sys.subplot_ct,1);
+            for k=1:1:length(filled_slots)
+                filled_slots{k} = [];
+            end
             if isempty(sys.plots)
                 group = 1;
                 slot = 1;
@@ -2018,13 +2371,13 @@ classdef ODESys < handle
                 for k=1:1:length(sys.plots)
                     [group,slot] = sys.plots{k}.getSubplotGroupAndSlot();
                     % ### STARTHERE: how to get this to work?
-                    filled_slots(group) = concat(filled_slots,slot); %#ok<AGROW>
+                    filled_slots{group} = [filled_slots{group},slot];
                 end
-                for k=1:1:length(filled_slots), filled_slots = sort(filled_slots(k)); end
+                for k=1:1:length(filled_slots), filled_slots{k} = sort(filled_slots{k}); end
                 for k=1:1:length(filled_slots)
-                    if length(filled_slots(k)) < (sys.subplot_row_ct*sys.subplot_col_ct)
+                    if length(filled_slots{k}) < (sys.subplot_row_ct*sys.subplot_col_ct)
                         group = k;
-                        non_intersects = setxor(linspace(1,sys.subplot_row_ct*sys.subplot_col_ct,sys.subplot_row_ct*sys.subplot_col_ct),filled_slots(k));
+                        non_intersects = setxor(linspace(1,sys.subplot_row_ct*sys.subplot_col_ct,sys.subplot_row_ct*sys.subplot_col_ct),filled_slots{k});
                         slot = non_intersects(1);
                     end
                 end
@@ -2068,8 +2421,7 @@ classdef ODESys < handle
         % varName: string, addVar: boolean
         function varText = updateAxVars(sys,plotName,axesDir,varName,addVar)
             plot = sys.getPlotByName(plotName);
-            splitRes = split(varName,'_');
-            if length(splitRes) > 1
+            if contains(varName,"~")
                 varIsIC = true;
             else
                 varIsIC = false;
@@ -2169,11 +2521,11 @@ classdef ODESys < handle
         end
 
         % sys: ODESys class ref, plotName: string, axisName: string,
-        % varName: string, evaltVal: string | number, loEvalLim: string | number, 
+        % varName: string, varUnits: string, evaltVal: string | number, loEvalLim: string | number, 
         % upEvalLim: string | number, nbEvalPts: number
-        function setVarICEvalData(sys,plotName,axisName,varName,evaltVal,loEvalLim,upEvalLim,nbEvalPts)
+        function setVarICEvalData(sys,plotName,axisName,varName,varUnits,evaltVal,loEvalLim,upEvalLim,nbEvalPts)
             plot = sys.getPlotByName(plotName);
-            plot.setVarICEvalData(axisName,varName,evaltVal,loEvalLim,upEvalLim,nbEvalPts);
+            plot.setVarICEvalData(axisName,varName,varUnits,evaltVal,loEvalLim,upEvalLim,nbEvalPts);
         end
 
         % sys: ODESys class ref, filePath: string, colNames: {}
@@ -2211,28 +2563,45 @@ classdef ODESys < handle
                             break;
                         end
                     end
-                    sys.regParamList{end+1,1} = regParam{3};
-                    sys.regParamList{end,2} = compName;
-                    sys.regParamList{end,3} = regParam{2};
-                    sys.regParamList{end,4} = regParam{5};
-                    sys.regParamList{end,5} = '~';
-                    sys.regParamList{end,6} = "";
-                    sys.regParamList{end,7} = regParam{6};
+                    new_idx = 0;
+                    for k=1:1:size(sys.regParamList,1)
+                        sorted_comp_arr = sort({sys.regParamList{k,1},regParam{3}});
+                        if strcmp(sorted_comp_arr{1},regParam{3})
+                            new_idx = k;
+                            break;
+                        end
+                    end
 
-                    sys.regSpecs.DerivStep(end+1,1) = eps^(1/3);
+                    if ~isempty(sys.regParamList) && new_idx ~= 0
+                        sys.regParamList(new_idx+1:size(sys.regParamList,1)+1,:) = sys.regParamList(new_idx:size(sys.regParamList,1),:);
+                    end
+
+                    if new_idx == 0
+                        new_idx = size(sys.regParamList,1)+1;
+                    end
+
+                    sys.regParamList{new_idx,1} = regParam{3};
+                    sys.regParamList{new_idx,2} = compName;
+                    sys.regParamList{new_idx,3} = regParam{2};
+                    sys.regParamList{new_idx,4} = regParam{5};
+                    sys.regParamList{new_idx,5} = '~';
+                    sys.regParamList{new_idx,6} = "";
+                    sys.regParamList{new_idx,7} = regParam{6};
+
+                    % sys.regSpecs.DerivStep(end+1,1) = eps^(1/3);
                     sys.regSpecs.paramIGs(end+1,1) = regParam{5};
                 end
             elseif updateType == "Remove"
                 for k=1:1:size(sys.regParamList,1)
                     if strcmp(sys.regParamList{k,1},paramSym)
                         sys.regParamList(k,:) = [];
-                        sys.regSpecs.DerivStep(k,1) = [];
-                        sys.regSpecs.paramIGs(k,1) = [];
+                        % sys.regSpecs.DerivStep(k,1) = [];
+                        sys.regSpecs.paramIGs(k,:) = [];
                         break;
                     end
                 end
-                for k=1:1:size(sys.regParamList,1), sys.regParamList{k,6} = ""; end
             end
+            for k=1:1:size(sys.regParamList,1), sys.regParamList{k,6} = ""; end
             params = sys.regParamList(:,1:5);
         end
 
@@ -2310,7 +2679,7 @@ classdef ODESys < handle
             regSpecs = sys.regSpecs;
         end
 
-        % sys: ODEsys class ref, regSpecs: statset
+        % sys: ODEsys class ref, regSpecs: struct
         function setRegSpecs(sys,regSpecs)
             sys.regSpecs = regSpecs;
         end
@@ -2734,6 +3103,356 @@ classdef ODESys < handle
                 end
                 res{k,1} = [char(comps{k}.getName()),ext];
                 res{k,2} = comps{k}.getSym();
+            end
+        end
+
+        % sys: ODESys class ref
+        function runModelAndExportData(sys)
+            % compile model
+            sys.compileModel();
+
+            % generate data based on existing plots
+            tEnd = sys.model_runtime;
+            tSmooth = linspace(0,tEnd,100);
+            sysVar = sys.getModelVarNames("plot");
+            for k=1:1:length(sys.plots)
+                plot_obj = sys.plots{k};
+                axes = plot_obj.axes;
+                if length(axes) == 3
+                    if axes{1}.varIsIC && axes{2}.varIsIC
+                        y0_span_x = linspace(axes{1}.loEvalLim,axes{1}.upEvalLim,axes{1}.nbEvalPts);
+                        y0_span_y = linspace(axes{2}.loEvalLim,axes{2}.upEvalLim,axes{2}.nbEvalPts);
+                        % maybe remove these and just use y0_mesh_X and
+                        % y0_mesh_Y for the interpolation query points
+                        % as well?
+                        y0_span_qx = linspace(axes{1}.loEvalLim,axes{1}.upEvalLim,axes{1}.nbEvalPts*5);
+                        y0_span_qy = linspace(axes{2}.loEvalLim,axes{2}.upEvalLim,axes{2}.nbEvalPts*5);
+                        [y0_mesh_X,y0_mesh_Y] = meshgrid(y0_span_x,y0_span_y);
+                        % [y0_mesh_qX,y0_mesh_qY] = meshgrid(y0_span_qx,y0_span_qy);
+
+                        res_1 = cell(length(y0_span_y),length(y0_span_x));
+
+                        % creating array that maps y0 to variable name
+                        y0_2_name = [];
+                        y0_other_phase = [];
+                        comps = [sys.getSpecies('comp'),sys.getChemicals('comp'),sys.environs.(sys.activeEnv).getAllEnvComps()];
+                        ext_ct = 0;
+                        for l=1:1:length(comps)
+                            y0_2_name(l+ext_ct) = string([comps{l}.getName(),' (Liquid Phase)']); %#ok<AGROW>
+                            if comps{l}.is_vol
+                                ext_ct = ext_ct + 1;
+                                % helperName = ['Gas Phase Partial Pressure of ',char(comps{l}.getName()),' in Equilibrium with Liquid Phase'];
+                                % [~,~,helperIdx] = sys.getHelperFunc(helperName);
+                                % eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
+                                % % ### FIXME?: unable to access initial conditions for
+                                % % variables inputted from Simulink, will assume 0 for
+                                % % all
+                                % sys.y0(k+ext_ct) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
+
+                                y0_2_name(l+ext_ct) = string([comps{l}.getName(),' (Gas Phase)']); %#ok<AGROW>
+                                y0_other_phase(end+1) = l; %#ok<AGROW>
+                            end
+                            solvents = {};
+                            if ~isempty(comps{k}.sorpFuncParams)
+                                for m=1:1:length(comps{k}.sorpFuncParams)
+                                    if ~any(strcmp(solvents,comps{k}.sorpFuncParams{l}.solventName))
+                                        ext_ct = ext_ct + 1;
+                                        % helperName = [char(comps{k}.name),' Concentration in ',comps{k}.sorpFuncParams{l}.solventName,' Phase in Equilibrium with Liquid Phase'];
+                                        % [~,~,helperIdx] = sys.getHelperFunc(helperName);
+                                        % eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
+                                        % sys.y0(k+ext_ct) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
+
+                                        y0_2_name(l+ext_ct) = string([comps{l}.getName(),' (',comps{k}.sorpFuncParams{l}.solventName,' Phase)']); %#ok<AGROW>
+                                        y0_other_phase(end+1) = l; %#ok<AGROW>
+                                        solvents{end+1} = comps{k}.sorpFuncParams{l}.solventName; %#ok<AGROW>
+                                    end
+                                end
+                            end
+                        end
+
+                        y0_var_num_x = strcmp(y0_2_name,erase(axes{1}.getPlotProp("varNames"),"~(IC)"));
+                        y0_var_num_y = strcmp(y0_2_name,erase(axes{2}.getPlotProp("varNames"),"~(IC)"));
+
+                        multiple_x = length(find(y0_other_phase(y0_var_num_x) == y0_other_phase));
+                        multiple_y = length(find(y0_other_phase(y0_var_num_y) == y0_other_phase));
+
+                        for l=1:1:length(y0_span_y)
+                            for m=1:1:length(y0_span_x)
+                                y0_1 = sys.y0;
+                                % ### FIXME: need to write logic to edit the
+                                % changes in initial conditions when there are
+                                % chemical solutes in different phases
+                                y0_1(y0_var_num_x) = y0_span_(m);
+                                if multiple_x
+                                    first_x_idx = find(y0_other_phase(y0_var_num_x) == y0_other_phase,1);
+                                    % setting comp
+                                    comp = comps{y0_other_phase(first_x_idx)};
+                                    if first_x_idx + 1 == y0_var_num_x
+                                        helperName = ['Liquid Phase Concentration of ',char(comp.name),' in Equilibrium with Gas Phase'];
+                                        [~,~,helperIdx] = sys.getHelperFunc(helperName);
+                                        eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
+                                        y0_1(first_x_idx) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
+                                    elseif first_x_idx ~= y0_var_num_x
+                                        for n=1:1:length(comp.sorpFuncParams)
+                                            if contains(axes{1}.getPlotProp("varNames"),comp.sorpFuncParams{n}.solventName)
+                                                solventName = comp.sorpFuncParams{n}.solventName;
+                                            end
+                                        end
+                                        helperName = [char(comp.name),' Concentration in Liquid Phase in Equilibrium with ',solventName];
+                                        [~,~,helperIdx] = sys.getHelperFunc(helperName);
+                                        eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
+                                        y0_1(first_x_idx) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
+                                    end
+
+                                    % now update the other phases
+                                    ext_ct = 0;
+                                    if comp.is_vol
+                                        ext_ct = ext_ct + 1;
+                                        helperName = ['Gas Phase Partial Pressure of ',char(comp.getName()),' in Equilibrium with Liquid Phase'];
+                                        [~,~,helperIdx] = sys.getHelperFunc(helperName);
+                                        eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
+                                        % ### FIXME?: unable to access initial conditions for
+                                        % variables inputted from Simulink, will assume 0 for
+                                        % all
+                                        y0_1(first_x_idx+ext_ct) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
+                                    end
+                                    solvents = {};
+                                    if ~isempty(comp.sorpFuncParams)
+                                        for n=1:1:length(comp.sorpFuncParams)
+                                            if ~any(strcmp(solvents,comp.sorpFuncParams{n}.solventName))
+                                                ext_ct = ext_ct + 1;
+                                                helperName = [char(comp.name),' Concentration in ',comp.sorpFuncParams{n}.solventName,' Phase in Equilibrium with Liquid Phase'];
+                                                [~,~,helperIdx] = sys.getHelperFunc(helperName);
+                                                eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
+                                                y0_1(first_x_idx+ext_ct) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
+                                                solvents{end+1} = comp.sorpFuncParams{n}.solventName; %#ok<AGROW>
+                                            end
+                                        end
+                                    end
+                                end
+                                y0_1(y0_var_num_y) = y0_span_y(l);
+                                if multiple_y
+                                    first_y_idx = find(y0_other_phase(y0_var_num_y) == y0_other_phase,1);
+                                    % setting comp
+                                    comp = comps{y0_other_phase(first_y_idx)};
+                                    if first_y_idx + 1 == y0_var_num_y
+                                        helperName = ['Liquid Phase Concentration of ',char(comp.name),' in Equilibrium with Gas Phase'];
+                                        [~,~,helperIdx] = sys.getHelperFunc(helperName);
+                                        eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
+                                        y0_1(first_y_idx) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
+                                    elseif first_y_idx ~= y0_var_num_y
+                                        for n=1:1:length(comp.sorpFuncParams)
+                                            if contains(axes{1}.getPlotProp("varNames"),comp.sorpFuncParams{n}.solventName)
+                                                solventName = comp.sorpFuncParams{n}.solventName;
+                                            end
+                                        end
+                                        helperName = [char(comp.name),' Concentration in Liquid Phase in Equilibrium with ',solventName];
+                                        [~,~,helperIdx] = sys.getHelperFunc(helperName);
+                                        eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
+                                        y0_1(first_y_idx) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
+                                    end
+
+                                    % now update the other phases
+                                    ext_ct = 0;
+                                    if comp.is_vol
+                                        ext_ct = ext_ct + 1;
+                                        helperName = ['Gas Phase Partial Pressure of ',char(comp.getName()),' in Equilibrium with Liquid Phase'];
+                                        [~,~,helperIdx] = sys.getHelperFunc(helperName);
+                                        eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
+                                        % ### FIXME?: unable to access initial conditions for
+                                        % variables inputted from Simulink, will assume 0 for
+                                        % all
+                                        y0_1(first_y_idx+ext_ct) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
+                                    end
+                                    solvents = {};
+                                    if ~isempty(comp.sorpFuncParams)
+                                        for n=1:1:length(comp.sorpFuncParams)
+                                            if ~any(strcmp(solvents,comp.sorpFuncParams{n}.solventName))
+                                                ext_ct = ext_ct + 1;
+                                                helperName = [char(comp.name),' Concentration in ',comp.sorpFuncParams{n}.solventName,' Phase in Equilibrium with Liquid Phase'];
+                                                [~,~,helperIdx] = sys.getHelperFunc(helperName);
+                                                eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
+                                                y0_1(first_y_idx+ext_ct) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
+                                                solvents{end+1} = comp.sorpFuncParams{n}.solventName; %#ok<AGROW>
+                                            end
+                                        end
+                                    end
+                                end
+
+                                [tRes,yRes] = sys.runModel(tSmooth,y0_1);
+                                fRes = sys.calculateHelperVals(tRes,yRes);
+                                res_1{l,m} = [yRes,fRes,tRes];
+                            end
+                        end
+
+                        res_2 = cell(length(axes{3}.getPlotProp("varNames")),1);
+                        evalt = sys.plots{k}.getPlotProp("evaltVal");
+                        for l=1:1:length(axes{3}.getPlotProp("varNames"))
+                            yVarIdx = strcmp(sysVar(:,1),axes{3}.varNames{l});
+                            res_2{l} = zeros(size(res_1));
+                            for m=1:1:size(res_2,1)
+                                for n=1:1:size(res_2,2)
+                                    % ### FIXME: add more methods for
+                                    % interpolation?
+                                    res_2{l}(m,n) = interp1(res_1{m,n}(:,end),res_1{m,n}(:,yVarIdx),evalt,'makima');
+                                end
+                            end
+                        end
+
+                        % ### FIXME: need to properly do this
+                        dataT = table(y0_span_x,y0_span_y,'VariableNames',{axes{1}.getPlotProp("title"),axes{2}.getPlotProp("title")});
+                        for l=1:1:length(res_2)
+                            dataT = [dataT,table(y0_span_x,res_2{l},'VariableNames',{['Columns: ',axes{2}.getPlotProp("title"),'/Rows: ',axes{1}.getPlotProp("title")], ...
+                                y0_span_y})]; %#ok<AGROW>
+                        end
+                    elseif axes{1}.varIsIC || axes{2}.varIsIC
+                        if axes{1}.varIsIC
+                            y0_span = linspace(axes{1}.loEvalLim,axes{1}.upEvalLim,axes{1}.nbEvalPts);
+                            ICax = 1;
+                            ICax_obj = axes{1};
+                            nonICAx = 2;
+                            nonICAx_obj = axes{2};
+                        else
+                            y0_span = linspace(axes{2}.loEvalLim,axes{2}.upEvalLim,axes{2}.nbEvalPts);
+                            ICax = 2;
+                            ICax_obj = axes{2};
+                            nonICAx = 1;
+                            nonICAx_obj = axes{1};
+                        end
+
+                        res_1 = cell(length(y0_span),1);
+
+                        % creating array that maps y0 to variable name
+                        y0_2_name = [];
+                        y0_other_phase = [];
+                        comps = [sys.getSpecies('comp'),sys.getChemicals('comp'),sys.environs.(sys.activeEnv).getAllEnvComps()];
+                        ext_ct = 0;
+                        for l=1:1:length(comps)
+                            y0_2_name(l+ext_ct) = string([comps{l}.getName(),' (Liquid Phase)']); %#ok<AGROW>
+                            if comps{l}.is_vol
+                                ext_ct = ext_ct + 1;
+                                y0_2_name(l+ext_ct) = string([comps{l}.getName(),' (Gas Phase)']); %#ok<AGROW>
+                                y0_other_phase(end+1) = l; %#ok<AGROW>
+                            end
+                            solvents = {};
+                            if ~isempty(comps{k}.sorpFuncParams)
+                                for m=1:1:length(comps{k}.sorpFuncParams)
+                                    if ~any(strcmp(solvents,comps{k}.sorpFuncParams{l}.solventName))
+                                        ext_ct = ext_ct + 1;
+                                        y0_2_name(l+ext_ct) = string([comps{l}.getName(),' (',comps{k}.sorpFuncParams{l}.solventName,' Phase)']); %#ok<AGROW>
+                                        y0_other_phase(end+1) = l; %#ok<AGROW>
+                                        solvents{end+1} = comps{k}.sorpFuncParams{l}.solventName; %#ok<AGROW>
+                                    end
+                                end
+                            end
+                        end
+
+                        y0_var_num = strcmp(y0_2_name,erase(plot_obj.getAxProp(ICax,"varNames"),"~(IC)"));
+
+                        multiple_num = length(find(y0_other_phase(y0_var_num) == y0_other_phase));
+
+                        for l=1:1:length(y0_span)
+                            y0_1 = sys.y0;
+                            y0_1(y0_var_num) = y0_span(l);
+                            if multiple_num
+                                first_idx = find(y0_other_phase(y0_var_num) == y0_other_phase,1);
+                                % setting comp
+                                comp = comps{y0_other_phase(first_idx)};
+                                if first_idx + 1 == y0_var_num
+                                    helperName = ['Liquid Phase Concentration of ',char(comp.name),' in Equilibrium with Gas Phase'];
+                                    [~,~,helperIdx] = sys.getHelperFunc(helperName);
+                                    eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
+                                    y0_1(first_idx) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
+                                elseif first_idx ~= y0_var_num
+                                    for m=1:1:length(comp.sorpFuncParams)
+                                        if contains(axes{1}.getPlotProp("varNames"),comp.sorpFuncParams{m}.solventName)
+                                            solventName = comp.sorpFuncParams{m}.solventName;
+                                        end
+                                    end
+                                    helperName = [char(comp.name),' Concentration in Liquid Phase in Equilibrium with ',solventName];
+                                    [~,~,helperIdx] = sys.getHelperFunc(helperName);
+                                    eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
+                                    y0_1(first_idx) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
+                                end
+
+                                % now update the other phases
+                                ext_ct = 0;
+                                if comp.is_vol
+                                    ext_ct = ext_ct + 1;
+                                    helperName = ['Gas Phase Partial Pressure of ',char(comp.getName()),' in Equilibrium with Liquid Phase'];
+                                    [~,~,helperIdx] = sys.getHelperFunc(helperName);
+                                    eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
+                                    y0_1(first_idx+ext_ct) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
+                                end
+                                solvents = {};
+                                if ~isempty(comp.sorpFuncParams)
+                                    for m=1:1:length(comp.sorpFuncParams)
+                                        if ~any(strcmp(solvents,comp.sorpFuncParams{m}.solventName))
+                                            ext_ct = ext_ct + 1;
+                                            helperName = [char(comp.name),' Concentration in ',comp.sorpFuncParams{m}.solventName,' Phase in Equilibrium with Liquid Phase'];
+                                            [~,~,helperIdx] = sys.getHelperFunc(helperName);
+                                            eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
+                                            y0_1(first_idx+ext_ct) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
+                                            solvents{end+1} = comp.sorpFuncParams{m}.solventName; %#ok<AGROW>
+                                        end
+                                    end
+                                end
+
+                                [tRes,yRes] = sys.runModel(tSmooth,y0_1);
+                                fRes = sys.calculateHelperVals(tRes,yRes);
+                                res_1{l,1} = [yRes,fRes,tRes];
+                            end
+                        end
+
+                        res_2 = {};
+                        nonICVarIdx = strcmp(sysVar(:,1),nonICAx_obj.varNames);
+                        for l=1:1:length(axes{3}.getPlotProp("varNames"))
+                            zVarIdx = strcmp(sysVar(:,1),axes{3}.varNames{l});
+                            res_2{l} = zeros(size(res_1)); %#ok<AGROW>
+                            for m=1:1:size(res_2,1)
+                                % ### FIXME: add more methods for
+                                % interpolation?
+                                res_2{l}(m,1) = interp1(res_1{m,1}(:,nonICVarIdx),res_1{m,1}(:,zVarIdx), ...
+                                    linspace(min(res_1{m,1}(:,nonICVarIdx)),max((res_1{m,1}(:,nonICVarIdx)),size(res_1{m,1},1))),'makima');
+                            end
+                        end
+
+                        % ### DEBUG: need to try this
+                        dataT = table(y0_span_x,y0_span_y,'VariableNames',{axes{1}.getPlotProp("title"),axes{2}.getPlotProp("title")});
+                        for l=1:1:length(res_2)
+                            dataT = [dataT,table(y0_span_x,res_2{l},'VariableNames',{['Columns: ',axes{2}.getPlotProp("title"),'/Rows: ',axes{1}.getPlotProp("title")], ...
+                                y0_span_y})]; %#ok<AGROW>
+                        end
+                    else
+                        [tRes,yRes] = sys.runModel(tSmooth);
+                        fRes = sys.calculateHelperVals(tRes,yRes);
+                        res_1{1,1} = [yRes,fRes,tRes];
+
+                        xVarIdx = strcmp(sysVar(:,1),axes{1}.varNames);
+                        yVarIdx = strcmp(sysVar(:,1),axes{2}.varNames);
+                        zVarIdx = zeros(size(axes{3}.varNames));
+                        for l=1:1:length(axes{3}.varNames)
+                            zVarIdx(l) = strcmp(sysVar(:,1),axes{2}.varNames{l});
+                        end
+
+                        y0_span_x = res_1{1,1}(:,xVarIdx);
+                        y0_span_y = res_1{1,1}(:,yVarIdx);
+                        y0_span_z = res_1{1,1}(:,zVarIdx);
+
+                        % creating data export table
+                        dataT = table(y0_span_x,y0_span_y,y0_span_z,'VariableNames',{sysVar(xVarIdx,1),sysVar(yVarIdx,1),sysVar(zVarIdx,1)});
+                    end
+                else
+                    [tRes,yRes] = sys.runModel(tSmooth);
+                    fRes = sys.calculateHelperVals(tRes,yRes);
+                    res_1{1,1} = [yRes,fRes,tRes];
+
+                    % ### FIXME: export data with different time units
+                    dataT = table(res_1{1,1},'VariableNames',{sysVar(end,1),sysVar(1:end-1,1)});
+                end
+
+                % write table
+                writetable(dataT,sys.data_export_dir,'Sheet',sys.plots{k}.getPlotProp('title'));
             end
         end
     end

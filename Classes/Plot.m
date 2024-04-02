@@ -37,11 +37,11 @@ classdef Plot < handle
                 end
                 ICNames = string.empty(0,1);
                 for l=1:1:size(DVNames,1)
-                    ICNames(l,1) = string(DVNames(l,2))+"_{Init-Cond}";
+                    ICNames(l,1) = string(DVNames(l,1))+"~(IC)";
                 end
                 min = 0;
                 max = 100;
-                plot.axes{k} = plot.createNewAxes(k,title,string(varNames(k,2)),string(varNames(:,2)),min,max, ...
+                plot.axes{k} = plot.createNewAxes(k,title,string(varNames(k,1)),string(varNames(:,1)),min,max, ...
                     true,{0},0,0,50,isDV,false,ICNames); % ### FIXME: can't make Z-axis
             end
 
@@ -123,7 +123,7 @@ classdef Plot < handle
             plot.updateAx(2,"isDV",false);
         end
 
-        % plot: Plot class ref, axisName: string
+        % % plot: Plot class ref, axisName: string
         function axisData = getAxisICEvalData(plot,axisName)
             for k=1:1:length(plot.axes)
                 if strcmp(string(plot.axes{k}.title),string(axisName))
@@ -161,7 +161,7 @@ classdef Plot < handle
                 if strcmp(string(plot.axes{k}.title),string(axisName))
                     axis = plot.axes{k};
                 end
-                if plot.axes{k}.isDV == false && plot.axes{k}.varIsIC == false
+                if ~plot.axes{k}.isDV && ~plot.axes{k}.varIsIC
                     needDefineEvalt = false;
                 end
             end
@@ -171,7 +171,7 @@ classdef Plot < handle
                 end
             end
             % check if other axes have IC or t in IV
-            props = ["evaltVal","loEvalLim","upEvalLim","nbEvalPts","isDV","varIsIC"];
+            props = ["varUnits","evaltVal","loEvalLim","upEvalLim","nbEvalPts","isDV","varIsIC"];
             varData = cell(length(props)+1,1);
             for k=1:1:length(varData)
                 if k > length(props)
@@ -186,10 +186,9 @@ classdef Plot < handle
             end
         end
 
-        % plot: Plot class ref, axisName: string, varName: string, evaltVal: string | number, 
+        % plot: Plot class ref, axisName: string, varName: string, varUnits: string, evaltVal: string | number, 
         % loEvalLim: string | number, upEvalLim: string | number, nbEvalPts: number
-        function setVarICEvalData(plot,axisName,varName,evaltVal,loEvalLim,upEvalLim,nbEvalPts)
-            % ### FIXME: need to be able to set isDV and varIsIC
+        function setVarICEvalData(plot,axisName,varName,varUnits,evaltVal,loEvalLim,upEvalLim,nbEvalPts)
             for k=1:1:length(plot.axes)
                 if strcmp(string(plot.axes{k}.title),string(axisName))
                     axis = plot.axes{k};
@@ -200,8 +199,8 @@ classdef Plot < handle
                     varIdx = k;
                 end
             end
-            props = ["evaltVal","loEvalLim","upEvalLim","nbEvalPts","isDV","varIsIC"];
-            data = {evaltVal,loEvalLim,upEvalLim,nbEvalPts};
+            props = ["varUnits","evaltVal","loEvalLim","upEvalLim","nbEvalPts"];
+            data = {varUnits,evaltVal,loEvalLim,upEvalLim,nbEvalPts};
             for k=1:1:length(props)
                 if class(axis.(props(k))) == "cell"
                     axis.(props(k)){varIdx} = data{k};
@@ -226,6 +225,7 @@ classdef Plot < handle
                 'loDispLim',loDispLim, ...
                 'upDispLim',upDispLim, ...
                 'useDefR',useDefR, ...
+                'varUnits','', ...
                 'evaltVal',evaltVal, ...
                 'loEvalLim',loEvalLim, ...
                 'upEvalLim',upEvalLim, ...
@@ -257,6 +257,7 @@ classdef Plot < handle
                 "loDispLim", ...
                 "upDispLim", ...
                 "useDefR", ...
+                "varUnits", ...
                 "evaltVal", ...
                 "loEvalLim", ...
                 "upEvalLim", ...

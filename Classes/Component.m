@@ -469,6 +469,17 @@ classdef Component < handle
         end
 
         % comp: Component class ref
+        function names = getAllPhaseNames(comp)
+            names = comp.getName()+" (Liquid Phase)";
+            if comp.is_vol
+                names(end+1) = comp.getName()+" (Gas Phase)";
+            end
+            for k=1:1:length(comp.sorpFuncParams)
+                names(end+1) = comp.getName()+" ("+comp.sorpFuncParams{k}.solventName+" Phase)";
+            end
+        end
+
+        % comp: Component class ref
         function num = getNum(comp)
             num = comp.number;
         end
@@ -708,7 +719,7 @@ classdef Component < handle
                     govFunc = govFunc + operator + funcVal;
                     % compiling parameters array
                     for l=1:1:length(comp.sorpVolFuncParams{k}.params)
-                        params = [params,comp.sorpVolFuncParams{k}.params{l}.val]; %#ok<AGROW>
+                        params = [params,comp.sorpVolFuncParams{k}.params{l}.val];
                     end
                 end
                 fp = comp.sorpVolFuncParams;
@@ -726,7 +737,7 @@ classdef Component < handle
                     govFunc = govFunc + operator + funcVal;
                     % compiling parameters array
                     for l=1:1:length(comp.funcParams{k}.params)
-                        params = [params,comp.funcParams{k}.params{l}.val]; %#ok<AGROW>
+                        params = [params,comp.funcParams{k}.params{l}.val];
                     end
                 end
                 % Gas concentration - should only need to track the bulk
@@ -749,7 +760,7 @@ classdef Component < handle
                         govFunc = govFunc + operator + funcVal;
                         % compiling parameters array
                         for l=1:1:length(comp.gasBulkFuncParams{k}.params)
-                            params = [params,comp.gasBulkFuncParams{k}.params{l}.val]; %#ok<AGROW>
+                            params = [params,comp.gasBulkFuncParams{k}.params{l}.val];
                         end
                     end
                 end
@@ -768,7 +779,7 @@ classdef Component < handle
                         govFunc = govFunc + operator + funcVal;
                         % compiling parameters array
                         for l=1:1:length(comp.sorpFuncParams{k}.params)
-                            params = [params,comp.sorpFuncParams{k}.params{l}.val]; %#ok<AGROW>
+                            params = [params,comp.sorpFuncParams{k}.params{l}.val];
                         end
                     end
                 end
@@ -777,13 +788,11 @@ classdef Component < handle
 
             % replacing param syms in govFunc with p({gloNum})
             ct = 1;
+            test6 = regParamList
             if regression
                 for k=1:1:length(fp)
                     % replacing function and regression parameters that haven't yet been
                     % replaced
-                    if class(fp{k}.params) == "cell"
-                        celldisp(fp{k}.params);
-                    end
                     for l=1:1:length(fp{k}.params)
                         match = strcmp(regParamList(:,1),char(fp{k}.params{l}.sym));
                         % ### NOTE: replace variables passed in
@@ -795,21 +804,23 @@ classdef Component < handle
                                     if ~strcmp(regParamList{match,2},"")
                                         govFunc(m) = replace(govFunc(m),fp{k}.params{l}.sym,"$("+(regParamList{match,2})+")");
                                     else
-                                        % if contains(govFunc(m),fp{k}.params{l}.sym), reg_param_ct = reg_param_ct + 1; end
-                                        govFunc(m) = replace(govFunc(m),fp{k}.params{l}.sym,"$("+(reg_param_ct)+")");
-                                        regParamListUpdate{1,match} = true; %#ok<*AGROW>
-                                        regParamListUpdate{2,match} = find(match);
-                                        regParamListUpdate{3,match} = string(reg_param_ct);
-                                        reg_param_ct = reg_param_ct + 1;
+                                        if contains(govFunc(m),fp{k}.params{l}.sym)
+                                            govFunc(m) = replace(govFunc(m),fp{k}.params{l}.sym,"$("+(reg_param_ct)+")");
+                                            regParamListUpdate{1,match} = true; %#ok<*AGROW>
+                                            regParamListUpdate{2,match} = find(match);
+                                            regParamListUpdate{3,match} = string(reg_param_ct);
+                                            reg_param_ct = reg_param_ct + 1;
+                                        end
                                     end
                                 end
                             end
                         else
                             for m=1:1:length(govFunc)
                                 if strlength(govFunc(m)) > 1 || govFuncLength == 1
-                                    % if contains(govFunc(m),fp{k}.params{l}.sym), ct = ct + 1; end
-                                    govFunc(m) = replace(govFunc(m),fp{k}.params{l}.sym,"#("+(param_ct+ct)+")");
-                                    ct = ct + 1;
+                                    if contains(govFunc(m),fp{k}.params{l}.sym)
+                                        govFunc(m) = replace(govFunc(m),fp{k}.params{l}.sym,"#("+(param_ct+ct+reg_param_ct-size(regParamList,1)+1)+")");
+                                        ct = ct + 1;
+                                    end
                                 end
                             end
                         end
