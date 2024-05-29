@@ -8,6 +8,7 @@ function latex_out = uni2latex(eqn)
     num_left_paren = regexp(eqn,'\(');
     num_right_paren = regexp(eqn,'\)');
     if length(num_left_paren) ~= length(num_right_paren), return; end
+    if regexp(eqn(end),'[+\-\*/^=]','once'), return; end
     % if strcmp(eqn(1),'-') && ~strcmp(eqn(2),'(')
     %     leadOperator = '-';
     % else
@@ -79,7 +80,7 @@ function latex_out = uni2latex(eqn)
     % correcting fractions
     while ~isempty(regexp(eqn,'/','once'))
         div_idx = regexp(eqn,'/','once');
-        operator_idx = regexp(eqn,'[+\-\*/^=()]');
+        operator_idx = regexp(eqn,'[+\-\*/^=\(\)]');
         % ### EDGE: causes inaccuracies with parenthesis if divide is
         % wrapped in parenthesis
 
@@ -90,21 +91,23 @@ function latex_out = uni2latex(eqn)
                 num_left = 0;
                 num_right = 1;
                 left_eqn = reverse(eqn(1:div_idx-2));
+                left_eqn_new = left_eqn;
                 while num_left ~= num_right
-                    next_paren = regexp(left_eqn,'[()]','once');
-                    if strcmp(left_eqn(next_paren),')')
+                    next_paren = regexp(left_eqn_new,'[\(\)]','once');
+                    if strcmp(left_eqn_new(next_paren),')')
                         num_right = num_right + 1;
-                    elseif strcmp(left_eqn(next_paren),'(')
+                    elseif strcmp(left_eqn_new(next_paren),'(')
                         num_left = num_left + 1;
                     end
+                    left_eqn_new = left_eqn_new(next_paren+1:end);
                 end
 
-                end_paren_idx = length(left_eqn) - next_paren;
+                end_paren_idx = next_paren;
                 if end_paren_idx == 0
                     eqn = ['\frac{',eqn(1:operator_idx(end)-1),'}{',eqn(operator_idx(end)+1:end),'}'];
                 else
-                    prev_operator_idx = operator_idx(find((end_paren_idx < operator_idx),1)-1)-1;
-                    eqn = [eqn(1:prev_operator_idx(end-1)),'\frac{',eqn(operator_idx(end-1)+1:operator_idx(end)-1),'}{',eqn(operator_idx(end)+1:end),'}'];
+                    prev_operator_idx = operator_idx(find((end_paren_idx < operator_idx),1))-1;
+                    eqn = [eqn(1:prev_operator_idx+1),'\frac{',eqn(prev_operator_idx+2:operator_idx(end)-1),'}{',eqn(operator_idx(end)+1:end),'}'];
                 end
             else
                 eqn = [eqn(1:operator_idx(end-1)),'\frac{',eqn(operator_idx(end-1)+1:operator_idx(end)-1),'}{',eqn(operator_idx(end)+1:end),'}'];

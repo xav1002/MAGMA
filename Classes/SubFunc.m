@@ -18,7 +18,7 @@ classdef SubFunc < handle
 
         % subf: SubFunc class ref, sysVars: string[]
         function initParams(subf,sysVars)
-            vars = string(symvar(str2sym(subf.funcVal)));
+            vars = string(findVars(char(subf.funcVal)));
             sysVars(:,2)
             if ~isempty(vars)
                 funcParams = setxor(intersect(sysVars(:,2),vars),vars);
@@ -35,6 +35,27 @@ classdef SubFunc < handle
             newParam = struct('name',"",'sym',"",'val',"",'unit',"");
             newParam.name = name;
             newParam.sym = sym;
+
+            if strcmp(unit,"mg/L")
+                val = val./1000;
+            elseif strcmp(unit,"mg/g")
+                val = val./1000;
+            elseif strcmp(unit,"g/mg")
+                val = val.*1000;
+            elseif strcmp(unit,"cells/mg")
+                val = val.*1000;
+            elseif strcmp(unit,"mg/cells")
+                val = val./1000;
+            end
+
+            % ### FIXME: need to make this more robust
+            % if contains(unit,"mg/"), val = val.*0.001; end
+            % test9 = unit
+            % if contains(unit,"/mg"), val = val.*1000;
+            %     test8 = 8 
+            % end
+            % if contains(unit,"mg") && ~contains(unit,"/") && ~contains(unit,"*"), val = val.*1000; end
+
             newParam.val = val;
             newParam.unit = unit;
 
@@ -57,7 +78,7 @@ classdef SubFunc < handle
 
         % subf: SubFunc class ref, varSyms: string[]
         function findParamsInFunc(subf,varSyms)
-            vars = string(symvar(str2sym(subf.funcVal)));
+            vars = string(findVars(char(subf.funcVal)));
             paramSyms = setxor(intersect(varSyms(:,2),vars),vars);
             for k=1:1:length(paramSyms)
                 % ### FIXME: add functionality to allow user to come back

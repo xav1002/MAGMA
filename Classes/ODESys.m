@@ -32,7 +32,7 @@ classdef ODESys < handle
         degree = 0; % number of functions within the ODE system
         dydt = ""; % ODE system functions
         param = []; % ODE system parameter values
-        f = {}; % ODE system subfuncs for passing into ode45
+        f = {}; % ODE system subfuncs for passing into ode15s
         helperFuncs = {}; % ODE system helper functions
 %         matches = []; % used to find parameters that are being regressed
         y0 = [];
@@ -43,6 +43,7 @@ classdef ODESys < handle
         subplot_row_ct = [1];
         subplot_col_ct = [1];
         subplots = {};
+        TLs = {};
         data_export_dir = "";
         data_export_tables = {};
         PBR_max_vol = 1; % L
@@ -66,13 +67,12 @@ classdef ODESys < handle
         regParamList = {}; % list of parameters for easy access
         matchedVarsList = {}; % list of parameters that are matched in regression
         regSpecs = struct;
-        % regSpecs = struct( ...
-        %     'params',{}, ...
-        %     'paramIGs',[], ...
-        %     'solverSpecs',struct([]) ...
-        % ); % struct for regression specifications
         importedDataIdx = []; % for picking out which data to match in nlinfit
         regData = []; % storing regressed data
+        IVs = [];
+        DVs = [];
+        mat_IVs = [];
+        mat_DVs = [];
         reg_param_ct = 1;
         reg_analytics = struct( ...
             'beta',[], ...
@@ -102,14 +102,49 @@ classdef ODESys < handle
 
             sys.regSpecs.paramIGs = [];
             sys.regSpecs.params = {};
-            sys.regSpecs.solverSpecs = struct( ...
-                'solver','nlinfit' ...
+            sys.regSpecs.solver = 'nlinfit';
+            sys.regSpecs.nlinfitSpecs = struct( ...
+                'RobustWgtFun','', ...
+                'Tune',[], ...
+                'TolFun',1E-8, ...
+                'TolX',1E-8, ...
+                'MaxIter',100, ...
+                'FunValCheck','off', ...
+                'DerivStep',[] ...
+            );
+            sys.regSpecs.lsqcurvefitSpecs = struct( ...
+                'paramBnds',[], ...
+                'Algorithm','trust-region-reflective', ...
+                'PlotFcns',[], ...
+                'TolFun',1E-6, ...
+                'TolX',1E-6, ...
+                'MaxIter',1000, ...
+                'MaxFunEvals',1000, ...
+                'FunValCheck','off' ...
+            );
+            sys.regSpecs.fminsearchSpecs = struct( ...
+                'PlotFcns',[], ...
+                'TolFun',1E-4, ...
+                'TolX',1E-4, ...
+                'MaxIter',1000, ...
+                'MaxFunEvals',1000, ...
+                'FunValCheck','off' ...
+            );
+            sys.regSpecs.fminconSpecs = struct( ...
+                'paramBnds',[], ...
+                'Algorithm','interior-point', ...
+                'PlotFcns',[], ...
+                'TolFun',1E-6, ...
+                'TolX',1E-6, ...
+                'MaxIter',1000, ...
+                'MaxFunEvals',1000, ...
+                'FunValCheck','off' ...
             );
         end
 
         % sys: ODESys class ref, num: number, name: string, initConc:
         % number
-        function sys = addSpecies(sys, num, name, initConc)
+        function sys = addSpecies(sys, num, name, initConc,initConcUnit)
             % increases the degree of the ODE system
             sys.degree = sys.degree + 1;
             % instantiates Species, stores in ODESys Map
@@ -117,17 +152,17 @@ classdef ODESys < handle
             % ### DEBUG: add logic here to make sure that "~" doesn't
             % appear in any names - throw error if user tries to use "~"
             % in names
-            sys.species.(specName) = Component(name,num,initConc,"Biological Solute",false,0,0,'',0,'',sys.getDefaultParamVals());
+            sys.species.(specName) = Component(name,num,initConc,initConcUnit,"Biological Solute",false,0,0,'',0,'',sys.getDefaultParamVals());
         end
 
         % sys: ODESys class ref, num: number, name: string
-        function sys = addChemical(sys, num, name, initConc, type, is_vol, MW, h_const, h_const_u, dh_const, dh_const_u)
+        function sys = addChemical(sys, num, name, initConc, initConcUnit, type, is_vol, MW, h_const, h_const_u, dh_const, dh_const_u)
             % increases the degree of the ODE system
             sys.degree = sys.degree + 1;
             % instantiates Chemical, stores in ODESys Map
             chemName = replace(regexprep(regexprep(replace(regexprep(name,' ','_'),'^','_'),'+','p'),'-','n'),'.','_');
             
-            sys.chemicals.(chemName) = Component(name, num, initConc, type, is_vol, MW, h_const, h_const_u, dh_const, dh_const_u, sys.getDefaultParamVals());
+            sys.chemicals.(chemName) = Component(name, num, initConc, initConcUnit, type, is_vol, MW, h_const, h_const_u, dh_const, dh_const_u, sys.getDefaultParamVals());
 
             if strcmp(type,'Suspended Solid Sorbent')
                 helperVal = sys.getHelperFunc('Total Solvent Volume');
@@ -167,26 +202,23 @@ classdef ODESys < handle
         end
 
         % sys: ODESys class ref, name: string, field: string, val: number | string
-        function sys = updateSpecies(sys, name, field, val)
-            specName = regexprep(name, ' ', '_');
-            spec = sys.species.(specName);
-            switch field
-                case "initConc"
-                    spec.setInitConc(val);
-            end
+        function sys = updateSpecies(sys,compName,initConc,initConcUnit)
+            compName = regexprep(compName, ' ', '_');
+            comp = sys.species.(compName);
+            comp.setInitConc(initConc,initConcUnit);
         end
 
         % sys: ODESys class ref, chemName: string, chemInitConc: num,
         % is_vol: boolean, h_const: num, h_const_u: string, dh_const: num,
         % dh_const_u: string
         % ### STARTHERE: add MW
-        function sys = updateChemical(sys,name,chemInitConc,is_vol,MW,h_const,h_const_u,dh_const,dh_const_u)
+        function sys = updateChemical(sys,name,chemInitConc,initConcUnit,is_vol,MW,h_const,h_const_u,dh_const,dh_const_u)
             chemName = replace(regexprep(regexprep(replace(regexprep(name,' ','_'),'^','_'),'+','p'),'-','n'),'.','_');
             chem = sys.chemicals.(chemName);
 
             prev_is_vol = chem.is_vol;
 
-            chem.updateComp(chemInitConc,is_vol,MW,h_const,h_const_u,dh_const,dh_const_u,sys.getDefaultParamVals());
+            chem.updateComp(chemInitConc,initConcUnit,is_vol,MW,h_const,h_const_u,dh_const,dh_const_u,sys.getDefaultParamVals());
 
             if is_vol
                 % add HConst helpers
@@ -374,6 +406,10 @@ classdef ODESys < handle
             % adding model to Comp
             % funcName = "BioGovFunc";
             comp.setModel(funcVal, funcName, paramStr, sys.getDefaultParamVals());
+
+            for k=1:1:length(paramStr)
+                sys.updateMultiParamsInv(compName,paramStr(k));
+            end
         end
 
         % sys: ODESys class ref, compName: string, funcVal: string,
@@ -394,6 +430,10 @@ classdef ODESys < handle
 
             % adding model to Comp
             comp.addModel(funcVal, funcName, paramStr, phase, sys.getDefaultParamVals());
+            
+            for k=1:1:length(paramStr)
+                sys.updateMultiParamsInv(compName,paramStr(k));
+            end
         end
 
         % sys: ODESys class ref, compName: string, funcVal: string,
@@ -414,6 +454,10 @@ classdef ODESys < handle
 
             % adding model to Comp
             comp.addSuspendedSolidVolumeFunc(funcVal, funcName, paramStr, phase, getDefaultParamVals);
+
+            for k=1:1:length(paramStr)
+                sys.updateMultiParamsInv(compName,paramStr(k));
+            end
         end
 
         % sys: ODESys class ref, compName: string, funcVal: string, phaseA:
@@ -432,6 +476,10 @@ classdef ODESys < handle
             paramStr = string(setxor(symVarStrArr,varStr));
 
             comp.setMTModel(funcVal,phaseA,phaseB,paramStr,sys.getDefaultParamVals());
+
+            for k=1:1:length(paramStr)
+                sys.updateMultiParamsInv(compName,paramStr(k));
+            end
         end
 
         % sys: ODESys class ref
@@ -649,33 +697,28 @@ classdef ODESys < handle
         end
 
         % sys: ODESys class ref, paramSym: string,
-        % newVal: number, newUnit: string, newParamName: string, funcName:
-        % string
-        function updateMultiParams(sys,paramSym,newVal,newUnit,newParamName,varargin)
+        % newVal: number, newUnit: string, newParamName: string
+        function updateMultiParams(sys,paramSym,newVal,newUnit,newParamName,convertUnits)
             comps = [sys.getSpecies('comp'),sys.getChemicals('comp'),sys.environs.(sys.activeEnv).getAllEnvComps()];
 
             for k=1:1:length(comps)
-                % grthParams = comps{k}.getGrthParams();
-                % if any(strcmp(grthParams(:,3),paramSym))
                 fp = [comps{k}.funcParams,comps{k}.gasBulkFuncParams,comps{k}.sorpFuncParams];
                 for l=1:1:length(fp)
                     for m=1:1:length(fp{l}.params)
                         if strcmp(fp{l}.params{m}.sym,paramSym)
                             funcName = fp{l}.funcName;
-                            comps{k}.updateParam(paramSym,newVal,newUnit,newParamName,funcName);
+                            comps{k}.updateParam(paramSym,newVal,newUnit,newParamName,funcName,convertUnits);
                         end
                     end
                 end
             end
 
-            envs = struct2cell(sys.environs);
-            for k=1:1:length(envs)
-                for l=1:1:length(envs{k}.subfuncs)
-                    envFuncName = envs{k}.subfuncs{l}.getSubFuncName();
-                    grthParams = envs{k}.getGrthParamsByEnvFuncName(envFuncName);
-                    if any(strcmp(grthParams(:,3),paramSym))
-                        envs{k}.updateEnvFuncParams(envFuncName,paramSym,newVal,newUnit,newParamName);
-                    end
+            env_subfuncs = sys.environs.(sys.activeEnv).subfuncs;
+            for k=1:1:length(env_subfuncs)
+                envFuncName = env_subfuncs{k}.getSubFuncName();
+                grthParams = sys.getGrthParamsByEnvFuncName(envFuncName);
+                if any(strcmp(grthParams(:,3),paramSym))
+                    sys.environs.(sys.activeEnv).updateEnvFuncParams(envFuncName,paramSym,newVal,newUnit,newParamName);
                 end
             end
 
@@ -684,6 +727,56 @@ classdef ODESys < handle
                 grthParams = sys.getGrthParamsByHelperFuncName(helperFuncName);
                 if any(strcmp(grthParams(:,3),paramSym))
                     sys.helperFuncs{k}.updateParams(newParamName,paramSym,newVal,newUnit,true);
+                end
+            end
+        end
+
+        % sys: ODESys class ref, paramSym: string
+        function updateMultiParamsInv(sys,compName,paramSym)
+            comp = sys.getCompByName(compName);
+            compType = comp.getType();
+            comps = [sys.getSpecies('comp'),sys.getChemicals('comp'),sys.environs.(sys.activeEnv).getAllEnvComps()];
+
+            if any(strcmp(compType,{'Biological Solute','Chemical Solute'}))
+                for k=1:1:length(comps)
+                    fp = [comps{k}.funcParams,comps{k}.gasBulkFuncParams,comps{k}.sorpFuncParams];
+                    for l=1:1:length(fp)
+                        for m=1:1:length(fp{l}.params)
+                            if strcmp(fp{l}.params{m}.sym,paramSym)
+                                newVal = fp{l}.params{m}.val;
+                                newParamName = fp{l}.params{m}.name;
+                                newUnit = fp{l}.params{m}.unit;
+                                funcName = fp{l}.funcName;
+                                comp.updateParam(paramSym,newVal,newUnit,newParamName,funcName,true);
+                                return;
+                            end
+                        end
+                    end
+                end
+            else
+                env_subfuncs = sys.environs.(sys.activeEnv).subfuncs;
+                for k=1:1:length(env_subfuncs)
+                    envFuncName = env_subfuncs{k}.getSubFuncName();
+                    grthParams = sys.getGrthParamsByEnvFuncName(envFuncName);
+                    if any(strcmp(grthParams(:,3),paramSym))
+                        idx = strcmp(grthParams(:,3),paramSym);
+                        newVal = grthParams(idx,5);
+                        newParamName = grthParams(idx,4);
+                        newUnit = grthParams(idx,6);
+                        sys.environs.(sys.activeEnv).updateEnvFuncParams(envFuncName,paramSym,newVal,newUnit,newParamName);
+                    end
+                end
+
+                for k=1:1:length(sys.helperFuncs)
+                    helperFuncName = sys.helperFuncs{k}.getSubFuncName();
+                    grthParams = sys.getGrthParamsByHelperFuncName(helperFuncName);
+                    if any(strcmp(grthParams(:,3),paramSym))
+                        idx = strcmp(grthParams(:,3),paramSym);
+                        newVal = grthParams(idx,5);
+                        newParamName = grthParams(idx,4);
+                        newUnit = grthParams(idx,6);
+                        sys.helperFuncs{k}.updateParams(newParamName,paramSym,newVal,newUnit,true);
+                    end
                 end
             end
         end
@@ -986,6 +1079,11 @@ classdef ODESys < handle
             end
 
             if any(strcmp(names_req,"plot"))
+                vars = {};
+
+                vars{end+1,1} = 'Model Runtime';
+                vars{end,2} = 't';
+
                 vars = sys.getModelSpecVarNames(specs,vars);
                 vars = sys.getModelChemVarNames(chems,vars);
 
@@ -1001,9 +1099,6 @@ classdef ODESys < handle
                     vars{end+1,1} = char(sys.helperFuncs{k}.getSubFuncName()); %#ok<AGROW>
                     vars{end,2} = sys.helperFuncs{k}.getSubFuncSym();
                 end
-
-                vars{end+1,1} = 'Model Runtime';
-                vars{end,2} = 't';
             end
         end
 
@@ -1018,10 +1113,11 @@ classdef ODESys < handle
             vars = sys.getModelChemVarNames(chems,vars);
 
             % Environmental parameters
-            envParams = Environment.getParamNames();
-            for k=1:1:size(envParams,1)
-                vars{end+1,1} = envParams{k,1}; %#ok<AGROW>
-                vars{end,2} = envParams{k,2};
+            % envParams = Environment.getParamNames();
+            env_comps = sys.environs.(sys.activeEnv).getAllEnvComps();
+            for k=1:1:length(env_comps)
+                vars{end+1,1} = env_comps{k}.getName(); %#ok<AGROW>
+                vars{end,2} = env_comps{k}.getSym();
             end
         end
 
@@ -1095,6 +1191,8 @@ classdef ODESys < handle
                     params = sys.environs.(sys.activeEnv).getVComp().getGrthParams('Main');
                 case "Incident Light"
                     params = sys.environs.(sys.activeEnv).getGrthParamsByEnvFuncName(envFuncName);
+                case "Maximum Volume"
+                    params = sys.environs.(sys.activeEnv).getGrthParamsByEnvFuncName(envFuncName);
                 case "Hydronium"
                     params = sys.environs.(sys.activeEnv).getH3OComp().getGrthParams('Main');
                 case "Hydroxide"
@@ -1113,11 +1211,12 @@ classdef ODESys < handle
                     paramNums = 1:1:length(paramNames);
                     params = cell(length(paramNums),6);
                     for l=paramNums
+                        val = unit_standardization(paramVals(l),paramUnits(l));
                         params{l,1} = char(string(paramNums(l)));
                         params{l,2} = helperFuncName;
                         params{l,3} = char(paramSyms(l));
                         params{l,4} = char(paramNames(l));
-                        params{l,5} = paramVals(l);
+                        params{l,5} = val;
                         params{l,6} = char(paramUnits(l));
                     end
                 end
@@ -1198,7 +1297,6 @@ classdef ODESys < handle
             %   replace each parameter name with p({gloNum})
             %   can get the parameters to be converted from string to sym
             %   with all parameters saved in the p array by:
-            %       str2sym(func+"p({gloNum}"+func)
             %   also need to convert names of system variables
             % 2. convert each governing function to sym function
             % 3. create ODESys of sym functions
@@ -1402,7 +1500,6 @@ classdef ODESys < handle
     
                 % converting to function_handle
                 sys.dydt = str2func(sys.dydt');
-                disp('worked')
                 
                 % setting initial conditions
                 sys.setInitCond();
@@ -1454,9 +1551,10 @@ classdef ODESys < handle
 
             % creating separate figures for each subplot
             sys.subplots = {};
+            sys.TLs = {};
             for k=1:1:sys.subplot_ct
                 sys.subplots{k} = figure(k);
-                tiledlayout(sys.subplots{k},sys.subplot_row_ct,sys.subplot_col_ct);
+                sys.TLs{k} = tiledlayout(sys.subplots{k},sys.subplot_row_ct,sys.subplot_col_ct);
             end
             
             % ### FIXME: add feature to allow user to specify time
@@ -1652,14 +1750,14 @@ classdef ODESys < handle
                             if axes{1}.varIsIC
                                 y0_span = linspace(axes{1}.loEvalLim,axes{1}.upEvalLim,axes{1}.nbEvalPts);
                                 ICax = 1;
-                                ICax_obj = axes{1};
-                                nonICAx = 2;
-                                nonICAx_obj = axes{2};
+                                % ICax_obj = axes{1};
+                                % nonICAx = 2;
+                                % nonICAx_obj = axes{2};
                             else
                                 y0_span = linspace(axes{2}.loEvalLim,axes{2}.upEvalLim,axes{2}.nbEvalPts);
                                 ICax = 2;
-                                ICax_obj = axes{2};
-                                nonICAx = 1;
+                                % ICax_obj = axes{2};
+                                % nonICAx = 1;
                                 nonICax_obj = axes{1};
                             end
 
@@ -1694,7 +1792,6 @@ classdef ODESys < handle
 
                             multiple_num = length(find(y0_other_phase(y0_var_num) == y0_other_phase));
 
-                            test4 = y0_span
                             for l=1:1:length(y0_span)
                                 y0_1 = sys.y0;
                                 y0_1(y0_var_num) = y0_span(l);
@@ -1756,7 +1853,6 @@ classdef ODESys < handle
                                 for m=1:1:size(res_2,1)
                                     % ### FIXME: add more methods for
                                     % interpolation?
-                                    test5 = res_1{l}
                                     res_2{l}(m,1) = interp1(res_1{m,1}(:,nonICVarIdx),res_1{m,1}(:,zVarIdx), ...
                                         linspace(min(res_1{m,1}(:,nonICVarIdx)),max((res_1{m,1}(:,nonICVarIdx)),size(res_1{m,1},1))),'makima');
                                 end
@@ -1780,7 +1876,7 @@ classdef ODESys < handle
                     else
                         [tRes,yRes] = sys.runModel(tSmooth,sys.y0);
                         fRes = sys.calculateHelperVals(tRes,yRes);
-                        res_1{1,1} = [yRes,fRes,tRes];
+                        res_1{1,1} = [tRes,yRes,fRes];
                     end
 
                     % plot models on fig
@@ -1789,7 +1885,7 @@ classdef ODESys < handle
                     fig = figure(sys.plots{k}.subplotGroup);
                     group = sys.plots{k}.subplotGroup;
                     slot = sys.plots{k}.subplotSlot;
-                    ax = nexttile(sys.subplots{group}.Children(1),slot);
+                    ax = nexttile(sys.TLs{group},slot);
                     hold(ax,"on");
                     if length(axes) == 2
                         xVarIdx = strcmp(sysVar(:,1),axes{1}.varNames);
@@ -1848,11 +1944,7 @@ classdef ODESys < handle
         % sys: ODESys class ref, t: number[]
         function [tRes,yRes] = runModel(sys,tspan,y0)
             opts = odeset('RelTol',1E-6,'AbsTol',1E-6);
-            test1 = sys.param
-            test2 = sys.f(:,3)
-            test3 = tspan
-            test4 = sys.y0
-            [tRes,yRes] = ode45(@(t,y) sys.dydt(t,y,sys.param,sys.f(:,3),zeros(size(sys.var_in_key))),tspan,y0,opts);
+            [tRes,yRes] = ode15s(@(t,y) sys.dydt(t,y,sys.param,sys.f(:,3),zeros(size(sys.var_in_key))),tspan,y0,opts);
         end
 
         % sys: ODESys class ref, tRes: num[], yRes: num[]
@@ -1869,9 +1961,9 @@ classdef ODESys < handle
         function regStats = compileRegression(sys)
             sys.dydt = "@(t,y,p,f,v,r) [";
             sys.param = [];
-            sys.reg_param_ct = 1;
+            sys.reg_param_ct = 0;
             sys.f = {};
-            for k=1:1:size(sys.regParamList,1), sys.regParamList{k,6} = ""; end
+            for k=1:1:size(sys.regParamList,1), sys.regParamList{k,6} = string(k); end
 
             comps = [sys.getSpecies('comp'),sys.getChemicals('comp'),sys.environs.(sys.activeEnv).getAllEnvComps()];
             sys.var_out_key = cell(length(comps),2);
@@ -2060,8 +2152,6 @@ classdef ODESys < handle
 
             % converting to function_handle
             sys.dydt = str2func(sys.dydt');
-            test = sys.dydt
-            test2 = sys.param
 
             sys.importedDataIdx = [];
             for k=1:1:length(sys.matchedVarsList)
@@ -2071,84 +2161,131 @@ classdef ODESys < handle
                     sys.importedDataIdx(end+1) = find(matchIdx);
                 end
             end
-            IVs = zeros((size(sys.importedData,2)-1).*size(sys.importedData,1),1);
-            DVs = zeros((size(sys.importedData,2)-1).*size(sys.importedData,1),1);
+            sys.IVs = zeros((size(sys.importedData,2)-1).*size(sys.importedData,1),1);
+            sys.DVs = zeros((size(sys.importedData,2)-1).*size(sys.importedData,1),1);
+            sys.mat_IVs = [sys.importedData{:,1}];
+            sys.mat_DVs = zeros(size(sys.importedData,1),size(sys.importedData,2)-1);
             for k=2:1:size(sys.importedData,2)
-                IVs((1:1:size(sys.importedData,1))+((k-2).*size(sys.importedData,1)),1) = [sys.importedData{:,1}];
-                DVs((1:1:size(sys.importedData,1))+((k-2).*size(sys.importedData,1)),1) = [sys.importedData{:,k}];
+                sys.IVs((1:1:size(sys.importedData,1))+((k-2).*size(sys.importedData,1)),1) = [sys.importedData{:,1}];
+                sys.mat_DVs(:,k-1) = sys.importedData{:,k};
+                % if strcmp(comps{sys.importedDataIdx(k-1)-1}.getInitConcUnit(),"mg/L")
+                %     sys.DVs((1:1:size(sys.importedData,1))+((k-2).*size(sys.importedData,1)),1) = sys.importedData{:,k}./1000;
+                % else
+                %     sys.DVs((1:1:size(sys.importedData,1))+((k-2).*size(sys.importedData,1)),1) = sys.importedData{:,k};
+                % end
+                sys.DVs((1:1:size(sys.importedData,1))+((k-2).*size(sys.importedData,1)),1) = unit_standardization(sys.importedData{:,k},comps{sys.importedDataIdx(k-1)-1}.getInitConcUnit());
             end
             % ### FIXME: upgrade later to allow automatic testing of
             % various starting guesses for each parameter
             beta0 = sys.regSpecs.paramIGs;
 
             sys.setInitCond();
-            % test4 = sys.regSpecs.solverSpecs.solver
+            test1 = sys.dydt
+
             % set proper reg specs based on solver
-            switch sys.regSpecs.solverSpecs.solver
+            switch sys.regSpecs.solver
                 case "nlinfit"
                     nlinfitSpecs = statset;
                     nlinfitSpecs.Display = 'iter';
-                    % nlinfitSpecs.MaxFunEvals = sys.regSpecs.solverSpecs.Maximum_Function_Evaluations;
-                    % nlinfitSpecs.MaxIter = sys.regSpecs.solverSpecs.Maximum_Iterations;
-                    nlinfitSpecs.MaxIter = 1E5;
-                    nlinfitSpecs.TolFun = sys.regSpecs.solverSpecs.TolFun;
-                    nlinfitSpecs.TolX = sys.regSpecs.solverSpecs.TolX;
-                    nlinfitSpecs.DerivStep = sys.regSpecs.solverSpecs.DerivStep;
-                    % nlinfitSpecs.FunValCheck = sys.regSpecs.solverSpecs.checkNanInf;
-                    % nlinfitSpecs.RobustWgtFun = sys.regSpecs.solverSpecs.Weight_Function;
-                    % nlinfitSpecs.Tune = sys.regSpecs.solverSpecs.Tuning_Constant;
+                    nlinfitSpecs.MaxIter = sys.regSpecs.nlinfitSpecs.MaxIter;
+                    nlinfitSpecs.TolFun = sys.regSpecs.nlinfitSpecs.TolFun;
+                    nlinfitSpecs.TolX = sys.regSpecs.nlinfitSpecs.TolX;
+                    nlinfitSpecs.DerivStep = sys.regSpecs.nlinfitSpecs.DerivStep;
+                    nlinfitSpecs.FunValCheck = sys.regSpecs.nlinfitSpecs.FunValCheck;
+                    nlinfitSpecs.RobustWgtFun = sys.regSpecs.nlinfitSpecs.RobustWgtFun;
+                    if sys.regSpecs.nlinfitSpecs.Tune >= 0, nlinfitSpecs.Tune = sys.regSpecs.nlinfitSpecs.Tune; end
+
                     [sys.reg_analytics.beta,sys.reg_analytics.R,sys.reg_analytics.J, ...
                         sys.reg_analytics.CovB,sys.reg_analytics.MSE,sys.reg_analytics.ErrorModelInfo] = ...
-                        nlinfit(IVs,DVs,@(reg_param,t) sys.nlinfitHandler(reg_param,t),beta0,nlinfitSpecs);
+                        nlinfit(sys.IVs,sys.DVs,@(reg_param,t) sys.nlinfitHandler(reg_param,t,false),beta0,nlinfitSpecs);
 
                 case "lsqcurvefit"
-
+                    lsqcurvefitSpecs = optimset;
+                    lsqcurvefitSpecs.Display = 'iter';
+                    lsqcurvefitSpecs.Algorithm = sys.regSpecs.lsqcurvefitSpecs.Algorithm;
+                    lsqcurvefitSpecs.PlotFcns = sys.regSpecs.lsqcurvefitSpecs.PlotFcns;
+                    lsqcurvefitSpecs.TolFun = sys.regSpecs.lsqcurvefitSpecs.TolFun;
+                    lsqcurvefitSpecs.TolX = sys.regSpecs.lsqcurvefitSpecs.TolX;
+                    lsqcurvefitSpecs.MaxIter = sys.regSpecs.lsqcurvefitSpecs.MaxIter;
+                    lsqcurvefitSpecs.MaxFunEvals = sys.regSpecs.lsqcurvefitSpecs.MaxFunEvals;
+                    lsqcurvefitSpecs.FunValCheck = sys.regSpecs.lsqcurvefitSpecs.FunValCheck;
+                    [sys.reg_analytics.beta,~,sys.reg_analytics.R,~,~,~,sys.reg_analytics.J] = ...
+                        lsqcurvefit(@(reg_param,t) sys.nlinfitHandler(reg_param,t,false),beta0,sys.IVs,sys.DVs, ...
+                        sys.regSpecs.lsqcurvefitSpecs.paramBnds(:,1),sys.regSpecs.lsqcurvefitSpecs.paramBnds(:,2), ...
+                        [],[],[],[],[],lsqcurvefitSpecs);
+                    sys.reg_analytics.MSE = mean(sys.reg_analytics.R.^2,"all");
 
                 case "fminsearch"
                     fminsearchSpecs = optimset;
                     fminsearchSpecs.Display = 'iter';
-                    fminsearchSpecs.FunValCheck = sys.regSpecs.solverSpecs.checkComplexInf;
-                    fminsearchSpecs.MaxFunEvals = sys.regSpecs.solverSpecs.Maximum_Function_Evaluations;
-                    fminsearchSpecs.MaxIter = sys.regSpecs.solverSpecs.Maximum_Iterations;
-                    fminsearchSpecs.PlotFcns = sys.regSpecs.solverSpecs.PlotFcns;
-                    fminsearchSpecs.TolFun = sys.regSpecs.solverSpecs.TolFun;
-                    fminsearchSpecs.TolX = sys.regSpecs.solverSpecs.TolX;
-                    sys.reg_analytics.beta = fminsearch(@(reg_param) sys.fminsearchHandler(IVs,reg_param),beta0,fminsearchSpecs);
-                    % sys.reg_analytics.R = (DVs-sys.runRegModel(IVs,sys.y0,sys.reg_analytics.beta));
+                    fminsearchSpecs.FunValCheck = sys.regSpecs.fminsearchSpecs.FunValCheck;
+                    fminsearchSpecs.MaxFunEvals = sys.regSpecs.fminsearchSpecs.MaxFunEvals;
+                    fminsearchSpecs.MaxIter = sys.regSpecs.fminsearchSpecs.MaxIter;
+                    fminsearchSpecs.PlotFcns = sys.regSpecs.fminsearchSpecs.PlotFcns;
+                    fminsearchSpecs.TolFun = sys.regSpecs.fminsearchSpecs.TolFun;
+                    fminsearchSpecs.TolX = sys.regSpecs.fminsearchSpecs.TolX;
+                    sys.reg_analytics.beta = fminsearch(@(reg_param) sys.fminsearchHandler(sys.IVs,reg_param),beta0,fminsearchSpecs);
+                    sys.reg_analytics.R = (sys.DVs-sys.runRegModel(sys.IVs,sys.y0,sys.reg_analytics.beta));
                     % sys.reg_analytics.MSE = mean((DVs-sys.runRegModel(IVs,sys.y0,sys.reg_analytics.beta)).^2,"all");
+                    sys.reg_analytics.MSE = mean(sys.reg_analytics.R.^2,"all");
 
                 case "fmincon"
-
+                    fminconSpecs = optimset;
+                    fminconSpecs.Algorithm = sys.regSpecs.fminconSpecs.Algorithm;
+                    fminconSpecs.PlotFcns = sys.regSpecs.fminconSpecs.PlotFcns;
+                    fminconSpecs.TolFun = sys.regSpecs.fminconSpecs.TolFun;
+                    fminconSpecs.TolX = sys.regSpecs.fminconSpecs.TolX;
+                    fminconSpecs.MaxIter = sys.regSpecs.fminconSpecs.MaxIter;
+                    fminconSpecs.MaxFunEvals = sys.regSpecs.fminconSpecs.MaxFunEvals;
+                    fminconSpecs.FunValCheck = sys.regSpecs.fminconSpecs.FunValCheck;
+                    sys.reg_analytics.beta = lsqcurvefit(@(reg_param) sys.fminsearchHandler(sys.IVs,reg_param),beta0, ...
+                            [],[],[],[],sys.regSpecs.fminconSpecs.paramBnds(:,1),sys.regSpecs.fminconSpecs.paramBnds(:,2), ...
+                            [],fminconSpecs);
+                    sys.reg_analytics.R = (sys.DVs-sys.runRegModel(sys.IVs,sys.y0,sys.reg_analytics.beta));
+                    sys.reg_analytics.MSE = mean((sys.DVs-sys.runRegModel(sys.IVs,sys.y0,sys.reg_analytics.beta)).^2,"all");
 
             end
 
-            [tRes,yRes] = sys.runRegModel(IVs,sys.y0,sys.reg_analytics.beta);
+            [tRes,yRes] = sys.runRegModel(sys.IVs,sys.y0,sys.reg_analytics.beta);
+
             sys.regData = [tRes,yRes];
+            for k=1:1:length(sys.importedDataIdx)
+                sys.regData(:,sys.importedDataIdx(k)) = unit_standardization_inv(sys.regData(:,sys.importedDataIdx(k)),comps{sys.importedDataIdx(k)-1}.getInitConcUnit());
+                % if strcmp(comps{sys.importedDataIdx(k)-1}.getInitConcUnit(),"mg/L")
+                %     sys.regData(:,sys.importedDataIdx(k)) = sys.regData(:,sys.importedDataIdx(k)).*1000;
+                % end
+            end
             regStats = struct('importedDataIdx',sys.importedDataIdx, ...
                 'beta',sys.reg_analytics.beta,'R',sys.reg_analytics.R, ...
                 'J',sys.reg_analytics.J,'CovB',sys.reg_analytics.CovB,'MSE',sys.reg_analytics.MSE, ...
                 'ErrorModelInfo',sys.reg_analytics.ErrorModelInfo, ...
-                'IVs',sys.importedData{:,1},'DVs',sys.importedData{:,2:end},'tRes',tRes,'yRes',yRes);
+                'IVs',sys.mat_IVs,'DVs',sys.mat_DVs,'tRes',sys.regData(:,1),'yRes',sys.regData(:,2:end));
         end
 
         % sys: ODESys class ref, param: number[], t: number[]
-        function yRes = nlinfitHandler(sys,reg_param,t)
-            opts = odeset('RelTol',1E-6,'AbsTol',1E-6,'NonNegative',1);
-            tspan = unique(t)
-            test = sys.y0
-            test2 = sys.dydt
-            [~,yRes_all] = ode45(@(t,y) sys.dydt(t,y,sys.param,sys.f(:,3),zeros(size(sys.var_in_key,2)),reg_param),tspan,sys.y0,opts);
-            yRes = zeros((size(sys.importedData,2)-1).*size(sys.importedData,1),1)
-            for k=1:1:size(sys.importedData,2)-1
-                yRes((1:1:size(sys.importedData,1))+((k-1).*size(sys.importedData,1)),1) = yRes_all(:,sys.importedDataIdx(k))
+        function yRes = nlinfitHandler(sys,reg_param,t,varargin)
+            % test = reg_param
+            if varargin{1}, tspan = [0,t]; else, tspan = unique(t); end
+            opts = odeset('RelTol',1E-5,'AbsTol',1E-5);
+            [~,yRes_all] = ode15s(@(t,y) sys.dydt(t,y,sys.param,sys.f(:,3),zeros(size(sys.var_in_key,2)),reg_param),tspan,sys.y0,opts);
+            if varargin{1}
+                yRes = yRes_all(end,sys.importedDataIdx-1)';
+            else
+                yRes = zeros((size(sys.importedData,2)-1).*size(sys.importedData,1),1);
+                for k=1:1:size(sys.importedData,2)-1
+                    yRes((1:1:size(sys.importedData,1))+((k-1).*size(sys.importedData,1)),1) = yRes_all(:,sys.importedDataIdx(k)-1);
+                end
+                % test2 = yRes
+                % test3 = reg_param
             end
+            % test2 = yRes
         end
 
         % sys: ODESys class ref, x: number[]
         function SSE = fminsearchHandler(sys,IVs,reg_param)
             opts = odeset('RelTol',1E-5,'AbsTol',1E-5,'NonNegative',1);
             tspan = unique(IVs);
-            [~,yRes_all] = ode45(@(t,y) sys.dydt(t,y,sys.param,sys.f(:,3),zeros(size(sys.var_in_key,2)),reg_param),tspan,sys.y0,opts);
+            [~,yRes_all] = ode15s(@(t,y) sys.dydt(t,y,sys.param,sys.f(:,3),zeros(size(sys.var_in_key,2)),reg_param),tspan,sys.y0,opts);
             yRes = zeros(size(table2array(sys.importedData(:,2:end))));
             for k=1:1:size(sys.importedData,2)-1
                 yRes(:,k) = yRes_all(:,sys.importedDataIdx(k));
@@ -2160,10 +2297,10 @@ classdef ODESys < handle
 
         % sys: ODESys class ref, t: number[]
         function [tRes,yRes] = runRegModel(sys,t,y0,reg_param)
-            % iterating over BatchFunction with ode45
+            % iterating over BatchFunction with ode15s
             opts = odeset('RelTol',1E-5,'AbsTol',1E-5,'NonNegative',1);
-            tspan = [t(1),t(end)];
-            [tRes,yRes] = ode45(@(t,y) sys.dydt(t,y,sys.param,sys.f(:,3),zeros(size(sys.var_in_key,2)),reg_param),tspan,y0,opts);
+            tspan = unique(t);
+            [tRes,yRes] = ode15s(@(t,y) sys.dydt(t,y,sys.param,sys.f(:,3),zeros(size(sys.var_in_key,2)),reg_param),tspan,y0,opts);
         end
 
         % sys: ODESys class ref
@@ -2175,23 +2312,25 @@ classdef ODESys < handle
         function NRMSE = calcNRMSE(sys,normType)
             % ### FIXME: check that calculation is correct
             RMSE = zeros(size(sys.importedData,2)-1,1);
-            NRMSE = cell(size(sys.importedData,2)-1,2);
+            NRMSE = cell(size(sys.importedData,2)-1,3);
             skip = 0;
             for k=1:1:length(RMSE)
-                RMSE(k) = sqrt(sum(sys.reg_analytics.R((1:1:size(sys.importedData,1))+((k-1).*size(sys.importedData,1)),1)));
+                RMSE(k) = sqrt(mean(sys.reg_analytics.R((1:1:size(sys.importedData,1))+((k-1).*size(sys.importedData,1)),1).^2));
                 switch normType
                     case "Range"
-                        normFactor = range(sys.regData(k+1,:),'all');
+                        normFactor = range(sys.regData(:,k+1),'all');
                     case "Mean"
-                        normFactor = mean(sys.regData(k+1,:),'all');
+                        normFactor = mean(sys.regData(:,k+1),'all');
                     case "Inter-Quartile Range"
-                        normFactor = iqr(sys.regData(k+1,:),'all');
+                        normFactor = iqr(sys.regData(:,k+1),'all');
                     case "Median"
-                        normFactor = median(sys.regData(k+1,:),'all');
+                        normFactor = median(sys.regData(:,k+1),'all');
                 end
-                if strcmp(sys.matchedVarsList{k}.sysVarName,'t'), skip = 1; end
+                % test = sys.matchedVarsList{k}.sysVarName
+                if strcmp(sys.matchedVarsList{k}.sysVarName,'Model Runtime'), skip = 1; end
                 NRMSE{k,1} = char(sys.matchedVarsList{k+skip}.sysVarName);
                 NRMSE{k,2} = RMSE(k)./normFactor;
+                NRMSE{k,3} = 1 - sum((sys.regData(:,sys.importedDataIdx(k))-sys.importedData{:,k+1}).^2)./sum((sys.importedData{:,k+1}-mean(sys.importedData{:,k+1})).^2);
             end
         end
 
@@ -2200,17 +2339,23 @@ classdef ODESys < handle
             % ### FIXME: need to ensure that the R, J, and CovB are
             % separated by variable
             % ### FIXME: Check that the calculation here is correct
-            parCI = cell(length(sys.matchedVarsList)-1,3);
+            parCI = cell(size(sys.regParamList,1),3);
             switch calcType
                 case "Covariance"
-                    res = nlparci(sys.reg_analytics.beta,sys.reg_analytics.R,'covariance',sys.reg_analytics.CovB,'alpha',alpha);
-                    for k=1:1:size(parCI,1)
+                    beta = sys.reg_analytics.beta;
+                    R = sys.reg_analytics.R;
+                    CovB = sys.reg_analytics.CovB;
+                    for k=1:1:length(beta)
+                        res = nlparci(beta,R,'covariance',CovB,'alpha',alpha);
                         parCI{k,2} = res(k,1);
                         parCI{k,3} = res(k,2);
                     end
                 case "Jacobian"
-                    res = nlparci(sys.reg_analytics.beta,sys.reg_analytics.R,'jacobian',sys.reg_analytics.J,'alpha',alpha);
-                    for k=1:1:size(parCI,1)
+                    beta = sys.reg_analytics.beta;
+                    R = sys.reg_analytics.R;
+                    J = sys.reg_analytics.J;
+                    for k=1:1:length(beta)
+                        res = nlparci(beta,R,'jacobian',J,'alpha',alpha);
                         parCI{k,2} = res(k,1);
                         parCI{k,3} = res(k,2);
                     end
@@ -2221,35 +2366,35 @@ classdef ODESys < handle
         % sys: ODESys class ref, tval: number, calcType: string, alpha:
         % number, predIntType: string
         function predCI = calcPredCI(sys,tval,calcType,alpha,simBnds,predIntType)
-            predCI = cell(length(sys.matchedVarsList)-1,3);
-            comps = [sys.getSpecies('comp'),sys.getChemicals('comp'),sys.environs.(sys.activeEnv).getAllEnvComps()];
-            y0 = zeros(size(comps));
-            for m=1:1:length(comps), y0(m) = comps{m}.getInitConc(); end
+            predCI = cell(length(sys.matchedVarsList)-1,4);
             if predIntType == "Curve", predIntType = 'curve'; else, predIntType = 'observation'; end
             if simBnds == "On", simBnds = 'on'; else, simBnds = 'off'; end
+
+            comps = [sys.getSpecies('comp'),sys.getChemicals('comp'),sys.environs.(sys.activeEnv).getAllEnvComps()];
             switch calcType
                 case "Covariance"
-                    res = nlpredci(@(reg_param,t) sys.nlinfitHandler(reg_param,t,y0,true),[tval,tval.*1.001],sys.reg_analytics.beta, ...
-                        sys.reg_analytics.R,'covariance',sys.reg_analytics.CovB,'alpha',alpha, ...
-                        'ErrorModelInfo',sys.reg_analytics.ErrorModelInfo,'MSE',sys.reg_analytics.MSE, ...
-                        'PredOpt',predIntType,'SimOpt',simBnds,'Weights',sys.regSpecs.RobustWgtFun);
-                    for k=1:1:size(predCI,1)
-                        predCI{k,2} = res(k,1);
-                        predCI{k,3} = res(k,2);
-                    end
+                    % res = nlpredci(@(reg_param,t) sys.nlinfitHandler(reg_param,t,true),[tval,tval.*1.001],sys.reg_analytics.beta, ...
+                    %     sys.reg_analytics.R,'covariance',sys.reg_analytics.CovB,'alpha',alpha, ...
+                    %     'ErrorModelInfo',sys.reg_analytics.ErrorModelInfo,'MSE',sys.reg_analytics.MSE, ...
+                    %     'PredOpt',predIntType,'SimOpt',simBnds);
+                    [res,delta] = nlpredci(@(reg_param,t) sys.nlinfitHandler(reg_param,t,true),[tval,tval.*1.1],sys.reg_analytics.beta, ...
+                        sys.reg_analytics.R,'covariance',sys.reg_analytics.CovB,'alpha',alpha,'MSE',sys.reg_analytics.MSE, ...
+                        'PredOpt',predIntType,'SimOpt',simBnds);
                 case "Jacobian"
-                    res = nlpredci(@(reg_param,t) sys.nlinfitHandler(reg_param,t,y0,true),[tval,tval.*1.001],sys.reg_analytics.beta, ...
+                    [res,delta] = nlpredci(@(reg_param,t) sys.nlinfitHandler(reg_param,t,true),[tval,tval.*1.1],sys.reg_analytics.beta, ...
                         sys.reg_analytics.R,'jacobian',sys.reg_analytics.J,'alpha',alpha, ...
-                        'ErrorModelInfo',sys.reg_analytics.ErrorModelInfo,'MSE',sys.reg_analytics.MSE, ...
-                        'PredOpt',predIntType,'SimOpt',simBnds,'Weights',sys.regSpecs.RobustWgtFun);
-                    for k=1:1:size(predCI,1)
-                        predCI{k,2} = res(k,1);
-                        predCI{k,3} = res(k,2);
-                    end
+                        'MSE',sys.reg_analytics.MSE, ...
+                        'PredOpt',predIntType,'SimOpt',simBnds);
             end
-            for k=1:1:size(predCI,1), predCI{k,1} = sys.regParamList{k,1}; end
-            % ### FIXME: need to get unit for params
-            for k=1:1:size(predCI,1), predCI{k,4} = sys.regParamList{k,7}; end
+
+            for k=1:1:size(predCI,1)
+                if strcmp(sys.matchedVarsList{k}.sysVarName,'Model Runtime'), skip = 1; end
+                predCI{k,1} = char(sys.matchedVarsList{k+skip}.sysVarName);
+                predCI{k,2} = res(k)-delta(k);
+                predCI{k,3} = res(k)+delta(k);
+                predCI{k,4} = comps{sys.importedDataIdx(k)-1}.getInitConcUnit();
+                % predCI{k,4} = char(sys.matchedVarsList{k+skip}.sysVarUnit);
+            end
         end
 
         % sys: ODESys class ref, funcVal: string, funcName: string
@@ -2544,65 +2689,74 @@ classdef ODESys < handle
 
         % sys: ODESys class ref, compName: string, paramSym: string, updateType: string
         function params = updateRegParamList(sys,compName,paramSym,updateType)
-            % ### FIXME: add functionality to include capability to update
-            % for envs and helpers
-            % comp = sys.getCompByName(compName);
-            paramList = sys.getGrthParamsByCompName(compName);
-            cancel = false;
-            if updateType == "Add"
-                for k=1:1:size(sys.regParamList)
-                    if strcmp(sys.regParamList{k,1},paramSym)
-                        cancel = true;
-                    end
-                end
-                
-                if ~cancel
-                    for k=1:1:size(paramList,1)
-                        if strcmp(paramList{k,3},paramSym)
-                            regParam = paramList(k,:);
-                            break;
+            try
+                % ### FIXME: add functionality to include capability to update
+                % for envs and helpers
+                % comp = sys.getCompByName(compName);
+                paramList = sys.getGrthParamsByCompName(compName);
+                cancel = false;
+                if updateType == "Add"
+                    for k=1:1:size(sys.regParamList)
+                        if strcmp(sys.regParamList{k,1},paramSym)
+                            cancel = true;
                         end
                     end
-                    new_idx = 0;
+    
+                    if ~cancel
+                        for k=1:1:size(paramList,1)
+                            if strcmp(paramList{k,3},paramSym)
+                                regParam = paramList(k,:);
+                                break;
+                            end
+                        end
+                        new_idx = 0;
+                        for k=1:1:size(sys.regParamList,1)
+                            sorted_comp_arr = sort({sys.regParamList{k,1},regParam{3}});
+                            if strcmp(sorted_comp_arr{1},regParam{3})
+                                new_idx = k;
+                                break;
+                            end
+                        end
+    
+                        if ~isempty(sys.regParamList) && new_idx ~= 0
+                            sys.regParamList(new_idx+1:size(sys.regParamList,1)+1,:) = sys.regParamList(new_idx:size(sys.regParamList,1),:);
+                            sys.regSpecs.paramIGs(new_idx+1:size(sys.regSpecs.paramIGs,1)+1,1) = sys.regSpecs.paramIGs(new_idx:size(sys.regSpecs.paramIGs,1),1);
+                        end
+    
+                        if new_idx == 0
+                            new_idx = size(sys.regParamList,1)+1;
+                        end
+
+                        val = unit_standardization(regParam{5},regParam{6});
+    
+                        sys.regParamList{new_idx,1} = regParam{3};
+                        sys.regParamList{new_idx,2} = compName;
+                        sys.regParamList{new_idx,3} = regParam{2};
+                        sys.regParamList{new_idx,4} = val;
+                        sys.regParamList{new_idx,5} = '~';
+                        sys.regParamList{new_idx,6} = "";
+                        sys.regParamList{new_idx,7} = regParam{6};
+    
+                        % sys.regSpecs.DerivStep(end+1,1) = eps^(1/3);
+                        sys.regSpecs.paramIGs(new_idx,1) = regParam{5};
+                    end
+                elseif updateType == "Remove"
                     for k=1:1:size(sys.regParamList,1)
-                        sorted_comp_arr = sort({sys.regParamList{k,1},regParam{3}});
-                        if strcmp(sorted_comp_arr{1},regParam{3})
-                            new_idx = k;
+                        if strcmp(sys.regParamList{k,1},paramSym)
+                            sys.regParamList(k,:) = [];
+                            % sys.regSpecs.DerivStep(k,1) = [];
+                            sys.regSpecs.paramIGs(k,:) = [];
                             break;
                         end
                     end
-
-                    if ~isempty(sys.regParamList) && new_idx ~= 0
-                        sys.regParamList(new_idx+1:size(sys.regParamList,1)+1,:) = sys.regParamList(new_idx:size(sys.regParamList,1),:);
-                    end
-
-                    if new_idx == 0
-                        new_idx = size(sys.regParamList,1)+1;
-                    end
-
-                    sys.regParamList{new_idx,1} = regParam{3};
-                    sys.regParamList{new_idx,2} = compName;
-                    sys.regParamList{new_idx,3} = regParam{2};
-                    sys.regParamList{new_idx,4} = regParam{5};
-                    sys.regParamList{new_idx,5} = '~';
-                    sys.regParamList{new_idx,6} = "";
-                    sys.regParamList{new_idx,7} = regParam{6};
-
-                    % sys.regSpecs.DerivStep(end+1,1) = eps^(1/3);
-                    sys.regSpecs.paramIGs(end+1,1) = regParam{5};
                 end
-            elseif updateType == "Remove"
-                for k=1:1:size(sys.regParamList,1)
-                    if strcmp(sys.regParamList{k,1},paramSym)
-                        sys.regParamList(k,:) = [];
-                        % sys.regSpecs.DerivStep(k,1) = [];
-                        sys.regSpecs.paramIGs(k,:) = [];
-                        break;
-                    end
-                end
+                % ### FIXME: for each of the regression solvers, need to update the
+                % number of parameter specific specifications provided
+                for k=1:1:size(sys.regParamList,1), sys.regParamList{k,6} = ""; end
+                params = sys.regParamList(:,1:5);
+            catch err
+                disp("ODESys.m, line 2702: " + err)
             end
-            for k=1:1:size(sys.regParamList,1), sys.regParamList{k,6} = ""; end
-            params = sys.regParamList(:,1:5);
         end
 
         % sys: ODESys, compName: string
@@ -2630,6 +2784,7 @@ classdef ODESys < handle
             sysVarNum = 1;
             pairNum = 1;
             cancel = false;
+            % comps = [sys.getSpecies('comp'),sys.getChemicals('comp'),sys.environs.(sys.activeEnv).getAllEnvComps()];
             if match % only works if both variables aren't already taken
                 for k=1:1:length(sys.matchedVarsList)
                     if sysVar == sys.matchedVarsList{k}.sysVarName || importVar == sys.matchedVarsList{k}.importVarName
@@ -2644,7 +2799,12 @@ classdef ODESys < handle
                             break;
                         end
                     end
-                    newPair = struct('sysVarName',sysVar,'sysVarNum',sysVarNum,'importVarName',importVar,'importVarNum',importVarNum);
+                    % ### FIXME: need get the unit from the comp
+                    % for k=1:1:length(comps)
+                    % 
+                    % end
+                    sysVarUnit = 'g/L';
+                    newPair = struct('sysVarName',sysVar,'sysVarNum',sysVarNum,'importVarName',importVar,'importVarNum',importVarNum,'sysVarUnit',sysVarUnit);
                     sys.matchedVarsList{end+1} = newPair;
                 end
             else
@@ -2669,9 +2829,10 @@ classdef ODESys < handle
             plotRegData = [];
             plotRegData(:,1) = sys.regData(:,1);
             plotRegData(:,2) = sys.regData(:,find(DVIdx)+1);
+                        
             plotImportData = [];
             plotImportData(:,1) = [sys.importedData{:,1}];
-            plotImportData(:,2) = [sys.importedData{:,find(sys.importedDataIdx == (find(DVIdx)))+1}];
+            plotImportData(:,2) = [sys.importedData{:,find(sys.importedDataIdx-1 == (find(DVIdx)))+1}];
         end
 
         % sys: ODESys class ref
@@ -3072,7 +3233,7 @@ classdef ODESys < handle
         end
 
         % sys: ODESys class ref
-        function res = getAllBioChemSolutes(sys)
+        function res = getCompParamDDItems(sys)
             comps = [sys.getSpecies('comp'),sys.getChemicals('comp')];
             res = cell(length(comps)+4,2);
             res{1,1} = 'Temperature';
@@ -3088,6 +3249,10 @@ classdef ODESys < handle
             for k=1:1:length(comps)
                 res{k+5,1} = char(comps{k}.getName());
                 res{k+5,2} = comps{k}.getSym();
+            end
+            for k=1:1:length(sys.helperFuncs)
+                res{k+5+length(comps),1} = char(sys.helperFuncs{k}.getSubFuncName());
+                res{k+5+length(comps),2} = char(sys.helperFuncs{k}.getSubFuncSym());
             end
         end
 
@@ -3470,11 +3635,6 @@ classdef ODESys < handle
                     end
                 end
             end
-        end
-
-        % funcStr: string
-        function res = convertToLaTeX(funcStr)
-            res = latex(str2sym(funcStr));
         end
 
         % modelName: string, chemNum: number, specNum: number

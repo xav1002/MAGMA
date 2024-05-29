@@ -190,13 +190,26 @@ classdef Environment < handle
                     paramNums = 1:1:length(paramNames);
                     params = cell(length(paramNums),6);
                     for l=paramNums
+                        if strcmp(paramUnits(l),"mg/L")
+                            val = paramVals(l).*1000;
+                        elseif strcmp(paramUnits(l),"mg/g")
+                            val = paramVals(l).*1000;
+                        elseif strcmp(paramUnits(l),"g/mg")
+                            val = paramVals(l).*0.001;
+                        elseif strcmp(paramUnits(l),"cells/mg")
+                            val = paramVals(l).*0.001;
+                        elseif strcmp(paramUnits(l),"mg/cells")
+                            val = paramVals(l).*1000;
+                        else
+                            val = paramVals(l);
+                        end
                         params{l,1} = char(string(paramNums(l)));
                         params{l,2} = char(envFuncName);
                         params{l,3} = char(paramSyms(l));
                         params{l,4} = char(paramNames(l));
-                        params{l,5} = paramVals(l);
+                        params{l,5} = val;
                         params{l,6} = char(paramUnits(l));
-                        params{l,7} = char(string(boolean(paramEditable{l})));
+                        params{l,7} = char(string((paramEditable{l}==1)));
                     end
                 end
             end
@@ -219,15 +232,15 @@ classdef Environment < handle
             envDef.Values.tkSA,envDef.Values.lgtConfig,envDef.Values.numLgtSrc,envDef.Values.lgtSrcDiam,envDef.Values.lgtSrcRad};
 
             % creating components for T, P, V
-            env.T_comp = Component('Temperature',0,30,'temp',false,0,0,'',0,'');
-            env.P_comp = Component('Pressure',0,1.01325,'press',false,0,0,'',0,'');
-            env.P_comp.addModel("P/(V_m-V)*(L_i-L_o)",'Pressure Dilution',[],'Main',defaultParamVals);
-            env.V_comp = Component('Volume',0,char(string((3.*pi.*(1./2).^2).*1000)),'vol',false,0,0,'',0,'');
+            env.T_comp = Component('Temperature',0,30,'C','temp',false,0,0,'',0,'');
+            env.P_comp = Component('Pressure',0,1.01325,'kPa','press',false,0,0,'',0,'');
+            % env.P_comp.addModel("P/(V_m-V)*(L_i-L_o)",'Pressure Dilution',[],'Main',defaultParamVals);
+            env.V_comp = Component('Volume',0,char(string((3.*pi.*(1./2).^2).*1000)),'L','vol',false,0,0,'',0,'');
 
             % creating pH components
-            env.H3O_comp = Component('Hydronium',0,1E-7,'acid',false,19.023,0,'',0,'');
+            env.H3O_comp = Component('Hydronium',0,1E-7,'M','acid',false,19.023,0,'',0,'');
             env.H3O_comp.addModel("k_pH*(H3O_eq-H3O)",'pH Equilibrium',"k_pH",'Main',defaultParamVals);
-            env.OH_comp = Component('Hydroxide',0,1E-7,'base',false,17.007,0,'',0,'');
+            env.OH_comp = Component('Hydroxide',0,1E-7,'M','base',false,17.007,0,'',0,'');
             env.OH_comp.addModel("k_pH*(OH_eq-OH)",'pH Equilibrium',"k_pH",'Main',defaultParamVals);
         end
 

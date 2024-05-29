@@ -4,6 +4,7 @@ classdef Component < handle
         name = ''; % comps name
 
         initConc = 1; % initial concentration for comps
+        initConcUnit = '';
 
         funcParams = {}; % cell array of structs that contain the values, names, symbols, and units of parameters,
                         % with the indicies being the parameter numbers.
@@ -79,7 +80,7 @@ classdef Component < handle
         % 7 - h_const_u
         % 8 - dh_const
         % 9 - dh_const_u
-        function comp = Component(name,number,initConc,type,is_vol,MW,h_const,h_const_u,dh_const,dh_const_u,defaultParamVals)
+        function comp = Component(name,number,initConc,initConcUnit,type,is_vol,MW,h_const,h_const_u,dh_const,dh_const_u,defaultParamVals)
             comp.name = name;
             comp.number = number;
             if strcmp(type,'Biological Solute')
@@ -108,6 +109,7 @@ classdef Component < handle
                 initConc = initConc * MW;
             end
             comp.initConc = initConc;
+            comp.initConcUnit = initConcUnit;
             comp.type = type;
 
             % set species parameters
@@ -290,8 +292,9 @@ classdef Component < handle
         end
 
         % comp: comps class ref, prop: string, val: number | string
-        function comp = setInitConc(comp, conc)
+        function comp = setInitConc(comp,conc,unit)
             comp.initConc = conc;
+            comp.initConcUnit = unit
         end
 
         % comp: Component class ref
@@ -299,11 +302,16 @@ classdef Component < handle
             initConc = comp.initConc;
         end
 
+        % comp: Component class ref
+        function initConcUnit = getInitConcUnit(comp)
+            initConcUnit = comp.initConcUnit;
+        end
+
         % comp: Component class ref, initConc: num, is_vol: boolean,
         % h_const: num, h_const_u: string, dh_const: num, dh_const_u:
         % string
-        function updateComp(comp,initConc,is_vol,MW,h_const,h_const_u,dh_const,dh_const_u,defaultParamVals)
-            comp.setInitConc(initConc);
+        function updateComp(comp,initConc,initConcUnit,is_vol,MW,h_const,h_const_u,dh_const,dh_const_u,defaultParamVals)
+            comp.setInitConc(initConc,initConcUnit);
             comp.MW = MW;
             comp.setVol(is_vol,h_const,h_const_u,dh_const,dh_const_u,defaultParamVals);
         end
@@ -553,12 +561,15 @@ classdef Component < handle
         % comp: comps class ref, paramSym: string, newVal: number,
         % newUnit: string, newParamName: string, funcName: string,
         % editable: boolean
-        function comp = updateParam(comp, paramSym, newVal, newUnit, newParamName, funcName)
+        function comp = updateParam(comp, paramSym, newVal, newUnit, newParamName, funcName, convertUnits)
             try
                 funcObjIdx = comp.getFuncIdx(funcName);
             catch
                 disp("err Component.m Line 412")
                 return;
+            end
+            if convertUnits
+                newVal = unit_standardization(newVal,newUnit);
             end
             comp.funcParams{funcObjIdx} = comp.reviseParam(paramSym,newVal,newUnit,newParamName,comp.funcParams{funcObjIdx});
         end
@@ -595,11 +606,13 @@ classdef Component < handle
             end
             for k=1:1:length(fp)
                 for l=1:1:length(fp{k}.params)
+                    val = unit_standardization_inv(fp{k}.params{l}.val,fp{k}.params{l}.unit);
+
                     params{ct,1} = num2str(ct);
                     params{ct,2} = fp{k}.funcName;
                     params{ct,3} = fp{k}.params{l}.sym;
                     params{ct,4} = fp{k}.params{l}.name;
-                    params{ct,5} = fp{k}.params{l}.val;
+                    params{ct,5} = val;
                     params{ct,6} = fp{k}.params{l}.unit;
                     params{ct,7} = fp{k}.params{l}.editable;
                     ct = ct + 1;
@@ -697,7 +710,7 @@ classdef Component < handle
             funcNum = length(comp.funcParams);
         end
 
-        % comp: Component class ref, paramCt: numbers, paramList: {}, regParamList: {}, regression: boolean
+        % comp: Component class ref, reg_param_ct: number, paramCt: numbers, paramList: {}, regParamList: {}, regression: boolean
         function [govFunc,params,reg_param_ct,regParamListUpdate] = compileGovFunc(comp,param_ct,reg_param_ct,regParamList,regression)
             % Need to make sure that each individual govFunc component is
             % isolated (so (C1+C2)*(C3+C4) ~= C1+C2*C3+C4)
@@ -787,8 +800,8 @@ classdef Component < handle
             end
 
             % replacing param syms in govFunc with p({gloNum})
-            ct = 1;
-            test6 = regParamList
+            ct = 0;
+            reg_param_ct_loc = 0;
             if regression
                 for k=1:1:length(fp)
                     % replacing function and regression parameters that haven't yet been
@@ -797,32 +810,19 @@ classdef Component < handle
                         match = strcmp(regParamList(:,1),char(fp{k}.params{l}.sym));
                         % ### NOTE: replace variables passed in
                         % in Simulink as v (like p but v)
-                        govFuncLength = strlength(govFunc);
+                        ct = ct + 1;
                         if any(match)
-                            for m=1:1:length(govFunc)
-                                if strlength(govFunc(m)) > 1 || govFuncLength == 1
-                                    if ~strcmp(regParamList{match,2},"")
-                                        govFunc(m) = replace(govFunc(m),fp{k}.params{l}.sym,"$("+(regParamList{match,2})+")");
-                                    else
-                                        if contains(govFunc(m),fp{k}.params{l}.sym)
-                                            govFunc(m) = replace(govFunc(m),fp{k}.params{l}.sym,"$("+(reg_param_ct)+")");
-                                            regParamListUpdate{1,match} = true; %#ok<*AGROW>
-                                            regParamListUpdate{2,match} = find(match);
-                                            regParamListUpdate{3,match} = string(reg_param_ct);
-                                            reg_param_ct = reg_param_ct + 1;
-                                        end
-                                    end
-                                end
+                            if ~strcmp(regParamList{match,2},"")
+                                govFunc = replace(govFunc,fp{k}.params{l}.sym,"$("+(regParamList{match,2})+")");
+                            else
+                                reg_param_ct_loc = reg_param_ct_loc + 1;
+                                govFunc = replace(govFunc,fp{k}.params{l}.sym,"$("+(reg_param_ct+reg_param_ct_loc)+")");
+                                regParamListUpdate{1,match} = true; %#ok<*AGROW>
+                                regParamListUpdate{2,match} = find(match);
+                                regParamListUpdate{3,match} = string(reg_param_ct+reg_param_ct_loc);
                             end
                         else
-                            for m=1:1:length(govFunc)
-                                if strlength(govFunc(m)) > 1 || govFuncLength == 1
-                                    if contains(govFunc(m),fp{k}.params{l}.sym)
-                                        govFunc(m) = replace(govFunc(m),fp{k}.params{l}.sym,"#("+(param_ct+ct+reg_param_ct-size(regParamList,1)+1)+")");
-                                        ct = ct + 1;
-                                    end
-                                end
-                            end
+                            govFunc = replace(govFunc,fp{k}.params{l}.sym,"#("+(param_ct+ct)+")");
                         end
                     end
                 end
@@ -830,19 +830,14 @@ classdef Component < handle
                 % replacing function parameters that haven't been replaced
                 % yet
                 for k=1:1:length(fp)
-                    govFuncLength = strlength(govFunc);
                     for l=1:1:length(fp{k}.params)
-                        for m=1:1:length(govFunc)
-                            if strlength(govFunc(m)) > 1 || govFuncLength == 1
-                                % if contains(govFunc(m),fp{k}.params{l}.sym), ct = ct + 1; end
-                                govFunc(m) = replace(govFunc(m),fp{k}.params{l}.sym,"#("+(param_ct+ct)+")");
-                                ct = ct + 1;
-                            end
-                        end
+                        ct = ct + 1;
+                        govFunc = replace(govFunc,fp{k}.params{l}.sym,"#("+(param_ct+ct)+")");
                     end
                 end
             end
             % govFunc = strrep(strrep(strjoin(govFunc),"#","")," ","");
+            reg_param_ct = reg_param_ct + reg_param_ct_loc;
             govFunc = replace(replace(govFunc,"#","p"),"$","r");
             if strcmp(govFunc,""), govFunc = "0"; end
         end
