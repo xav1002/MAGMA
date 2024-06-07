@@ -96,6 +96,7 @@ classdef ODESys < handle
             sys.addRmHelperFuncs('Equilibrium Hydroxide Concentration','OH_eq',"(K_w/H3O*(MW_H3O*MW_OH))",true);
             sys.addRmHelperFuncs('pH','pH',"-log10(H3O/MW_H3O)",true);
             sys.addRmHelperFuncs('pOH','pOH',"-log10(OH/MW_H3O)",true);
+            sys.addRmHelperFuncs('Light Intensity','I',"I_0",true);
 
             % create V_tot helper
             sys.addRmHelperFuncs("Total Solvent Volume",'V_tot',"V",true);
@@ -265,8 +266,9 @@ classdef ODESys < handle
 
         % sys: ODESys class ref, name: string, field: string, val: number |
         % string
-        function updateEnvironment(sys, field, val)
+        function newLgtMdlLaTeX = updateEnvironment(sys, field, val)
             env = sys.environs.(sys.activeEnv);
+            newLgtMdlLaTeX = "$I=I_0$";
             switch field
                 case "Incident Light (I_0(t))"
                     env.setLightFunc(val);
@@ -282,9 +284,51 @@ classdef ODESys < handle
                     sys.model_runtime = double(string(val));
                 case "reactorSpecificParams"
                     env.setReactorSpecificParams(val);
+                    % newLgtMdlLaTeX = sys.updateLightAttenuationModel();
             end
 
             sys.updateEnvSubFuncs(val,field);
+        end
+
+        % sys: ODESys class ref
+        function newLgtMdlLaTeX = updateLightAttenuationModel(sys)
+            [~,params] = sys.environs(sys.activeEnv).getReactorSpecificParams();
+            lgtAttnModelName = params.lgtAttnModel;
+            lgtBioAttn = params.lgtBioAttn;
+            lgtChemAttn = params.lgtChemAttn;
+
+            compSyms = "";
+            if lgtBioAttn
+                for k=1:1:length(sys.species)
+                    if k == 1
+                        compSyms = compSyms+"(X_"+k;
+                    elseif k == length(sys.species)
+                        compSyms = compSyms+"+X_"+k+")";
+                    else
+                        compSyms = compSyms+"+X_"+k;
+                    end
+                end
+            end
+            if lgtChemAttn
+                for k=1:1:length(sys.chemicals)
+                    if k == 1
+                        compSyms = compSyms+"C_"+k;
+                    elseif k == length(sys.chemicals)
+                        compSyms = compSyms+"+C_"+k+")";
+                    else
+                        compSyms = compSyms+"+C_"+k;
+                    end                
+                end
+            end
+
+            switch lgtAttnModelName
+                case "Model 1"
+                    newLgtMdlLaTeX = "{\int_0^L I_0*exp(-A*(l-B*"+compSyms+")) dl}/{L}";
+                    lgtAttnModel = "integral(@(l) I_0.*exp(-(p(10).*(l-p(11).*"+compSyms+"),0,L)./L";
+
+            end
+
+            sys.updateHelperFuncs("val",'Light Intensity','I',lgtAttnModel);
         end
 
         % sys: ODESys class ref, tkMaxVol: number
