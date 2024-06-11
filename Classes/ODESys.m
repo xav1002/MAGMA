@@ -39,7 +39,7 @@ classdef ODESys < handle
 
 %         sysVars = {}; % system variable names
         plots = {}; % plot objects
-        subplot_ct = 1;
+        subplot_ct = 0;
         subplot_row_ct = [1];
         subplot_col_ct = [1];
         subplots = {};
@@ -185,7 +185,7 @@ classdef ODESys < handle
                     sys.addRmHelperFuncs(HConstHelpers{k}.funcName,HConstHelpers{k}.funcSym,HConstHelpers{k}.funcVal,true);
                     [~,~,helperIdx] = sys.getHelperFunc(HConstHelpers{k}.getSubFuncName());
                     for l=1:1:length(paramNames)
-                        sys.helperFuncs{helperIdx}.updateParams(paramNames(l),paramSyms(l),paramVals(l),paramUnits(l),false,sys.getDefaultParamVals());
+                        sys.helperFuncs{helperIdx}.updateParams(paramNames(l),paramSyms(l),paramVals(l),paramUnits(l));
                     end
                 end
 
@@ -232,7 +232,7 @@ classdef ODESys < handle
                     if ~prev_is_vol, sys.addRmHelperFuncs(HConstHelpers{k}.funcName,HConstHelpers{k}.funcSym,HConstHelpers{k}.funcVal,true); end
                     [~,~,helperIdx] = sys.getHelperFunc(HConstHelpers{k}.getSubFuncName());
                     for l=1:1:length(paramNames)
-                        sys.helperFuncs{helperIdx}.updateParams(paramNames(l),paramSyms(l),paramVals(l),paramUnits(l),false,sys.getDefaultParamVals());
+                        sys.helperFuncs{helperIdx}.updateParams(paramNames(l),paramSyms(l),paramVals(l),paramUnits(l));
                     end
                 end
 
@@ -284,7 +284,7 @@ classdef ODESys < handle
                     sys.model_runtime = double(string(val));
                 case "reactorSpecificParams"
                     env.setReactorSpecificParams(val);
-                    % newLgtMdlLaTeX = sys.updateLightAttenuationModel();
+                    newLgtMdlLaTeX = sys.updateLightAttenuationModel();
             end
 
             sys.updateEnvSubFuncs(val,field);
@@ -292,43 +292,54 @@ classdef ODESys < handle
 
         % sys: ODESys class ref
         function newLgtMdlLaTeX = updateLightAttenuationModel(sys)
-            [~,params] = sys.environs(sys.activeEnv).getReactorSpecificParams();
+            [~,params] = sys.environs.(sys.activeEnv).getReactorSpecificParams();
             lgtAttnModelName = params.lgtAttnModel;
             lgtBioAttn = params.lgtBioAttn;
             lgtChemAttn = params.lgtChemAttn;
 
-            compSyms = "";
-            if lgtBioAttn
-                for k=1:1:length(sys.species)
-                    if k == 1
-                        compSyms = compSyms+"(X_"+k;
-                    elseif k == length(sys.species)
-                        compSyms = compSyms+"+X_"+k+")";
-                    else
-                        compSyms = compSyms+"+X_"+k;
+            if ~lgtBioAttn && ~lgtChemAttn
+                newLgtMdlLaTeX = "I_{0}";
+                lgtAttnModel = "I_0";
+            else
+                if isempty(sys.species) && isempty(sys.chemicals)
+                    newLgtMdlLaTeX = "I_{0}";
+                    lgtAttnModel = "I_0";
+                else
+                    compSyms = "(";
+                    % ### STARTHERE: Need to properly get number of species
+                    if lgtBioAttn
+                        for k=1:1:length(sys.species)
+                            if k == 1
+                                compSyms = compSyms+"X_"+k;
+                            else
+                                compSyms = compSyms+"+X_"+k;
+                            end
+                        end
+                    end
+                    if lgtChemAttn
+                        for k=1:1:length(sys.chemicals)
+                            if strcmp(compSyms,"(")
+                                compSyms = compSyms+"C_"+k;
+                            else
+                                compSyms = compSyms+"+C_"+k;
+                            end                
+                        end
+                    end
+                    compSyms = compSyms + ")"
+
+                    switch lgtAttnModelName
+                        case "Model 1"
+                            newLgtMdlLaTeX = "\frac{\int_0^L I_0\,exp(-A\,(l-B\,"+compSyms+")) dl}{L}";
+                            lgtAttnModel = "integral(@(l)I_0*exp(-(A*(l-B*"+compSyms+"))),0,L)/L";
+                            test = compSyms
+    
                     end
                 end
             end
-            if lgtChemAttn
-                for k=1:1:length(sys.chemicals)
-                    if k == 1
-                        compSyms = compSyms+"C_"+k;
-                    elseif k == length(sys.chemicals)
-                        compSyms = compSyms+"+C_"+k+")";
-                    else
-                        compSyms = compSyms+"+C_"+k;
-                    end                
-                end
-            end
-
-            switch lgtAttnModelName
-                case "Model 1"
-                    newLgtMdlLaTeX = "{\int_0^L I_0*exp(-A*(l-B*"+compSyms+")) dl}/{L}";
-                    lgtAttnModel = "integral(@(l) I_0.*exp(-(p(10).*(l-p(11).*"+compSyms+"),0,L)./L";
-
-            end
 
             sys.updateHelperFuncs("val",'Light Intensity','I',lgtAttnModel);
+            sys.updateHelperFuncs("latex",'Light Intensity','I',newLgtMdlLaTeX);
+            newLgtMdlLaTeX = "$" + newLgtMdlLaTeX + "$";
         end
 
         % sys: ODESys class ref, tkMaxVol: number
@@ -545,7 +556,7 @@ classdef ODESys < handle
             % 2. Density of each component
             try
                 for k=1:1:length(comps)
-                    defaultParamVals.(comps{k}.den_sym)= comps{k}.den;
+                    defaultParamVals.(comps{k}.den_sym) = comps{k}.den;
                 end
             catch err
                 disp(err)
@@ -649,6 +660,14 @@ classdef ODESys < handle
                         if strcmp(sys.helperFuncs{k}.getSubFuncName(),funcName) && ...
                                 strcmp(sys.helperFuncs{k}.getSubFuncSym(),funcSym)
                             sys.helperFuncs{k}.setSubFuncVal(funcVal);
+                            sys.helperFuncs{k}.initParams(sys.getModelVarNames());
+                        end
+                    end
+                case "latex"
+                    for k=1:1:length(sys.helperFuncs)
+                        if strcmp(sys.helperFuncs{k}.getSubFuncName(),funcName) && ...
+                                strcmp(sys.helperFuncs{k}.getSubFuncSym(),funcSym)
+                            sys.helperFuncs{k}.setSubFuncLaTeX(funcVal);
                         end
                     end
             end
@@ -692,7 +711,7 @@ classdef ODESys < handle
 
         % sys: ODEsys class ref, compName: string, valName: string,
         % editing: boolean, editedFunc: string
-        function existFunc = getGovFuncByCompName(sys,compName)
+        function [existFunc,existFuncUnicode] = getGovFuncByCompName(sys,compName)
             comp = sys.getCompByName(compName);
 
             phaseName = '';
@@ -723,6 +742,7 @@ classdef ODESys < handle
                 existFunc = existFunc + operator + funcs{k};
             end
             existFunc = uni2latex(char(existFunc));
+            existFuncUnicode = funcs{1};
         end
 
         % sys: ODESys class ref, compName: string, funcCombo: string,
@@ -761,6 +781,7 @@ classdef ODESys < handle
             for k=1:1:length(env_subfuncs)
                 envFuncName = env_subfuncs{k}.getSubFuncName();
                 grthParams = sys.getGrthParamsByEnvFuncName(envFuncName);
+                if isempty(grthParams), break; end
                 if any(strcmp(grthParams(:,3),paramSym))
                     sys.environs.(sys.activeEnv).updateEnvFuncParams(envFuncName,paramSym,newVal,newUnit,newParamName);
                 end
@@ -769,8 +790,9 @@ classdef ODESys < handle
             for k=1:1:length(sys.helperFuncs)
                 helperFuncName = sys.helperFuncs{k}.getSubFuncName();
                 grthParams = sys.getGrthParamsByHelperFuncName(helperFuncName);
+                if isempty(grthParams), break; end
                 if any(strcmp(grthParams(:,3),paramSym))
-                    sys.helperFuncs{k}.updateParams(newParamName,paramSym,newVal,newUnit,true);
+                    sys.helperFuncs{k}.updateParams(newParamName,paramSym,newVal,newUnit);
                 end
             end
         end
@@ -819,7 +841,7 @@ classdef ODESys < handle
                         newVal = grthParams(idx,5);
                         newParamName = grthParams(idx,4);
                         newUnit = grthParams(idx,6);
-                        sys.helperFuncs{k}.updateParams(newParamName,paramSym,newVal,newUnit,true);
+                        sys.helperFuncs{k}.updateParams(newParamName,paramSym,newVal,newUnit);
                     end
                 end
             end
@@ -1005,7 +1027,11 @@ classdef ODESys < handle
             helpers = [sys.helperFuncs,sys.environs.(sys.activeEnv).subfuncs];
             for k=1:1:length(helpers)
                 if strcmp(helpers{k}.getSubFuncName(),name)
-                    helperFuncVal = uni2latex(char(helpers{k}.getSubFuncVal()));
+                    if strcmp(helpers{k}.getSubFuncName(),'Light Intensity')
+                        helperFuncVal = helpers{k}.getSubFuncLaTeX();
+                    else
+                        helperFuncVal = uni2latex(char(helpers{k}.getSubFuncVal()));
+                    end
                 end
             end
         end
@@ -1204,24 +1230,31 @@ classdef ODESys < handle
         end
 
         % sys: ODESys class ref, name: string
-        function params = getGrthParamsByCompName(sys,compName)
-            phase = 'Main';
-            comp = sys.getCompByName(compName);
-            if contains(compName,'(Gas Phase)')
-                phase = 'Gas';
-            elseif contains(compName,'(Liquid Phase)')
-                phase = 'Liquid';
+        function params = getGrthParamsByFuncName(sys,funcName)
+            subfuncs = [sys.environs.(sys.activeEnv).subfuncs,sys.helperFuncs];
+            subfuncNames = string(zeros(size(subfuncs)));
+            for k=1:1:length(subfuncs), subfuncNames(k) = subfuncs{k}.getSubFuncName(); end
+            if any(strcmp(subfuncNames,funcName))
+                params = sys.getGrthParamsByHelperFuncName(funcName);
             else
-                comps = [sys.getSpecies('comp'),sys.getChemicals('comp'),sys.environs.(sys.activeEnv).getAllEnvComps()];
-                for k=1:1:length(comps)
-                    for l=1:1:length(comps{k}.sorpFuncParams)
-                        if contains(compName,comps{k}.sorpFuncParams{l}.solventName)
-                            phase = comps{k}.sorpFuncParams{l}.solventName;
+                phase = 'Main';
+                comp = sys.getCompByName(funcName);
+                if contains(funcName,'(Gas Phase)')
+                    phase = 'Gas';
+                elseif contains(funcName,'(Liquid Phase)')
+                    phase = 'Liquid';
+                else
+                    comps = [sys.getSpecies('comp'),sys.getChemicals('comp'),sys.environs.(sys.activeEnv).getAllEnvComps()];
+                    for k=1:1:length(comps)
+                        for l=1:1:length(comps{k}.sorpFuncParams)
+                            if contains(funcName,comps{k}.sorpFuncParams{l}.solventName)
+                                phase = comps{k}.sorpFuncParams{l}.solventName;
+                            end
                         end
                     end
                 end
+                params = comp.getGrthParams(phase);
             end
-            params = comp.getGrthParams(phase);
         end
 
         % sys: ODESys class ref, envFuncName: string
@@ -1246,13 +1279,15 @@ classdef ODESys < handle
 
         % sys: ODESys class ref, helperFuncName: string
         function params = getGrthParamsByHelperFuncName(sys,helperFuncName)
-            for k=1:1:length(sys.helperFuncs)
-                if strcmp(sys.helperFuncs{k}.getSubFuncName(),helperFuncName)
-                    paramNames = sys.helperFuncs{k}.getSubFuncParamNames();
-                    paramSyms = sys.helperFuncs{k}.getSubFuncParamSyms();
-                    paramVals = sys.helperFuncs{k}.getSubFuncParamVals();
-                    paramUnits = sys.helperFuncs{k}.getSubFuncParamUnits();
+            subfuncs = [sys.environs.(sys.activeEnv).subfuncs,sys.helperFuncs];
+            for k=1:1:length(subfuncs)
+                if strcmp(subfuncs{k}.getSubFuncName(),helperFuncName)
+                    paramNames = subfuncs{k}.getSubFuncParamNames();
                     paramNums = 1:1:length(paramNames);
+                    if isempty(paramNums), params = {}; return; end
+                    paramSyms = subfuncs{k}.getSubFuncParamSyms();
+                    paramVals = subfuncs{k}.getSubFuncParamVals();
+                    paramUnits = subfuncs{k}.getSubFuncParamUnits();
                     params = cell(length(paramNums),6);
                     for l=paramNums
                         val = unit_standardization(paramVals(l),paramUnits(l));
@@ -1538,12 +1573,14 @@ classdef ODESys < handle
                     funcArgText = "@(t,y,p,f,v)";
                     sys.f{end+1,1} = subfuncs{k}.getSubFuncName();
                     sys.f{end,2} = subfuncs{k}.getSubFuncSym();
+                    % test = funcArgText+govFunc
                     sys.f{end,3} = str2func(funcArgText+govFunc);
                     sys.param = [sys.param,subfuncs{k}.getSubFuncParamVals()'];
                 end
     
                 % converting to function_handle
                 sys.dydt = str2func(sys.dydt');
+                test = sys.dydt
                 
                 % setting initial conditions
                 sys.setInitCond();
@@ -1600,6 +1637,8 @@ classdef ODESys < handle
                 sys.subplots{k} = figure(k);
                 sys.TLs{k} = tiledlayout(sys.subplots{k},sys.subplot_row_ct,sys.subplot_col_ct);
             end
+            test2 = sys.subplot_ct
+            test3 = length(sys.plots)
             
             % ### FIXME: add feature to allow user to specify time
             % precision of model
@@ -1926,6 +1965,7 @@ classdef ODESys < handle
                     % plot models on fig
                     % ### IMPROVEMENT: give user option to span multiple
                     % slots?
+                    test4 = sys.plots{k}.subplotGroup
                     fig = figure(sys.plots{k}.subplotGroup);
                     group = sys.plots{k}.subplotGroup;
                     slot = sys.plots{k}.subplotSlot;
@@ -2474,14 +2514,25 @@ classdef ODESys < handle
         % sys: ODESys class ref
         function [plot,axes] = createNewPlot(sys)
             [group,slot] = sys.getNextSubplotSlot();
-            sys.plots{end+1} = Plot("Plot "+(length(sys.plots)+1),sys.getModelVarNames("plot"),sys.getModelVarNames("plot"),group,slot);
+            sys.subplot_ct = sys.subplot_ct + 1;
+            valid_name_found = false;
+            plot_names = string(zeros(size(sys.plots)));
+            for k=1:1:length(sys.plots), plot_names(k) = sys.plots{k}.getPlotProp("title"); end
+            plot_name_num = length(sys.plots);
+            while ~valid_name_found
+                plot_name_num = plot_name_num+1;
+                if ~any(strcmp(plot_names,"Plot "+plot_name_num))
+                    valid_name_found = true;
+                end
+            end
+            sys.plots{end+1} = Plot("Plot "+(plot_name_num),sys.getModelVarNames("plot"),sys.getModelVarNames("plot"),group,slot);
             plot = sys.plots{end}.getAllPlotProps();
             axes = sys.plots{end}.getAllAxProps();
         end
 
         % sys: ODESys class ref
         function [plot,axes] = removePlot(sys,plotName,lastItem)
-            sys.plots
+            sys.subplot_ct = sys.subplot_ct - 1;
             if lastItem
                 sys.plots(1) = [];
                 plot = {};
@@ -2549,7 +2600,7 @@ classdef ODESys < handle
 
         % sys: ODESys class ref
         function [group,slot] = getNextSubplotSlot(sys)
-            filled_slots = cell(sys.subplot_ct,1);
+            filled_slots = cell(sys.subplot_ct+1,1);
             for k=1:1:length(filled_slots)
                 filled_slots{k} = [];
             end
@@ -2559,7 +2610,6 @@ classdef ODESys < handle
             else
                 for k=1:1:length(sys.plots)
                     [group,slot] = sys.plots{k}.getSubplotGroupAndSlot();
-                    % ### STARTHERE: how to get this to work?
                     filled_slots{group} = [filled_slots{group},slot];
                 end
                 for k=1:1:length(filled_slots), filled_slots{k} = sort(filled_slots{k}); end
@@ -2737,7 +2787,7 @@ classdef ODESys < handle
                 % ### FIXME: add functionality to include capability to update
                 % for envs and helpers
                 % comp = sys.getCompByName(compName);
-                paramList = sys.getGrthParamsByCompName(compName);
+                paramList = sys.getGrthParamsByFuncName(compName);
                 cancel = false;
                 if updateType == "Add"
                     for k=1:1:size(sys.regParamList)
@@ -3237,7 +3287,7 @@ classdef ODESys < handle
                 paramVals = sorpHelpers{k}.getSubFuncParamVals();
                 paramUnits = sorpHelpers{k}.getSubFuncParamUnits();
                 for l=1:1:length(paramNames)
-                    sys.helperFuncs{helperIdx}.updateParams(paramNames(l),paramSyms(l),paramVals(l),paramUnits(l),false,sys.getDefaultParamVals());
+                    sys.helperFuncs{helperIdx}.updateParams(paramNames(l),paramSyms(l),paramVals(l),paramUnits(l));
                 end
             end
             % test4 = sys.helperFuncs
@@ -3301,7 +3351,7 @@ classdef ODESys < handle
         end
 
         % sys: ODESys class ref
-        function res = getRegCompNames(sys)
+        function res = getRegFuncNames(sys)
             comps = [sys.getSpecies('comp'),sys.getChemicals('comp'),sys.environs.(sys.activeEnv).getAllEnvComps()];
             res = cell(length(comps),2);
             for k=1:1:length(comps)
@@ -3312,6 +3362,12 @@ classdef ODESys < handle
                 end
                 res{k,1} = [char(comps{k}.getName()),ext];
                 res{k,2} = comps{k}.getSym();
+            end
+
+            subfuncs = [sys.environs.(sys.activeEnv).subfuncs,sys.helperFuncs];
+            for k=1:1:length(subfuncs)
+                res{k+length(comps),1} = char(subfuncs{k}.getSubFuncName());
+                res{k+length(comps),2} = subfuncs{k}.getSubFuncSym();
             end
         end
 

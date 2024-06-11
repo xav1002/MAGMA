@@ -3,6 +3,7 @@ classdef SubFunc < handle
         funcVal = "";
         funcName = "";
         funcSym = "";
+        funcLaTeX = "";
         params = {};
         lims = struct('lowerLim',0,'upperLim',0);
     end
@@ -19,14 +20,36 @@ classdef SubFunc < handle
         % subf: SubFunc class ref, sysVars: string[]
         function initParams(subf,sysVars)
             vars = string(findVars(char(subf.funcVal)));
-            sysVars(:,2)
-            if ~isempty(vars)
-                funcParams = setxor(intersect(sysVars(:,2),vars),vars);
+            if strcmp(subf.funcName,'Light Intensity')
+                non_params = {'integral','integral2','integral3','l','x','y','z'}';
+                if ~isempty(vars)
+                    funcParams = setxor(intersect([sysVars(:,2);non_params],vars),vars);
+                    funcParams(contains(funcParams,",")) = [];
+                else
+                    funcParams = [];
+                end
             else
-                funcParams = [];
+                if ~isempty(vars)
+                    funcParams = setxor(intersect(sysVars(:,2),vars),vars);
+                else
+                    funcParams = [];
+                end
             end
+
+            prevParams = cell(length(subf.params),2);
+            for k=1:1:length(subf.params)
+                prevParams{k,1} = convertStringsToChars(subf.params{k}.sym);
+                prevParams{k,2} = subf.params{k}.val;
+            end
+            
+            subf.params = {};
             for k=1:1:length(funcParams)
-                subf.updateParams(funcParams(k),funcParams(k),1,"");
+                if ~isempty(prevParams) && any(strcmp(prevParams(:,1),funcParams(k)))
+                    paramVal = prevParams{k,2};
+                else
+                    paramVal = 1;
+                end
+                subf.updateParams(funcParams(k),funcParams(k),paramVal,"");
             end
         end
 
@@ -47,14 +70,6 @@ classdef SubFunc < handle
             elseif strcmp(unit,"mg/cells")
                 val = val./1000;
             end
-
-            % ### FIXME: need to make this more robust
-            % if contains(unit,"mg/"), val = val.*0.001; end
-            % test9 = unit
-            % if contains(unit,"/mg"), val = val.*1000;
-            %     test8 = 8 
-            % end
-            % if contains(unit,"mg") && ~contains(unit,"/") && ~contains(unit,"*"), val = val.*1000; end
 
             newParam.val = val;
             newParam.unit = unit;
@@ -111,8 +126,16 @@ classdef SubFunc < handle
         end
 
         % subf: SubFunc class ref
-        function subfunc = getSubFuncVal(subf)
-            subfunc = subf.funcVal;
+        function subfuncVal = getSubFuncVal(subf)
+            subfuncVal = subf.funcVal;
+            if subf.funcName == "Light Intensity"
+                test5 = subf.params{2}
+            end
+        end
+
+        % subf: SubFunc class ref
+        function subfuncLaTeX = getSubFuncLaTeX(subf)
+            subfuncLaTeX = subf.funcLaTeX;
         end
 
         % subf: SubFunc class ref
@@ -160,6 +183,11 @@ classdef SubFunc < handle
         % subf: SubFunc class ref, funcSym: string
         function setSubFuncSym(subf,funcSym)
             subf.funcSym = funcSym;
+        end
+
+        % subf: SubFunc class ref, funcLaTeX: string
+        function setSubFuncLaTeX(subf,funcLaTeX)
+            subf.funcLaTeX = funcLaTeX;
         end
 
         % subf: SubFunc class ref

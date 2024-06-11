@@ -150,21 +150,12 @@ classdef Environment < handle
         function setReactorSpecificParams(env,params)
             env.reactorType = params{1};
             env.reactorSpecificParams = params{2};
-
-            env.calculateAvgLightPathLength();
         end
 
         % env: Environment class ref
         function [reactorType,params] = getReactorSpecificParams(env)
             reactorType = env.reactorType;
             params = env.reactorSpecificParams;
-        end
-
-        % env: Environment class ref
-        function calculateAvgLightPathLength(env)
-            switch env.reactorType
-                % ### STARTHERE: avg light path length calculations
-            end
         end
 
         % env: Environment class ref, envFuncName: string, paramSym: string,

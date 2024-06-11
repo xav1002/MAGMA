@@ -331,11 +331,21 @@ classdef Component < handle
         function comp = setModel(comp, funcVal, funcName, paramStr, defaultParamVals)
             if isempty(funcName), funcName = comp.funcParams{1}.funcName; end
             comp.funcParams{1} = comp.reviseFuncParamObj(funcVal, funcName, comp.funcParams{1});
+            prevParams = {};
+            for k=1:1:length(comp.funcParams{1}.params)
+                prevParams{k,1} = comp.funcParams{1}.params{k}.sym;
+                prevParams{k,2} = comp.funcParams{1}.params{k}.val;
+            end
             comp.funcParams{1} = comp.removeParams(comp.funcParams{1});
             % sets parameter syms
             locNum = 1;
             for k=1:1:length(paramStr)
-                comp.funcParams{1} = comp.createNewParam(locNum, paramStr{k}, paramStr{k}, 1, '', comp.funcParams{1}, true, defaultParamVals);
+                if ~isempty(prevParams) && any(strcmp(prevParams(:,1),paramStr{k}))
+                    paramVal = prevParams{k,2};
+                else
+                    paramVal = 1;
+                end
+                comp.funcParams{1} = comp.createNewParam(locNum, paramStr{k}, paramStr{k}, paramVal, '', comp.funcParams{1}, true, defaultParamVals);
                 locNum = locNum + 1;
             end
         end
