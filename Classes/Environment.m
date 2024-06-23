@@ -52,7 +52,7 @@ classdef Environment < handle
 
         % env: Environment class ref
         function maxV = getMaxV(env)
-            maxV = env.V_m_helper;
+            maxV = env.subfuncs{2};
         end
 
         % env: Environment class ref, prop: string
@@ -84,25 +84,25 @@ classdef Environment < handle
 
         % env: Environment class ref, initT: number
         function setInitT(env,initT)
-            env.T_comp.setInitConc(initT);
+            env.T_comp.setInitConc(initT,'K');
         end
         
         % env: Environment class ref, initP: number
         function setInitP(env,initP)
-            env.P_comp.setInitConc(initP);
+            env.P_comp.setInitConc(initP,'kPa');
         end
 
         % env: Environment class ref, initV: number
         function setInitV(env, initV)
-            env.V_comp.setInitConc(initV);
+            env.V_comp.setInitConc(initV,'L');
         end
 
         % env: Environment class ref, initpH: number, defaultParamVals: {}
         function setInitpH(env,initpH,defaultParamVals)
             H3O_initConc = 10.^(-initpH).*defaultParamVals.MW_H3O;
             OH_initConc = 1E-14./(H3O_initConc).*(defaultParamVals.MW_H3O./defaultParamVals.MW_OH);
-            env.H3O_comp.setInitConc(H3O_initConc);
-            env.OH_comp.setInitConc(OH_initConc);
+            env.H3O_comp.setInitConc(H3O_initConc,'-');
+            env.OH_comp.setInitConc(OH_initConc,'-');
         end
 
         % env: Environment class ref, solventName: string, initVol: num
@@ -123,7 +123,7 @@ classdef Environment < handle
             % update initial volume
             for k=1:1:length(env.SV_comps)
                 if strcmp(env.SV_comps{k}.getName(),[char(solventName)])
-                    env.SV_comps{k}.setInitConc(initVol);
+                    env.SV_comps{k}.setInitConc(initVol,'L');
                     return;
                 end
             end
@@ -150,6 +150,9 @@ classdef Environment < handle
         function setReactorSpecificParams(env,params)
             env.reactorType = params{1};
             env.reactorSpecificParams = params{2};
+    
+            % setting maximum volume value;
+            env.subfuncs{2}.setSubFuncVal(env.reactorSpecificParams.maxVol);
         end
 
         % env: Environment class ref
@@ -160,10 +163,10 @@ classdef Environment < handle
 
         % env: Environment class ref, envFuncName: string, paramSym: string,
         % newVal: number, newUnit: string, newParamName: string
-        function updateEnvFuncParams(env,envFuncName,paramSym,newVal,newUnit,newParamName)
+        function updateEnvFuncParams(env,envFuncName,paramSym,newVal,newUnit,newParamName,defaultParamVals)
             for k=1:1:length(env.subfuncs)
                 if strcmp(env.subfuncs{k}.getSubFuncName(),envFuncName)
-                    env.subfuncs{k}.updateParams(newParamName,paramSym,newVal,newUnit);
+                    env.subfuncs{k}.updateParams(newParamName,paramSym,newVal,newUnit,defaultParamVals);
                     break;
                 end
             end
@@ -219,19 +222,19 @@ classdef Environment < handle
                 env.subfuncs{k}.initParams(modelVarSyms);
             end
 
-            env.reactorSpecificParams = {envDef.Values.agSpd,envDef.Values.tkHt,envDef.Values.tkDiam,envDef.Values.maxVol, ...
-            envDef.Values.tkSA,envDef.Values.lgtConfig,envDef.Values.numLgtSrc,envDef.Values.lgtSrcDiam,envDef.Values.lgtSrcRad};
+            env.reactorSpecificParams = {envDef.Values.PBRHt,envDef.Values.PBRWidth,envDef.Values.PBRDepth,envDef.Values.maxVol, ...
+                envDef.Values.lgtAttnModel,envDef.Values.lgtBioAttn,envDef.Values.lgtChemAttn};
 
             % creating components for T, P, V
-            env.T_comp = Component('Temperature',0,30,'C','temp',false,0,0,'',0,'');
-            env.P_comp = Component('Pressure',0,1.01325,'kPa','press',false,0,0,'',0,'');
-            % env.P_comp.addModel("P/(V_m-V)*(L_i-L_o)",'Pressure Dilution',[],'Main',defaultParamVals);
-            env.V_comp = Component('Volume',0,char(string((3.*pi.*(1./2).^2).*1000)),'L','vol',false,0,0,'',0,'');
+            env.T_comp = Component('Temperature',0,30,'C','temp',false,0,0,'',0,'',defaultParamVals);
+            env.P_comp = Component('Pressure',0,1.01325,'kPa','press',false,0,0,'',0,'',defaultParamVals);
+            env.P_comp.addModel("P/(V_m-V_tot)*(L_i-L_o)",'Pressure Dilution',[],'Main',defaultParamVals);
+            env.V_comp = Component('Volume',0,char(string((100.*100.*5)./(1E3).*0.99)),'L','vol',false,0,0,'',0,'',defaultParamVals);
 
             % creating pH components
-            env.H3O_comp = Component('Hydronium',0,1E-7,'M','acid',false,19.023,0,'',0,'');
+            env.H3O_comp = Component('Hydronium',0,1E-7,'M','acid',false,19.023,0,'',0,'',defaultParamVals);
             env.H3O_comp.addModel("k_pH*(H3O_eq-H3O)",'pH Equilibrium',"k_pH",'Main',defaultParamVals);
-            env.OH_comp = Component('Hydroxide',0,1E-7,'M','base',false,17.007,0,'',0,'');
+            env.OH_comp = Component('Hydroxide',0,1E-7,'M','base',false,17.007,0,'',0,'',defaultParamVals);
             env.OH_comp.addModel("k_pH*(OH_eq-OH)",'pH Equilibrium',"k_pH",'Main',defaultParamVals);
         end
 

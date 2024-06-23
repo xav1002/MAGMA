@@ -65,5 +65,31 @@ classdef CompDefaults
         function validFuncs = getValidFuncs(comp, funcCombo)
             validFuncs = {CompDefaults.validFuncTypes.(comp.getType()).(funcCombo)};
         end
+
+        function MTFuncVal = getDefaultMTFuncVals(MTFuncName,phaseACompSym,phaseBCompSym,phaseASym,phaseBSym)
+            switch MTFuncName
+                case "None"
+                    MTFuncVal = "0";
+
+                case "First-Order with respect to Concentration Differential"
+                    compNum = regexp(phaseACompSym,'\d*','match');
+                    phaseANum = regexp(phaseASym,'\d*','match');
+                    phaseBNum = regexp(phaseBSym,'\d*','match');
+                    phaseLetter = "S";
+                    if strcmp(phaseASym,"V")
+                        phaseANum = "V";
+                        phaseLetter = "C";
+                    end
+                    if strcmp(phaseBSym,"V"), phaseBNum = "V"; end
+                    if strcmp(phaseASym,"(V_m-V_tot)")
+                        phaseANum = "V_g";
+                        phaseLetter = "P";
+                    end
+                    if strcmp(phaseBSym,"(V_m-V_tot)"), phaseBNum = "V_g"; end
+
+                    MTFuncVal = "k_"+phaseLetter+"_"+compNum{1}+"_"+phaseANum{1}+"_"+phaseBNum{1}+"*("+phaseASym+"/"+phaseBSym+")*("+phaseBCompSym+"-"+phaseACompSym+")";
+
+            end
+        end
     end
 end

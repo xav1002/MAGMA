@@ -153,8 +153,8 @@ classdef Component < handle
             % Total 3 helpers (HConst, P*, C*)
             funcVal = [comp.h_const_sym,'*exp(',comp.dh_const_sym,'*((1/T)-(1/298.15)))'];
             comp.h_const_helper_funcs{end+1} = SubFunc(funcVal,[char(comp.name),' Henry Constant'],['H_',char(comp.sym)],0,0);
-            comp.h_const_helper_funcs{end}.updateParams([char(comp.name),' Henry Constant at 298.15K'],comp.h_const_sym,comp.h_const,comp.h_const_u,true,defaultParamVals);
-            comp.h_const_helper_funcs{end}.updateParams([char(comp.name),' H Temperature Dependence Coefficient'],comp.dh_const_sym,comp.dh_const,comp.dh_const_u,true,defaultParamVals);
+            comp.h_const_helper_funcs{end}.updateParams([char(comp.name),' Henry Constant at 298.15K'],comp.h_const_sym,comp.h_const,comp.h_const_u,false,defaultParamVals);
+            comp.h_const_helper_funcs{end}.updateParams([char(comp.name),' H Temperature Dependence Coefficient'],comp.dh_const_sym,comp.dh_const,comp.dh_const_u,false,defaultParamVals);
 
             funcVal2 = [char(comp.sym),'*H_',char(comp.sym)];
             comp.h_const_helper_funcs{end+1} = SubFunc(funcVal2,['Gas Phase Partial Pressure of ',char(comp.name),' in Equilibrium with Liquid Phase'], ...
@@ -231,8 +231,18 @@ classdef Component < handle
         end
 
         % comp: Comp class ref
-        function HConstFunc = getHConstHelperFuncs(comp)
-            HConstFunc = comp.h_const_helper_funcs;
+        function HConstFunc = getHConstHelperFuncs(comp,varargin)
+            if ~isempty(varargin)
+                if strcmp(varargin{1},"h_const")
+                    HConstFunc = comp.h_const_helper_funcs{1};
+                elseif strcmp(varargin{1},"eq_with_liq")
+                    HConstFunc = comp.h_const_helper_funcs{2};
+                elseif strcmp(varargin{1},"eq_with_gas")
+                    HConstFunc = comp.h_const_helper_funcs{3};
+                end
+            else
+                HConstFunc = comp.h_const_helper_funcs;
+            end
         end
 
         % comp: Comp class ref
@@ -245,7 +255,7 @@ classdef Component < handle
             phases = {};
             for k=1:1:length(comp.sorpFuncParams)
                 if ~any(strcmp(phases,comp.sorpFuncParams{k}.solventSym))
-                    phases{end+1} = comp.sorpFuncParams{k}.solventSym; %#ok<AGROW>
+                    phases{end+1} = comp.sorpFuncParams{k}.solventSym;
                 end
             end
         end
@@ -278,6 +288,7 @@ classdef Component < handle
                 comp.h_const_sym = ['H_0_',char(comp.sym)];
                 comp.dh_const_sym = ['A_',char(comp.sym)];
                 comp.h_const_helper_funcs = {};
+                test4 = defaultParamVals
                 comp.setHConstHelperFuncs(defaultParamVals);
             else
                 comp.bulk_gas_sym = '';
@@ -294,7 +305,7 @@ classdef Component < handle
         % comp: comps class ref, prop: string, val: number | string
         function comp = setInitConc(comp,conc,unit)
             comp.initConc = conc;
-            comp.initConcUnit = unit
+            comp.initConcUnit = unit;
         end
 
         % comp: Component class ref
@@ -413,7 +424,7 @@ classdef Component < handle
 
         % comp: Component class ref, funcVal: string, phaseA: string,
         % phaseB: string, paramStr: string{}, defaultParamVals: struct
-        function comp = setMTModel(comp,funcVal,phaseA,phaseB,paramStr,defaultParamVals)
+        function comp = setMTModel(comp,funcVal,phaseA,phaseB,funcType,paramStr,defaultParamVals)
             % updating the function values in the correct funcParam
             if strcmp(phaseA,'Liquid')
                 idx = 0;
@@ -422,11 +433,24 @@ classdef Component < handle
                         idx = k;
                     end
                 end
-                comp.funcParams{idx} = comp.reviseFuncParamObj(funcVal,[phaseB,' MT'],comp.funcParams{idx});
+
+                prevParams = {};
+                for k=1:1:length(comp.funcParams{idx}.params)
+                    prevParams{k,1} = comp.funcParams{idx}.params{k}.sym;
+                    prevParams{k,2} = comp.funcParams{idx}.params{k}.val;
+                end
+
+                comp.funcParams{idx} = comp.reviseFuncParamObj(funcVal,[phaseB,' MT'],comp.funcParams{idx},funcType);
+                comp.funcParams{idx} = comp.removeParams(comp.funcParams{idx});
                 % sets parameter syms
                 locNum = 1;
                 for k=1:1:length(paramStr)
-                    comp.funcParams{idx} = comp.createNewParam(locNum, paramStr{k}, paramStr{k}, 1, '', comp.funcParams{idx}, true, defaultParamVals);
+                    if ~isempty(prevParams) && any(strcmp(prevParams(:,1),paramStr{k}))
+                        paramVal = prevParams{k,2};
+                    else
+                        paramVal = 1;
+                    end
+                    comp.funcParams{idx} = comp.createNewParam(locNum, paramStr{k}, paramStr{k}, paramVal, '', comp.funcParams{idx}, true, defaultParamVals);
                     locNum = locNum + 1;
                 end
             elseif strcmp(phaseA,'Gas')
@@ -436,11 +460,24 @@ classdef Component < handle
                         idx = k;
                     end
                 end
-                comp.gasBulkFuncParams{idx} = comp.reviseFuncParamObj(funcVal,[phaseB,' MT'],comp.gasBulkFuncParams{idx});
+                
+                prevParams = {};
+                for k=1:1:length(comp.funcParams{idx}.params)
+                    prevParams{k,1} = comp.gasBulkFuncParams{idx}.params{k}.sym;
+                    prevParams{k,2} = comp.gasBulkFuncParams{idx}.params{k}.val;
+                end
+
+                comp.gasBulkFuncParams{idx} = comp.reviseFuncParamObj(funcVal,[phaseB,' MT'],comp.gasBulkFuncParams{idx},funcType);
+                comp.gasBulkFuncParams{idx} = comp.removeParams(comp.gasBulkFuncParams{idx});
                 % sets parameter syms
                 locNum = 1;
                 for k=1:1:length(paramStr)
-                    comp.gasBulkFuncParams{idx} = comp.createNewParam(locNum, paramStr{k}, paramStr{k}, 1, '', comp.gasBulkFuncParams{end}, true, defaultParamVals);
+                    if ~isempty(prevParams) && any(strcmp(prevParams(:,1),paramStr{k}))
+                        paramVal = prevParams{k,2};
+                    else
+                        paramVal = 1;
+                    end
+                    comp.gasBulkFuncParams{idx} = comp.createNewParam(locNum, paramStr{k}, paramStr{k}, paramVal, '', comp.gasBulkFuncParams{end}, true, defaultParamVals);
                     locNum = locNum + 1;
                 end
             else
@@ -450,7 +487,7 @@ classdef Component < handle
                         idx = k;
                     end
                 end
-                comp.sorpFuncParams{idx} = comp.reviseFuncParamObj(funcVal,phaseA,comp.sorpFuncParams{idx});
+                comp.sorpFuncParams{idx} = comp.reviseFuncParamObj(funcVal,phaseA,comp.sorpFuncParams{idx},funcType);
                 locNum = 1;
                 for k=1:1:length(paramStr)
                     comp.sorpFuncParams{idx} = comp.createNewParam(locNum, paramStr{k}, paramStr{k}, 1, '', comp.sorpFuncParams{end}, true, defaultParamVals);
@@ -581,6 +618,7 @@ classdef Component < handle
             if convertUnits
                 newVal = unit_standardization(newVal,newUnit);
             end
+
             comp.funcParams{funcObjIdx} = comp.reviseParam(paramSym,newVal,newUnit,newParamName,comp.funcParams{funcObjIdx});
         end
 
@@ -1195,6 +1233,7 @@ classdef Component < handle
                 'solventName',solventName, ...
                 'solventSym',['S_',char(string(comp.number)),'_',char(string(solventNum))], ...
                 'funcName',[solventName,' MT'], ...
+                'funcType','None', ...
                 'funcVal',funcVal, ...
                 'params',struct([]), ...
                 'lims',cell(1,1) ...
@@ -1210,19 +1249,19 @@ classdef Component < handle
                     comp.sorpHelpers{end+1} = SubFunc(partCoeffFuncVal,[char(comp.name),' Partition Coefficient between Liquid Phase and ',solventName], ...
                         ['K_C_',char(string(comp.number)),'_',char(string(solventNum))],0,0);
                     comp.sorpHelpers{end}.updateParams([char(comp.name),' Partition Coefficient between Liquid Phase and ',solventName], ...
-                        ['K_C0_',char(string(comp.number)),'_',char(string(solventNum))],param1Val,'-',true,defaultParamVals);
+                        ['K_C0_',char(string(comp.number)),'_',char(string(solventNum))],param1Val,'-',false,defaultParamVals);
 
                     eqLiqConcFuncVal = ['S_',char(string(comp.number)),'_',char(string(solventNum)),'/K_C_',char(string(comp.number)),'_',char(string(solventNum))];
                     comp.sorpHelpers{end+1} = SubFunc(eqLiqConcFuncVal,[char(comp.name),' Concentration in Liquid Phase in Equilibrium with ',solventName], ...
                         ['C_eq_',char(string(comp.number)),'_',char(string(solventNum))],0,0);
                     comp.sorpHelpers{end}.updateParams([char(comp.name),' Partition Coefficient between Liquid Phase and ',solventName], ...
-                        ['K_C_',char(string(comp.number)),'_',char(string(solventNum))],param1Val,'-',true,defaultParamVals);
+                        ['K_C_',char(string(comp.number)),'_',char(string(solventNum))],param1Val,'-',false,defaultParamVals);
                     
                     eqSorpConcFuncVal = ['K_C_',char(string(comp.number)),'_',char(string(solventNum)),'*C_',char(string(comp.number))];
                     comp.sorpHelpers{end+1} = SubFunc(eqSorpConcFuncVal,[char(comp.name),' Concentration in ',solventName,' Phase in Equilibrium with Liquid Phase'], ...
                         ['S_eq_',char(string(comp.number)),'_',char(string(solventNum))],0,0);
                     comp.sorpHelpers{end}.updateParams([char(comp.name),' Partition Coefficient between Liquid Phase and ',solventName], ...
-                        ['K_C_',char(string(comp.number)),'_',char(string(solventNum))],param1Val,'-',true,defaultParamVals);
+                        ['K_C_',char(string(comp.number)),'_',char(string(solventNum))],param1Val,'-',false,defaultParamVals);
 
                 case 'Freundlich Adsorption'
                     % create helper functions for liquid phase concentration in
@@ -1263,7 +1302,7 @@ classdef Component < handle
             rmIdx = [];
             for k=1:1:length(comp.sorpHelpers)
                 if contains(comp.sorpHelpers{k}.getSubFuncName(),solventName)
-                    rmIdx(end+1) = k; %#ok<AGROW>
+                    rmIdx(end+1) = k;
                 end
             end
             comp.sorpHelpers(rmIdx) = [];
@@ -1358,15 +1397,19 @@ classdef Component < handle
             funcObj = struct( ...
                 'funcVal',funcVal, ...
                 'funcName',funcName, ...
+                'funcType','None', ...
                 'params',struct([]), ...
                 'lims',cell(1,1) ...
             );
         end
 
         % funcVal: string, funcName: string, funcObj: struct
-        function newFuncObj = reviseFuncParamObj(funcVal, funcName, funcObj)
+        function newFuncObj = reviseFuncParamObj(funcVal, funcName, funcObj, varargin)
+            funcType = '';
+            if ~isempty(varargin), funcType = varargin{1}; end
             funcObj.funcVal = funcVal;
             funcObj.funcName = funcName;
+            funcObj.funcType = funcType;
             newFuncObj = funcObj;
         end
 

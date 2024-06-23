@@ -18,7 +18,7 @@ classdef SubFunc < handle
         end
 
         % subf: SubFunc class ref, sysVars: string[]
-        function initParams(subf,sysVars)
+        function initParams(subf,sysVars,defaultParamVals)
             vars = string(findVars(char(subf.funcVal)));
             if strcmp(subf.funcName,'Light Intensity')
                 non_params = {'integral','integral2','integral3','l','x','y','z'}';
@@ -49,16 +49,14 @@ classdef SubFunc < handle
                 else
                     paramVal = 1;
                 end
-                subf.updateParams(funcParams(k),funcParams(k),paramVal,"");
+                subf.updateParams(funcParams(k),funcParams(k),paramVal,"",true,defaultParamVals);
             end
         end
 
         % subf: SubFunc class ref, name: string, sym: string, val: string, unit: string
-        function updateParams(subf,name,sym,val,unit)
-            newParam = struct('name',"",'sym',"",'val',"",'unit',"");
-            newParam.name = name;
-            newParam.sym = sym;
-
+        function updateParams(subf,name,sym,val,unit,editable,defaultParamVals)
+            test = defaultParamVals
+            paramNames = fields(defaultParamVals);
             if strcmp(unit,"mg/L")
                 val = val./1000;
             elseif strcmp(unit,"mg/g")
@@ -71,13 +69,46 @@ classdef SubFunc < handle
                 val = val./1000;
             end
 
-            newParam.val = val;
-            newParam.unit = unit;
+            if strcmp(sym,"R")
+                val = 8.314;
+                unit = 'kPa*L/mol*K';
+                editable = false;
+            elseif strcmp(sym,"tau")
+                val = 1;
+                unit = 's';
+                editable = false;
+            elseif strcmp(sym,"pi")
+                val = pi;
+                unit = '';
+                editable = false;
+            elseif strcmp(sym,"K_w")
+                val = 1E-14;
+                unit = 'mol/L';
+                editable = false;
+            elseif any(strcmp(sym,paramNames))
+                if contains(sym,'C_p_')
+                    unit = 'kJ/kg';
+                elseif contains(sym,'rho_')
+                    unit = 'g/L';
+                elseif contains(sym,'MW_')
+                    unit = 'g/mol';
+                end
+                val = defaultParamVals.(sym);
+                editable = false;
+            end
+
+            newParam = struct( ...
+                'name',name, ...
+                'sym',sym, ...
+                'val',val, ...
+                'unit',unit, ...
+                'editable',editable ...
+            );
 
             addNewParam = true;
             paramIdx = 1;
             for k=1:1:length(subf.params)
-                if subf.params{k}.sym == sym
+                if strcmp(subf.params{k}.sym,sym)
                     addNewParam = false;
                     paramIdx = k;
                     break;
@@ -128,9 +159,6 @@ classdef SubFunc < handle
         % subf: SubFunc class ref
         function subfuncVal = getSubFuncVal(subf)
             subfuncVal = subf.funcVal;
-            if subf.funcName == "Light Intensity"
-                test5 = subf.params{2}
-            end
         end
 
         % subf: SubFunc class ref
@@ -183,6 +211,45 @@ classdef SubFunc < handle
         % subf: SubFunc class ref, funcSym: string
         function setSubFuncSym(subf,funcSym)
             subf.funcSym = funcSym;
+        end
+
+        % subf: SubFunc class ref
+        function [govFunc,params,reg_param_ct] = compileSubFunc(subf,param_ct,reg_param_ct,regParamList,regression)
+            regParamListUpdate = {};
+            params = subf.getSubFuncParamVals()';
+
+            govFunc = subf.getSubFuncVal();
+
+            ct = 0;
+            reg_param_ct_loc = 0;
+            if regression
+                for k=1:1:length(subf.params)
+                    match = strcmp(regParamList(:,1),char(subf.params{k}.sym));
+                    ct = ct + 1;
+                    if any(match)
+                        if ~strcmp(regParamList{match,2},"")
+                            govFunc = replace(govFunc,subf.params{k}.sym,"$("+(regParamList{match,2})+")");
+                        else
+                            reg_param_ct_loc = reg_param_ct_loc + 1;
+                            govFunc = replace(govFunc,subf.params{k}.sym,"$("+(reg_param_ct+reg_param_ct_loc)+")");
+                            regParamListUpdate{1,match} = true; %#ok<*AGROW>
+                            regParamListUpdate{2,match} = find(match);
+                            regParamListUpdate{3,match} = string(reg_param_ct+reg_param_ct_loc);
+                        end
+                    else
+                        govFunc = replace(govFunc,subf.params{k}.sym,"#("+(param_ct+ct)+")");
+                    end
+                end
+            else
+                govFunc = subf.getSubFuncVal();
+                syms = subf.getSubFuncParamSyms();
+                for l=1:1:length(syms)
+                    ct = ct + 1;
+                    govFunc = regexprep(govFunc,syms(l),"#("+(param_ct+ct)+")");
+                end
+            end
+            reg_param_ct = reg_param_ct + reg_param_ct_loc;
+            govFunc = replace(replace(govFunc,"#","p"),"$","r");
         end
 
         % subf: SubFunc class ref, funcLaTeX: string
