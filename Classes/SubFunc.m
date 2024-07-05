@@ -55,7 +55,6 @@ classdef SubFunc < handle
 
         % subf: SubFunc class ref, name: string, sym: string, val: string, unit: string
         function updateParams(subf,name,sym,val,unit,editable,defaultParamVals)
-            test = defaultParamVals
             paramNames = fields(defaultParamVals);
             if strcmp(unit,"mg/L")
                 val = val./1000;
@@ -123,7 +122,7 @@ classdef SubFunc < handle
         end
 
         % subf: SubFunc class ref, varSyms: string[]
-        function findParamsInFunc(subf,varSyms)
+        function findParamsInFunc(subf,varSyms,defaultParamVals)
             vars = string(findVars(char(subf.funcVal)));
             paramSyms = setxor(intersect(varSyms(:,2),vars),vars);
             for k=1:1:length(paramSyms)
@@ -133,9 +132,9 @@ classdef SubFunc < handle
                 if any(funcIdx)
                     paramVals = subf.getSubFuncParamVals();
                     paramUnits = subf.getSubFuncParamUnits();
-                    subf.updateParams(paramSyms(k),paramSyms(k),paramVals(funcIdx),paramUnits(funcIdx));
+                    subf.updateParams(paramSyms(k),paramSyms(k),paramVals(funcIdx),paramUnits(funcIdx),true,defaultParamVals);
                 else
-                    subf.updateParams(paramSyms(k),paramSyms(k),1,"");
+                    subf.updateParams(paramSyms(k),paramSyms(k),1,"",true,defaultParamVals);
                 end
             end
         end

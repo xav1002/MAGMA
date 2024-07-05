@@ -262,6 +262,9 @@ classdef Component < handle
 
         % comp: Comp class ref, is_vol: Boolean
         function setVol(comp,is_vol,h_const,h_const_u,dh_const,dh_const_u,defaultParamVals)
+            % ### FIXME: need to create helper for gas phase partial
+            % pressure (convert from concentration in the gas phase with
+            % Peng-Robinson or Ideal gas?)
             comp.is_vol = is_vol;
 
             % perform operations to set or reset volatility
@@ -271,6 +274,7 @@ classdef Component < handle
 
                 comp.h_const_u = char(string(h_const_u));
                 switch comp.h_const_u
+                    case 'kPa*L/g'
                     case 'kPa*L/mol'
                         comp.h_const = h_const./comp.MW;
                     case 'kPa*m^3/kg'
@@ -288,7 +292,6 @@ classdef Component < handle
                 comp.h_const_sym = ['H_0_',char(comp.sym)];
                 comp.dh_const_sym = ['A_',char(comp.sym)];
                 comp.h_const_helper_funcs = {};
-                test4 = defaultParamVals
                 comp.setHConstHelperFuncs(defaultParamVals);
             else
                 comp.bulk_gas_sym = '';
@@ -350,11 +353,13 @@ classdef Component < handle
             comp.funcParams{1} = comp.removeParams(comp.funcParams{1});
             % sets parameter syms
             locNum = 1;
+            offset = 0;
             for k=1:1:length(paramStr)
                 if ~isempty(prevParams) && any(strcmp(prevParams(:,1),paramStr{k}))
-                    paramVal = prevParams{k,2};
+                    paramVal = prevParams{k-offset,2};
                 else
                     paramVal = 1;
+                    offset = offset + 1;
                 end
                 comp.funcParams{1} = comp.createNewParam(locNum, paramStr{k}, paramStr{k}, paramVal, '', comp.funcParams{1}, true, defaultParamVals);
                 locNum = locNum + 1;

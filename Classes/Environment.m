@@ -10,7 +10,6 @@ classdef Environment < handle
         T_comp = {};
         P_comp = {};
         V_comp = {};
-        V_m_helper = {};
         SV_comps = {};
         H3O_comp = {};
         OH_comp = {};
@@ -32,7 +31,7 @@ classdef Environment < handle
 
         % env: Environment class ref, funcStr: string
         function setMaxVol(env,funcStr)
-            env.subfuncs{2}.setSubFuncVal(funcStr);
+            env.subfuncs{2}.setSubFuncVal(char(string(funcStr)));
         end
 
         % env Environment class ref
@@ -152,7 +151,7 @@ classdef Environment < handle
             env.reactorSpecificParams = params{2};
     
             % setting maximum volume value;
-            env.subfuncs{2}.setSubFuncVal(env.reactorSpecificParams.maxVol);
+            env.subfuncs{2}.setSubFuncVal(char(string(env.reactorSpecificParams.maxVol)));
         end
 
         % env: Environment class ref
@@ -219,7 +218,7 @@ classdef Environment < handle
             envParamNames = env.getEnvSubfNames();
             for k=1:1:length(envParamVals)
                 env.subfuncs{k} = SubFunc(envParamVals{k},envParamNames{1,k},envParamNames{2,k},0,0);
-                env.subfuncs{k}.initParams(modelVarSyms);
+                env.subfuncs{k}.initParams(modelVarSyms,defaultParamVals);
             end
 
             env.reactorSpecificParams = {envDef.Values.PBRHt,envDef.Values.PBRWidth,envDef.Values.PBRDepth,envDef.Values.maxVol, ...
@@ -243,7 +242,7 @@ classdef Environment < handle
             paramVals = {};
             for k=1:1:length(env.subfuncs)-1
                 func = env.subfuncs{k}.getSubFuncVal();
-                paramVals{end+1,1} = char(func); %#ok<AGROW>
+                paramVals{end+1,1} = char(string(func)); %#ok<AGROW>
             end
             env_comps = env.getAllEnvComps();
             for k=1:1:length(env_comps)-1
@@ -259,11 +258,11 @@ classdef Environment < handle
         end
 
         % env: Environment Class ref, varSyms: {}
-        function funcHandles = getParamFuncHandles(env,varSyms)
+        function funcHandles = getParamFuncHandles(env,varSyms,defaultParamVals)
             funcHandles = cell(size(env.subfuncs'));
             for k=1:1:length(funcHandles)
                 func = env.subfuncs{k}.getSubFuncVal();
-                env.subfuncs{k}.findParamsInFunc(varSyms);
+                env.subfuncs{k}.findParamsInFunc(varSyms,defaultParamVals);
                 func = env.evalParams(func);
                 funcHandles{k} = char(func);
             end
