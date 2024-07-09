@@ -2276,14 +2276,14 @@ classdef ODESys < handle
                     slot = sys.plots{k}.subplotSlot;
                     ax = nexttile(sys.TLs{group},slot);
                     hold(ax,"on");
-                    % yyaxis right
                     if length(axes) == 2
                         xVarIdx = strcmp(sysVar(:,1),axes{1}.varNames);
                         yVarIdx = zeros(size(axes{2}.varNames));
                         for l=1:1:length(axes{2}.varNames)
                             yVarIdx(l) = find(strcmp(sysVar(:,1),axes{2}.varNames{l}));
                         end
-                        plot(res_1{1,1}(:,xVarIdx),res_1{1,1}(:,yVarIdx),'LineWidth',3);
+                        hold on;
+                        plot(res_1{1,1}(:,xVarIdx),res_1{1,1}(:,yVarIdx),'LineWidth',2);
                     elseif length(axes) == 3
                         if axes{1}.varIsIC && axes{2}.varIsIC
                             for l=1:1:length(res_2)
