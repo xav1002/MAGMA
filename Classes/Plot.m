@@ -11,38 +11,44 @@ classdef Plot < handle
         subplotGroup = 1;
         subplotSlot = 1;
 
-        axesNb = 2; % number of axes on plot
+        dimNb = 2; % number of axes on plot
 
         downloadDir = "None Selected"; % directory to which to download the plot
         fileType = ".png"; % file type the plot should be downloaded as
 
-        display = true; % boolean to determine whether or not to display the plot
+        display = false; % boolean to determine whether or not to display the plot
         download = false; % boolean to determien whether or not to download the plot
+
+        hold = 'on';
     end
 
     methods
         % title: string, varNames: string[]
         function plot = Plot(title,varNames,DVNames,group,slot)
             plot.title = title;
-            for k=1:1:2
-                % ### FIXME
-                % need to create plot with all standard values in title
-                % slots
-                if k == 1
-                    title = "X Axis Title";
-                    isDV = false;
-                else
-                    title = "Y Axis Title";
-                    isDV = true;
-                end
+            for k=1:1:3
                 ICNames = string.empty(0,1);
                 for l=1:1:size(DVNames,1)
                     ICNames(l,1) = string(DVNames(l,1))+"~(IC)";
                 end
                 min = 0;
                 max = 100;
-                plot.axes{k} = plot.createNewAxes(k,title,string(varNames(k,1)),string(varNames(:,1)),min,max, ...
-                    true,{0},0,0,50,isDV,false,ICNames); % ### FIXME: can't make Z-axis
+                if k == 1
+                    title = "X Axis Title";
+                    isDV = false;
+                    plot.axes{k} = plot.createNewAxes(k,title,string(varNames(k,1)),string(varNames(:,1)),min,max, ...
+                        true,{0},0,0,50,isDV,false,ICNames);
+                elseif k == 2
+                    title = "Y Axis (left) Title";
+                    isDV = true;
+                    plot.axes{k} = plot.createNewAxes(k,title,"",string(varNames(:,1)),min,max, ...
+                        true,{0},0,0,50,isDV,false,ICNames);
+                elseif k == 3
+                    title = "Y Axis (right) Title";
+                    isDV = true;
+                    plot.axes{k} = plot.createNewAxes(k,title,"",string(varNames(:,1)),min,max, ...
+                        true,{0},0,0,50,isDV,false,ICNames);
+                end
             end
 
             plot.subplotGroup = group;
@@ -81,7 +87,7 @@ classdef Plot < handle
         function axes = getAllAxProps(plot)
             axes = {};
             props = plot.getAxPropNames();
-            for k=1:1:plot.axesNb
+            for k=1:1:length(plot.axes)
                 for l=1:1:length(props)
                     axes{k}{l} = plot.getAxProp(k,props(l)); %#ok<AGROW> 
                 end
@@ -240,11 +246,14 @@ classdef Plot < handle
             props = [
                 "title", ...
                 "axes", ...
-                "axesNb", ...
+                "subplotGroup", ...
+                "subplotSlot", ...
+                "dimNb", ...
                 "downloadDir", ...
                 "fileType", ...
                 "display", ...
-                "download" ...
+                "download", ...
+                "hold" ...
             ];
         end
 

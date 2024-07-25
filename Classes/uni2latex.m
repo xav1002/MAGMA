@@ -43,7 +43,7 @@ function latex_out = uni2latex(eqn)
             if next_operator_idx == operator_idx(end)
                 eqn = [eqn(1:exp_idx-1),'e^{(',eqn(exp_idx+4:end),'}'];
             else
-                eqn = [eqn(1:exp_idx-1),'e^{',eqn(exp_idx+4:next_operator_idx-1),'}',eqn(next_operator_idx:end)];
+                eqn = [eqn(1:exp_idx-1),'e^({',eqn(exp_idx+4:next_operator_idx-1),'}',eqn(next_operator_idx:end)];
             end
         end
     end

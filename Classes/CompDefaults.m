@@ -66,7 +66,7 @@ classdef CompDefaults
             validFuncs = {CompDefaults.validFuncTypes.(comp.getType()).(funcCombo)};
         end
 
-        function MTFuncVal = getDefaultMTFuncVals(MTFuncName,phaseACompSym,phaseBCompSym,phaseASym,phaseBSym)
+        function MTFuncVal = getDefaultMTFuncVals(MTFuncName,phaseACompSym,phaseBCompSym,phaseASym,phaseBSym,compMWSym)
             switch MTFuncName
                 case "None"
                     MTFuncVal = "0";
@@ -87,8 +87,11 @@ classdef CompDefaults
                     end
                     if strcmp(phaseBSym,"(V_m-V_tot)"), phaseBNum = "V_g"; end
 
-                    MTFuncVal = "k_"+phaseLetter+"_"+compNum{1}+"_"+phaseANum{1}+"_"+phaseBNum{1}+"*("+phaseASym+"/"+phaseBSym+")*("+phaseBCompSym+"-"+phaseACompSym+")";
-
+                    if strcmp(phaseASym,"(V_m-V_tot)")
+                        MTFuncVal = "k_"+phaseLetter+"_"+compNum{1}+"_"+phaseANum{1}+"_"+phaseBNum{1}+"*("+"R*T"+")/("+phaseASym+"*"+compMWSym+")*("+phaseBCompSym+"-"+phaseACompSym+")";
+                    else
+                        MTFuncVal = "k_"+phaseLetter+"_"+compNum{1}+"_"+phaseANum{1}+"_"+phaseBNum{1}+"/"+phaseASym+"*("+phaseBCompSym+"-"+phaseACompSym+")";
+                    end
             end
         end
     end

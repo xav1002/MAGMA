@@ -151,16 +151,17 @@ classdef Component < handle
             % concentration, and liquid phase concentration in equilibrium
             % with vapor partial pressure
             % Total 3 helpers (HConst, P*, C*)
-            funcVal = [comp.h_const_sym,'*exp(',comp.dh_const_sym,'*((1/T)-(1/298.15)))'];
+            % Need to consider water density?
+            funcVal = [comp.h_const_sym,'*',comp.MW_sym,'*exp(',comp.dh_const_sym,'*((1/T)-(1/298.15)))'];
             comp.h_const_helper_funcs{end+1} = SubFunc(funcVal,[char(comp.name),' Henry Constant'],['H_',char(comp.sym)],0,0);
             comp.h_const_helper_funcs{end}.updateParams([char(comp.name),' Henry Constant at 298.15K'],comp.h_const_sym,comp.h_const,comp.h_const_u,false,defaultParamVals);
             comp.h_const_helper_funcs{end}.updateParams([char(comp.name),' H Temperature Dependence Coefficient'],comp.dh_const_sym,comp.dh_const,comp.dh_const_u,false,defaultParamVals);
 
-            funcVal2 = [char(comp.sym),'*H_',char(comp.sym)];
+            funcVal2 = [char(comp.sym),'/H_',char(comp.sym)];
             comp.h_const_helper_funcs{end+1} = SubFunc(funcVal2,['Gas Phase Partial Pressure of ',char(comp.name),' in Equilibrium with Liquid Phase'], ...
                 ['P_eq_',char(comp.sym)],0,0);
             
-            funcVal3 = [comp.bulk_gas_sym,'/H_',char(comp.sym)];
+            funcVal3 = [comp.bulk_gas_sym,'*H_',char(comp.sym)];
             comp.h_const_helper_funcs{end+1} = SubFunc(funcVal3,['Liquid Phase Concentration of ',char(comp.name),' in Equilibrium with Gas Phase'], ...
                 [char(comp.sym),'_g_eq'],0,0);
         end
@@ -467,7 +468,7 @@ classdef Component < handle
                 end
                 
                 prevParams = {};
-                for k=1:1:length(comp.funcParams{idx}.params)
+                for k=1:1:length(comp.gasBulkFuncParams{idx}.params)
                     prevParams{k,1} = comp.gasBulkFuncParams{idx}.params{k}.sym;
                     prevParams{k,2} = comp.gasBulkFuncParams{idx}.params{k}.val;
                 end
@@ -521,6 +522,11 @@ classdef Component < handle
         % comp: Component class ref
         function sym = getBulkGasSym(comp)
             sym = char(comp.bulk_gas_sym);
+        end
+
+        % comp: Component class ref
+        function sym = getMWSym(comp)
+            sym = char(comp.MW_sym);
         end
 
         % comp: Component class ref

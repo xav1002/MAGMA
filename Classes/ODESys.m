@@ -44,7 +44,7 @@ classdef ODESys < handle
         nonNegSysVars = {};
         solverNonNeg = [];
 
-%         sysVars = {}; % system variable names
+        % sysVars = {}; % system variable names
         plots = {}; % plot objects
         subplot_ct = 0;
         subplot_row_ct = [1];
@@ -234,6 +234,7 @@ classdef ODESys < handle
             chemName = replace(regexprep(regexprep(replace(regexprep(name,' ','_'),'^','_'),'+','p'),'-','n'),'.','_');
             chem = sys.chemicals.(chemName);
 
+            % ### FIXME: MW doesn't update
             prev_is_vol = chem.is_vol;
 
             chem.updateComp(chemInitConc,initConcUnit,is_vol,MW,h_const,h_const_u,dh_const,dh_const_u,sys.getDefaultParamVals());
@@ -1097,6 +1098,7 @@ classdef ODESys < handle
                     if strcmp(helpers{k}.getSubFuncName(),'Light Intensity')
                         helperFuncVal = helpers{k}.getSubFuncLaTeX();
                     else
+                        test = char(helpers{k}.getSubFuncVal())
                         helperFuncVal = uni2latex(char(helpers{k}.getSubFuncVal()));
                     end
                 end
@@ -1928,22 +1930,11 @@ classdef ODESys < handle
             % running model for each plot
             sys.compileModel();
 
-            % creating separate figures for each subplot
-            sys.subplots = {};
-            sys.TLs = {};
+            % finding current figures
             figs = findobj('Type','figure');
-            fig_nums = zeros(size(figs));
+            curr_fig_nums = zeros(size(figs));
             for k=1:1:length(figs)
-                fig_nums(k) = figs(k).Number;
-            end
-            % test = fig_nums
-            for k=1:1:sys.subplot_ct
-                if any(k == fig_nums)
-                    sys.subplots{k} = figs(k);
-                else
-                    sys.subplots{k} = figure(k);
-                end
-                sys.TLs{k} = tiledlayout(sys.subplots{k},sys.subplot_row_ct,sys.subplot_col_ct);
+                curr_fig_nums(k) = figs(k).Number;
             end
             
             % ### FIXME: add feature to allow user to specify time
@@ -1955,7 +1946,7 @@ classdef ODESys < handle
                 plot_obj = sys.plots{k};
                 axes = plot_obj.axes;
                 if plot_obj.getPlotProp("display") == true || plot_obj.getPlotProp("download") == true
-                    if length(axes) == 3
+                    if plot_obj.getPlotProp('dimNb') == 3
                         if axes{1}.varIsIC && axes{2}.varIsIC
                             y0_span_x = linspace(axes{1}.loEvalLim,axes{1}.upEvalLim,axes{1}.nbEvalPts);
                             y0_span_y = linspace(axes{2}.loEvalLim,axes{2}.upEvalLim,axes{2}.nbEvalPts);
@@ -2123,7 +2114,7 @@ classdef ODESys < handle
                             end
 
                             res_2 = {};
-                            evalt = sys.plots{k}.getPlotProp("evaltVal");
+                            evalt = plot_obj.getPlotProp("evaltVal");
                             for l=1:1:length(axes{3}.getPlotProp("varNames"))
                                 yVarIdx = strcmp(sysVar(:,1),axes{3}.varNames{l});
                                 res_2{l} = zeros(size(res_1)); %#ok<AGROW>
@@ -2264,6 +2255,7 @@ classdef ODESys < handle
                         end
                     else
                         [tRes,yRes] = sys.runModel(tSmooth,sys.y0);
+                        % ### STARTHERE: need to fix this, debug
                         fRes = sys.calculateHelperVals(tRes,yRes);
                         res_1{1,1} = [tRes,yRes,fRes];
                     end
@@ -2271,20 +2263,57 @@ classdef ODESys < handle
                     % plot models on fig
                     % ### IMPROVEMENT: give user option to span multiple
                     % slots?
-                    fig = figure(sys.plots{k}.subplotGroup);
-                    group = sys.plots{k}.subplotGroup;
-                    slot = sys.plots{k}.subplotSlot;
-                    ax = nexttile(sys.TLs{group},slot);
-                    hold(ax,"on");
-                    if length(axes) == 2
+                    fig = figure(plot_obj.subplotGroup);
+                    group = plot_obj.subplotGroup;
+                    slot = plot_obj.subplotSlot;
+                    if any(curr_fig_nums == plot_obj.subplotGroup)
+                        TL = fig.Children(1);
+                        for l=1:1:length(TL.Children)
+                            if isa(TL.Children(l),'matlab.graphics.axis.Axes')
+                                ax = TL.Children(l);
+                                break;
+                            end
+                        end
+                    else
+                        fig.Color = [1,1,1];
+    
+                        % creating separate figures for each subplot
+                        TL = tiledlayout(fig,sys.subplot_row_ct(group),sys.subplot_col_ct(group));
+                        ax = nexttile(TL,slot);
+                    end
+                    hold(ax,plot_obj.getPlotProp('hold'));
+
+                    if plot_obj.getPlotProp('dimNb') == 2
                         xVarIdx = strcmp(sysVar(:,1),axes{1}.varNames);
                         yVarIdx = zeros(size(axes{2}.varNames));
                         for l=1:1:length(axes{2}.varNames)
                             yVarIdx(l) = find(strcmp(sysVar(:,1),axes{2}.varNames{l}));
                         end
-                        hold on;
-                        plot(res_1{1,1}(:,xVarIdx),res_1{1,1}(:,yVarIdx),'LineWidth',2);
-                    elseif length(axes) == 3
+                        try
+                            yyaxis(ax,'left');
+                            plot(res_1{1,1}(:,xVarIdx),res_1{1,1}(:,yVarIdx),'LineWidth',2);
+                            ylabel(axes{2}.title);
+                            if ~axes{2}.useDefR, ylim([axes{2}.loDispLim,axes{2}.upDispLim]); end
+                        catch err
+                            err
+                        end
+
+                        yVarIdx = zeros(size(axes{3}.varNames));
+                        for l=1:1:length(axes{3}.varNames)
+                            yVarIdx(l) = find(strcmp(sysVar(:,1),axes{3}.varNames{l}));
+                        end
+                        try
+                            yyaxis(ax,'right');
+                            plot(res_1{1,1}(:,xVarIdx),res_1{1,1}(:,yVarIdx),'LineWidth',2);
+                            ylabel(axes{3}.title);
+                            if ~axes{3}.useDefR, ylim([axes{3}.loDispLim,axes{3}.upDispLim]); end
+                        catch err
+                            err
+                        end
+
+                        xlabel(axes{1}.title);
+                        if ~axes{1}.useDefR, xlim([axes{1}.loDispLim,axes{1}.upDispLim]); end
+                    elseif plot_obj.getPlotProp('dimNb') == 3
                         if axes{1}.varIsIC && axes{2}.varIsIC
                             for l=1:1:length(res_2)
                                 % 2D interpolation
@@ -2321,8 +2350,8 @@ classdef ODESys < handle
                     legend(axes{end}.varNames);
                     hold(ax,"off");
 
-                    if plot_obj.getPlotProp("display") == false
-                        close;
+                    if ~plot_obj.getPlotProp("display")
+                        close(fig);
                     end
                     if plot_obj.getPlotProp("download") == true
                         plot_obj.downloadPlot(fig);
@@ -2894,9 +2923,13 @@ classdef ODESys < handle
         end
 
         % sys: ODESys class ref
-        function [plot,axes] = createNewPlot(sys)
+        function [plot,axes,subplot_ct] = createNewPlot(sys)
             [group,slot] = sys.getNextSubplotSlot();
-            sys.subplot_ct = sys.subplot_ct + 1;
+            if group > sys.subplot_ct
+                sys.subplot_ct = sys.subplot_ct + 1;
+                sys.subplot_row_ct(end+1) = 1;
+                sys.subplot_col_ct(end+1) = 1;
+            end
             valid_name_found = false;
             plot_names = string(zeros(size(sys.plots)));
             for k=1:1:length(sys.plots), plot_names(k) = sys.plots{k}.getPlotProp("title"); end
@@ -2910,11 +2943,11 @@ classdef ODESys < handle
             sys.plots{end+1} = Plot("Plot "+(plot_name_num),sys.getModelVarNames("plot"),sys.getModelVarNames("plot"),group,slot);
             plot = sys.plots{end}.getAllPlotProps();
             axes = sys.plots{end}.getAllAxProps();
+            subplot_ct = sys.subplot_ct;
         end
 
         % sys: ODESys class ref
-        function [plot,axes] = removePlot(sys,plotName,lastItem)
-            sys.subplot_ct = sys.subplot_ct - 1;
+        function [plot,axes,subplot_ct] = removePlot(sys,plotName,lastItem)
             if lastItem
                 sys.plots(1) = [];
                 plot = {};
@@ -2922,26 +2955,59 @@ classdef ODESys < handle
             else
                 for k=1:1:length(sys.plots)
                     if sys.plots{k}.title == plotName
+                        removed_group = sys.plots{k}.getPlotProp("subplotGroup");
                         sys.plots(k) = [];
                         break;
                     end
                 end
+                group_empty = true;
+                for k=1:1:length(sys.plots)
+                    if sys.plots{k}.getPlotProp("subplotGroup") == removed_group
+                        group_empty = false;
+                        break;
+                    end
+                end
+                if group_empty
+                    for k=1:1:length(sys.plots)
+                        if sys.plots{k}.getPlotProp("subplotGroup") > removed_group
+                            sys.plots{k}.subplotGroup = sys.plots{k}.subplotGroup - 1;
+                            sys.subplot_row_ct(k) = [];
+                            sys.subplot_col_ct(k) = [];
+                        end
+                    end
+                end
                 plot = sys.plots{1}.getAllPlotProps();
                 axes = sys.plots{1}.getAllAxProps();
+                subplot_ct = sys.subplot_ct;
             end
         end
 
-        % sys: ODESys class ref, plotName: string, title: string, axesNb: number
-        function axes = updatePlotNameAx(sys,plotName,title,axesNb)
+        % sys: ODESys class ref, plotName: string, title: string, dimNb: number
+        function axes = updatePlotNameAx(sys,plotName,title,dimNb)
             plot = sys.getPlotByName(plotName);
             plot.updatePlot("title",title);
-            if axesNb < plot.getPlotProp("axesNb")
-                plot.removeZAxis();
-            elseif axesNb > plot.getPlotProp("axesNb")
-                plot.addZAxis();
-            end
-            plot.updatePlot("axesNb",axesNb);
+            % if dimNb < length(plot.getPlotProp("axes"))
+            %     plot.removeZAxis();
+            % elseif dimNb > length(plot.getPlotProp("axes"))
+            %     plot.addZAxis();
+            % end
+            plot.updatePlot("dimNb",dimNb);
             axes = plot.getAllAxProps();
+        end
+
+        % sys: ODESys class ref, display_plots: string[], download_plots:
+        % string[]
+        function updatePlotDisplayDownload(sys,display_plots,download_plots)
+            for k=1:1:length(sys.plots)
+                sys.plots{k}.display = false;
+                sys.plots{k}.download = false;
+                if any(strcmp(display_plots,sys.plots{k}.getPlotProp('title')))
+                    sys.plots{k}.display = true;
+                end
+                if any(strcmp(download_plots,sys.plots{k}.getPlotProp('title')))
+                    sys.plots{k}.download = true;
+                end
+            end
         end
 
         % sys: ODESys class ref, plotName: string, dirName: string
@@ -2973,11 +3039,24 @@ classdef ODESys < handle
             end
         end
 
-        % sys: ODESys class ref, plotName: string, group: number, slot: number
-        function updatePlotGroupSlot(sys,plotName,group,slot)
+        % sys: ODESys class ref, plotName: string, group: number, slot:
+        % number, hold: string
+        function updatePlotGroupSlot(sys,plotName,group,slot,hold)
             plot = sys.getPlotByName(plotName);
+            old_group = plot.getPlotProp("subplotGroup");
+            old_slot = plot.getPlotProp("subplotSlot");
+
+            for k=1:1:length(sys.plots)
+                if sys.plots{k}.getPlotProp("subplotGroup") == group && sys.plots{k}.getPlotProp("subplotSlot") == slot
+                    sys.plots{k}.subplotGroup = old_group;
+                    sys.plots{k}.subplotSlot = old_slot;
+                    break;
+                end
+            end
+
             plot.subplotGroup = group;
             plot.subplotSlot = slot;
+            plot.hold = hold;
         end
 
         % sys: ODESys class ref
@@ -2996,9 +3075,9 @@ classdef ODESys < handle
                 end
                 for k=1:1:length(filled_slots), filled_slots{k} = sort(filled_slots{k}); end
                 for k=1:1:length(filled_slots)
-                    if length(filled_slots{k}) < (sys.subplot_row_ct*sys.subplot_col_ct)
+                    if length(filled_slots{k}) < (sys.subplot_row_ct(k)*sys.subplot_col_ct(k))
                         group = k;
-                        non_intersects = setxor(linspace(1,sys.subplot_row_ct*sys.subplot_col_ct,sys.subplot_row_ct*sys.subplot_col_ct),filled_slots{k});
+                        non_intersects = setxor(linspace(1,sys.subplot_row_ct(k)*sys.subplot_col_ct(k),sys.subplot_row_ct(k)*sys.subplot_col_ct(k)),filled_slots{k});
                         slot = non_intersects(1);
                     end
                 end
@@ -3007,18 +3086,24 @@ classdef ODESys < handle
             end
         end
 
+        % sys: ODESys class ref, group: num
+        function slots = getSubplotSlots(sys,group)
+            slots = cellstr(string(1:1:sys.subplot_row_ct(group)*sys.subplot_col_ct(group)));
+        end
+
         % sys: ODESys class ref, group: number
         function updateSubplotPropsinPlot(sys,group)
             for k=1:1:length(sys.plots)
                 if sys.plots{k}.subplotGroup == group
-                    sys.plots{k}.subplotGroup = 0;
-                    sys.plots{k}.subplotSlot = 0;
+                    [new_group,new_slot] = sys.getNextSubplotSlot();
+                    sys.plots{k}.subplotGroup = new_group;
+                    sys.plots{k}.subplotSlot = new_slot;
                 end
             end
         end
 
         % sys: ODESys class ref, subplotNum: number
-        function [row,col] = getSubplotRowsAndCols(sys,subplotNum)
+        function [row,col] = getSubplotRowAndCol(sys,subplotNum)
             row = sys.subplot_row_ct(subplotNum);
             col = sys.subplot_col_ct(subplotNum);
         end
@@ -3029,9 +3114,9 @@ classdef ODESys < handle
             plot = sys.getPlotByName(plotName);
             if axesDir == "X"
                 axesDir = 1;
-            elseif axesDir == "Y"
+            elseif axesDir == "Y" || axesDir == "Y_l"
                 axesDir = 2;
-            elseif axesDir == "Z"
+            elseif axesDir == "Z" || axesDir == "Y_r"
                 axesDir = 3;
             end
             plot.updateAx(axesDir,"title",title);
@@ -3048,21 +3133,34 @@ classdef ODESys < handle
                 varIsIC = false;
             end
 
-            if plot.getPlotProp("axesNb") == 2
+            if plot.getPlotProp("dimNb") == 2
                 if axesDir == "X"
                     axesDir = 1;
                     plot.updateAx(axesDir,"varNames",varName);
                     plot.updateAx(axesDir,"varIsIC",varIsIC);
-                elseif axesDir == "Y"
-                    axesDir = 2;
+                else
+                    if axesDir == "Y_l"
+                        axesDir = 2;
+                    elseif axesDir == "Y_r"
+                        axesDir = 3;
+                    end
                     if addVar
                         if ~any(strcmp(plot.getAxProp(axesDir,"varNames"),varName))
-                            varNames = [plot.getAxProp(axesDir,"varNames"),{varName}];
+                            if strcmp(plot.getAxProp(axesDir,"varNames"),'')
+                                varNames = {varName};
+                            else
+                                varNames = [plot.getAxProp(axesDir,"varNames"),{varName}];
+                            end
+                            test4 = varNames
                             plot.updateAx(axesDir,"varNames",varNames);
                         end
                     else
                         varNames = plot.getAxProp(axesDir,"varNames");
-                        varNames(strcmp(varNames,varName)) = [];
+                        if length(varNames) == 1
+                            varNames = {''};
+                        else
+                            varNames(strcmp(varNames,varName)) = [];
+                        end
                         plot.updateAx(axesDir,"varNames",varNames);
                     end
                 end
@@ -3110,9 +3208,9 @@ classdef ODESys < handle
             plot = sys.getPlotByName(plotName);
             if axesDir == "X"
                 axesDir = 1;
-            elseif axesDir == "Y"
+            elseif axesDir == "Y" || axesDir == "Y_l"
                 axesDir = 2;
-            elseif axesDir == "Z"
+            elseif axesDir == "Z" || axesDir == "Y_r"
                 axesDir = 3;
             end
             props = ["loDispLim","upDispLim","useDefR"];
@@ -3388,7 +3486,8 @@ classdef ODESys < handle
                 end
             end
 
-            MTFunc = CompDefaults.getDefaultMTFuncVals(funcName,phaseACompSym,phaseBCompSym,phaseASym,phaseBSym);
+            compMWSym = comp.getMWSym();
+            MTFunc = CompDefaults.getDefaultMTFuncVals(funcName,phaseACompSym,phaseBCompSym,phaseASym,phaseBSym,compMWSym);
         end
 
         % sys: ODESys class ref, compName: string, phaseA: string, phaseB:

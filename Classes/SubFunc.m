@@ -236,19 +236,18 @@ classdef SubFunc < handle
                             regParamListUpdate{3,match} = string(reg_param_ct+reg_param_ct_loc);
                         end
                     else
-                        govFunc = replace(govFunc,subf.params{k}.sym,"#("+(param_ct+ct)+")");
+                        govFunc = replace(char(string(govFunc)),subf.params{k}.sym,"#("+(param_ct+ct)+")");
                     end
                 end
             else
-                govFunc = subf.getSubFuncVal();
                 syms = subf.getSubFuncParamSyms();
                 for l=1:1:length(syms)
                     ct = ct + 1;
-                    govFunc = regexprep(govFunc,syms(l),"#("+(param_ct+ct)+")");
+                    govFunc = regexprep(char(string(govFunc)),syms(l),"#("+(param_ct+ct)+")");
                 end
             end
             reg_param_ct = reg_param_ct + reg_param_ct_loc;
-            govFunc = replace(replace(govFunc,"#","p"),"$","r");
+            govFunc = replace(replace(char(string(govFunc)),"#","p"),"$","r");
         end
 
         % subf: SubFunc class ref, funcLaTeX: string
