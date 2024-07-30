@@ -2292,7 +2292,7 @@ classdef ODESys < handle
                         try
                             yyaxis(ax,'left');
                             plot(res_1{1,1}(:,xVarIdx),res_1{1,1}(:,yVarIdx),'LineWidth',2);
-                            ylabel(axes{2}.title);
+                            ylabelc(axes{2}.title);
                             if ~axes{2}.useDefR, ylim([axes{2}.loDispLim,axes{2}.upDispLim]); end
                         catch err
                             err
