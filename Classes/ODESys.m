@@ -11,6 +11,8 @@ classdef ODESys < handle
         save_model_chem_names = {};
         save_model_ref_str = "";
 
+        % test
+
         is_link = false; % used to determine whether this is an instance of MAGMA or MAGMALink UI
 
         species = struct(); % struct of Species in ODE system, (key: string, val: {Species})
