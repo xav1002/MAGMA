@@ -93,20 +93,27 @@ classdef Component < handle
                 comp.funcParams{1} = comp.createFuncParamObj("0",'BioGovFunc');
             elseif strcmp(type,'Suspended Solid Sorbent')
                 comp.sym = char("V_S_"+number);
+                comp.funcParams{1} = comp.createFuncParamObj("0",'MTFunc');
             elseif strcmp(type,'Liquid Solvent')
                 comp.sym = char("LS_"+number);
+                comp.funcParams{1} = comp.createFuncParamObj("0",'MTFunc');
             elseif strcmp(type,'temp')
                 comp.sym = 'T';
+                comp.funcParams{1} = comp.createFuncParamObj("0",'TempFunc');
             elseif strcmp(type,'press')
                 comp.sym = 'P';
+                comp.funcParams{1} = comp.createFuncParamObj("0",'PressFunc');
             elseif strcmp(type,'vol')
                 comp.sym = 'V';
+                comp.funcParams{1} = comp.createFuncParamObj("0",'VolFunc');
             elseif strcmp(type,'acid')
                 comp.sym = 'H3O';
                 initConc = initConc * MW;
+                comp.funcParams{1} = comp.createFuncParamObj("0",'AcidFunc');
             elseif strcmp(type,'base')
                 comp.sym = 'OH';
                 initConc = initConc * MW;
+                comp.funcParams{1} = comp.createFuncParamObj("0",'BaseFunc');
             end
             comp.initConc = initConc;
             comp.initConcUnit = initConcUnit;

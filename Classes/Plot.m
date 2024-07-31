@@ -5,6 +5,8 @@ classdef Plot < handle
     %   DV: if IC, then need evaltVal, and t is not IV
     %   Units: all variables need unit selection
 
+    % ### FIXME: update default axis titles based on number of dimensions
+
     properties
         title = ""; % title of plot
         axes = {}; % axes objects
@@ -37,17 +39,17 @@ classdef Plot < handle
                     title = "X Axis Title";
                     isDV = false;
                     plot.axes{k} = plot.createNewAxes(k,title,string(varNames(k,1)),string(varNames(:,1)),min,max, ...
-                        true,{0},0,0,50,isDV,false,ICNames);
+                        true,{0},{0},{0},{50},isDV,false,ICNames);
                 elseif k == 2
                     title = "Y Axis (left) Title";
                     isDV = true;
-                    plot.axes{k} = plot.createNewAxes(k,title,"",string(varNames(:,1)),min,max, ...
-                        true,{0},0,0,50,isDV,false,ICNames);
+                    plot.axes{k} = plot.createNewAxes(k,title,string(varNames(k,1)),string(varNames(:,1)),min,max, ...
+                        true,{0},{0},{0},{50},isDV,false,ICNames);
                 elseif k == 3
                     title = "Y Axis (right) Title";
                     isDV = true;
-                    plot.axes{k} = plot.createNewAxes(k,title,"",string(varNames(:,1)),min,max, ...
-                        true,{0},0,0,50,isDV,false,ICNames);
+                    plot.axes{k} = plot.createNewAxes(k,title,string(varNames(k,1)),string(varNames(:,1)),min,max, ...
+                        true,{0},{0},{0},{50},isDV,false,ICNames);
                 end
             end
 
@@ -183,7 +185,7 @@ classdef Plot < handle
                 if k > length(props)
                     varData{k} = needDefineEvalt;
                 else
-                    if class(axis.(props(k))) == "cell"
+                    if iscell(axis.(props(k)))
                         varData{k} = axis.(props(k)){varIdx};
                     else
                         varData{k} = axis.(props(k));
@@ -197,21 +199,21 @@ classdef Plot < handle
         function setVarICEvalData(plot,axisName,varName,varUnits,evaltVal,loEvalLim,upEvalLim,nbEvalPts)
             for k=1:1:length(plot.axes)
                 if strcmp(string(plot.axes{k}.title),string(axisName))
-                    axis = plot.axes{k};
-                end
-            end
-            for k=1:1:length(axis.varNames)
-                if strcmp(string(axis.varNames{k}),string(varName))
-                    varIdx = k;
-                end
-            end
-            props = ["varUnits","evaltVal","loEvalLim","upEvalLim","nbEvalPts"];
-            data = {varUnits,evaltVal,loEvalLim,upEvalLim,nbEvalPts};
-            for k=1:1:length(props)
-                if class(axis.(props(k))) == "cell"
-                    axis.(props(k)){varIdx} = data{k};
-                else
-                    axis.(props(k)) = data{k};
+                    for l=1:1:length(plot.axes{k}.varNames)
+                        if strcmp(string(plot.axes{k}.varNames{l}),string(varName))
+                            varIdx = l;
+                        end
+                    end
+                    props = ["varUnits","evaltVal","loEvalLim","upEvalLim","nbEvalPts"];
+                    data = {varUnits,evaltVal,loEvalLim,upEvalLim,nbEvalPts};
+                    for l=1:1:length(props)
+                        if iscell(plot.axes{k}.(props(l)))
+                            plot.axes{k}.(props(l)){varIdx} = data{l};
+                        else
+                            plot.axes{k}.(props(l)) = data{l};
+                        end
+                    end
+                    break;
                 end
             end
         end
@@ -231,11 +233,11 @@ classdef Plot < handle
                 'loDispLim',loDispLim, ...
                 'upDispLim',upDispLim, ...
                 'useDefR',useDefR, ...
-                'varUnits','', ...
-                'evaltVal',evaltVal, ...
-                'loEvalLim',loEvalLim, ...
-                'upEvalLim',upEvalLim, ...
-                'nbEvalPts',nbEvalPts, ...
+                'varUnits',{{''}}, ...
+                'evaltVal',{evaltVal}, ...
+                'loEvalLim',{loEvalLim}, ...
+                'upEvalLim',{upEvalLim}, ...
+                'nbEvalPts',{nbEvalPts}, ...
                 'isDV',isDV, ...
                 'varIsIC',varIsIC, ...
                 'ICNames',ICNames ...

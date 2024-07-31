@@ -74,6 +74,7 @@ classdef ODESys < handle
         IO_flowrates = struct();
 
         importedDataPath = ""; % path to user imported data
+        importedSheet = ""; % sheet of imported data
         importedData = {}; % user-imported data
         importedDataColNames = {}; % column names for user imported data
 
@@ -823,11 +824,10 @@ classdef ODESys < handle
             funcName = "F"+funcNum;
         end
 
-        % sys: ODESys class ref, compName: string, funcCombo: string,
-        % funcType: string
-        function funcVal = getDefaultFuncVal(sys,compName,funcCombo,funcType)
+        % sys: ODESys class ref, compName: string, funcType: string
+        function funcVal = getDefaultFuncVal(sys,compName,funcType)
             comp = sys.getCompByName(compName);
-            funcVal = CompDefaults.getDefaultFuncVals(comp,funcCombo,funcType);
+            funcVal = CompDefaults.getDefaultFuncVals(comp,funcType);
         end
 
         % sys: ODESys class ref, paramSym: string,
@@ -1924,7 +1924,7 @@ classdef ODESys < handle
         %     evt_response = repmat("callback",size(evt_dir));
         % end
 
-        function generatePlots(sys)
+        function generatePlots(sys,export_data)
             % ### UPGRADE: make it so the user can plot multiple runs of
             % the ODE solver (e.g. click "Compile Model" button multiple
             % times) and plot to the same figure
@@ -1950,13 +1950,15 @@ classdef ODESys < handle
                 if plot_obj.getPlotProp("display") == true || plot_obj.getPlotProp("download") == true
                     if plot_obj.getPlotProp('dimNb') == 3
                         if axes{1}.varIsIC && axes{2}.varIsIC
-                            y0_span_x = linspace(axes{1}.loEvalLim,axes{1}.upEvalLim,axes{1}.nbEvalPts);
-                            y0_span_y = linspace(axes{2}.loEvalLim,axes{2}.upEvalLim,axes{2}.nbEvalPts);
+                            % ### STARTHERE: need to update the calculation
+                            % of initial conditions
+                            y0_span_x = linspace(axes{1}.loEvalLim{1},axes{1}.upEvalLim{1},axes{1}.nbEvalPts{1});
+                            y0_span_y = linspace(axes{2}.loEvalLim{1},axes{2}.upEvalLim{1},axes{2}.nbEvalPts{1});
                             % maybe remove these and just use y0_mesh_X and
                             % y0_mesh_Y for the interpolation query points
                             % as well?
-                            y0_span_qx = linspace(axes{1}.loEvalLim,axes{1}.upEvalLim,axes{1}.nbEvalPts*5);
-                            y0_span_qy = linspace(axes{2}.loEvalLim,axes{2}.upEvalLim,axes{2}.nbEvalPts*5);
+                            y0_span_qx = linspace(axes{1}.loEvalLim{1},axes{1}.upEvalLim{1},axes{1}.nbEvalPts{1}*5);
+                            y0_span_qy = linspace(axes{2}.loEvalLim{1},axes{2}.upEvalLim{1},axes{2}.nbEvalPts{1}*5);
                             [y0_mesh_X,y0_mesh_Y] = meshgrid(y0_span_x,y0_span_y);
                             [y0_mesh_qX,y0_mesh_qY] = meshgrid(y0_span_qx,y0_span_qy);
 
@@ -2000,8 +2002,8 @@ classdef ODESys < handle
                                 end
                             end
 
-                            y0_var_num_x = strcmp(y0_2_name,erase(axes{1}.getPlotProp("varNames"),"~(IC)"));
-                            y0_var_num_y = strcmp(y0_2_name,erase(axes{2}.getPlotProp("varNames"),"~(IC)"));
+                            y0_var_num_x = strcmp(y0_2_name,erase(axes{1}.varNames,"~(IC)"));
+                            y0_var_num_y = strcmp(y0_2_name,erase(axes{2}.varNames,"~(IC)"));
 
                             multiple_x = length(find(y0_other_phase(y0_var_num_x) == y0_other_phase));
                             multiple_y = length(find(y0_other_phase(y0_var_num_y) == y0_other_phase));
@@ -2012,7 +2014,7 @@ classdef ODESys < handle
                                     % ### FIXME: need to write logic to edit the
                                     % changes in initial conditions when there are
                                     % chemical solutes in different phases
-                                    y0_1(y0_var_num_x) = y0_span_(m);
+                                    y0_1(y0_var_num_x) = y0_span_x(m);
                                     if multiple_x
                                         first_x_idx = find(y0_other_phase(y0_var_num_x) == y0_other_phase,1);
                                         % setting comp
@@ -2116,17 +2118,22 @@ classdef ODESys < handle
                             end
 
                             res_2 = {};
-                            evalt = plot_obj.getPlotProp("evaltVal");
-                            for l=1:1:length(axes{3}.getPlotProp("varNames"))
+                            evalt = axes{3}.evaltVal;
+                            for l=1:1:length(axes{3}.varNames)
                                 yVarIdx = strcmp(sysVar(:,1),axes{3}.varNames{l});
                                 res_2{l} = zeros(size(res_1)); %#ok<AGROW>
                                 for m=1:1:size(res_2,1)
                                     for n=1:1:size(res_2,2)
                                         % ### FIXME: add more methods for
                                         % interpolation?
-                                        res_2{l}(m,n) = interp1(res_1{m,n}(:,end),res_1{m,n}(:,yVarIdx),evalt,'makima');
+                                        res_2{l}(m,n) = interp1(res_1{m,n}(:,end),res_1{m,n}(:,yVarIdx),evalt{l},'makima');
                                     end
                                 end
+                            end
+
+                            if export_data
+                                % export data
+
                             end
                         elseif axes{1}.varIsIC || axes{2}.varIsIC
                             if axes{1}.varIsIC
@@ -2240,123 +2247,150 @@ classdef ODESys < handle
                                 end
                             end
                         else
-                            [tRes,yRes] = sys.runModel(tSmooth);
+                            [tRes,yRes] = sys.runModel(tSmooth,sys.y0);
                             fRes = sys.calculateHelperVals(tRes,yRes);
-                            res_1{1,1} = [yRes,fRes,tRes];
+                            res_1{1,1} = [tRes,yRes,fRes];
 
                             xVarIdx = strcmp(sysVar(:,1),axes{1}.varNames);
                             yVarIdx = strcmp(sysVar(:,1),axes{2}.varNames);
                             zVarIdx = zeros(size(axes{3}.varNames));
                             for l=1:1:length(axes{3}.varNames)
-                                zVarIdx(l) = strcmp(sysVar(:,1),axes{2}.varNames{l});
+                                zVarIdx(l) = find(strcmp(sysVar(:,1),axes{3}.varNames{l}));
                             end
 
                             y0_span_x = res_1{1,1}(:,xVarIdx);
                             y0_span_y = res_1{1,1}(:,yVarIdx);
                             y0_span_z = res_1{1,1}(:,zVarIdx);
                         end
+
+                        if export_data
+                            % creating data export table
+                            dataT = table(y0_span_x,y0_span_y,y0_span_z,'VariableNames',{sysVar(xVarIdx,1),sysVar(yVarIdx,1),sysVar(zVarIdx,1)});
+                        end
                     else
                         [tRes,yRes] = sys.runModel(tSmooth,sys.y0);
                         % ### STARTHERE: need to fix this, debug
                         fRes = sys.calculateHelperVals(tRes,yRes);
                         res_1{1,1} = [tRes,yRes,fRes];
+
+                        if export_data
+                            % ### FIXME: export data with different time units
+                            dataT = table(res_1{1,1},'VariableNames',{sysVar(end,1),sysVar(1:end-1,1)});
+                        end
                     end
 
                     % plot models on fig
                     % ### IMPROVEMENT: give user option to span multiple
                     % slots?
-                    fig = figure(plot_obj.subplotGroup);
-                    group = plot_obj.subplotGroup;
-                    slot = plot_obj.subplotSlot;
-                    if any(curr_fig_nums == plot_obj.subplotGroup)
-                        TL = fig.Children(1);
-                        for l=1:1:length(TL.Children)
-                            if isa(TL.Children(l),'matlab.graphics.axis.Axes')
-                                ax = TL.Children(l);
-                                break;
-                            end
-                        end
+                    if export_data
+                        % write table
+                        writetable(dataT,sys.data_export_dir,'Sheet',sys.plots{k}.getPlotProp('title'));
                     else
-                        fig.Color = [1,1,1];
-    
-                        % creating separate figures for each subplot
-                        TL = tiledlayout(fig,sys.subplot_row_ct(group),sys.subplot_col_ct(group));
-                        ax = nexttile(TL,slot);
-                    end
-                    hold(ax,plot_obj.getPlotProp('hold'));
-
-                    if plot_obj.getPlotProp('dimNb') == 2
-                        xVarIdx = strcmp(sysVar(:,1),axes{1}.varNames);
-                        yVarIdx = zeros(size(axes{2}.varNames));
-                        for l=1:1:length(axes{2}.varNames)
-                            yVarIdx(l) = find(strcmp(sysVar(:,1),axes{2}.varNames{l}));
-                        end
-                        try
-                            yyaxis(ax,'left');
-                            plot(res_1{1,1}(:,xVarIdx),res_1{1,1}(:,yVarIdx),'LineWidth',2);
-                            ylabelc(axes{2}.title);
-                            if ~axes{2}.useDefR, ylim([axes{2}.loDispLim,axes{2}.upDispLim]); end
-                        catch err
-                            err
-                        end
-
-                        yVarIdx = zeros(size(axes{3}.varNames));
-                        for l=1:1:length(axes{3}.varNames)
-                            yVarIdx(l) = find(strcmp(sysVar(:,1),axes{3}.varNames{l}));
-                        end
-                        try
-                            yyaxis(ax,'right');
-                            plot(res_1{1,1}(:,xVarIdx),res_1{1,1}(:,yVarIdx),'LineWidth',2);
-                            ylabel(axes{3}.title);
-                            if ~axes{3}.useDefR, ylim([axes{3}.loDispLim,axes{3}.upDispLim]); end
-                        catch err
-                            err
-                        end
-
-                        xlabel(axes{1}.title);
-                        if ~axes{1}.useDefR, xlim([axes{1}.loDispLim,axes{1}.upDispLim]); end
-                    elseif plot_obj.getPlotProp('dimNb') == 3
-                        if axes{1}.varIsIC && axes{2}.varIsIC
-                            for l=1:1:length(res_2)
-                                % 2D interpolation
-                                interpZGrid = interp2(y0_mesh_X, y0_mesh_Y, res_2{l}, y0_mesh_qX, y0_mesh_qY, 'makima');
-                                % plotting surface
-                                surf(qGridXVals,qGridYVals,interpZGrid);
-                            end
-                        elseif axes{1}.varIsIC || axes{2}.varIsIC
-                            for l=1:1:length(res_2)
-                                % 2D interpolation
-                                interpZGrid = interp2(y0_mesh_X, y0_mesh_Y, res_2{l}, y0_mesh_qX, y0_mesh_qY, 'makima');
-                                % plotting surface
-                                surf(qGridXVals,qGridYVals,interpZGrid);
+                        fig = figure(plot_obj.subplotGroup);
+                        group = plot_obj.subplotGroup;
+                        slot = plot_obj.subplotSlot;
+                        if any(curr_fig_nums == plot_obj.subplotGroup)
+                            TL = fig.Children(1);
+                            for l=1:1:length(TL.Children)
+                                if isa(TL.Children(l),'matlab.graphics.axis.Axes')
+                                    ax = TL.Children(l);
+                                    break;
+                                end
                             end
                         else
-                            % plotting lines in 3D
-                            plot3(y0_span_x,y0_span_y,y0_span_z);
+                            fig.Color = [1,1,1];
+        
+                            % creating separate figures for each subplot
+                            TL = tiledlayout(fig,sys.subplot_row_ct(group),sys.subplot_col_ct(group));
+                            ax = nexttile(TL,slot);
                         end
-                    end
+                        hold(ax,plot_obj.getPlotProp('hold'));
+    
+                        if plot_obj.getPlotProp('dimNb') == 2
+                            xVarIdx = strcmp(sysVar(:,1),axes{1}.varNames);
+                            yVarIdx = zeros(size(axes{2}.varNames));
+                            for l=1:1:length(axes{2}.varNames)
+                                yVarIdx(l) = find(strcmp(sysVar(:,1),axes{2}.varNames{l}));
+                            end
+                            try
+                                yyaxis(ax,'left');
+                                plot(res_1{1,1}(:,xVarIdx),res_1{1,1}(:,yVarIdx),'LineWidth',2);
+                                ylabel(axes{2}.title);
+                                if ~axes{2}.useDefR, ylim([axes{2}.loDispLim,axes{2}.upDispLim]); end
+                            catch err
+                                err
+                            end
+    
+                            yVarIdx = zeros(size(axes{3}.varNames));
+                            for l=1:1:length(axes{3}.varNames)
+                                yVarIdx(l) = find(strcmp(sysVar(:,1),axes{3}.varNames{l}));
+                            end
+                            try
+                                yyaxis(ax,'right');
+                                plot(res_1{1,1}(:,xVarIdx),res_1{1,1}(:,yVarIdx),'LineWidth',2);
+                                ylabel(axes{3}.title);
+                                if ~axes{3}.useDefR, ylim([axes{3}.loDispLim,axes{3}.upDispLim]); end
+                            catch err
+                                err
+                            end
+    
+                            xlabel(axes{1}.title+" ("+axes{1}.varUnits+")");
+                            if ~axes{1}.useDefR, xlim([axes{1}.loDispLim,axes{1}.upDispLim]); end
 
-                    title(plot_obj.title);
-                    for l=1:1:length(plot_obj.axes)
-                        if l == 1
-                            xlabel(axes{l}.title);
-                            if ~axes{l}.useDefR, xlim([axes{l}.loDispLim,axes{l}.upDispLim]); end
-                        elseif l == 2
-                            ylabel(axes{l}.title);
-                            if ~axes{l}.useDefR, ylim([axes{l}.loDispLim,axes{l}.upDispLim]); end
-                        elseif l == 3
-                            zlabel(axes{l}.title);
-                            if ~axes{l}.useDefR, zlim([axes{l}.loDispLim,axes{l}.upDispLim]); end
+                            lgd_txt = axes{end}.varNames;
+                            for m=1:1:length(lgd_txt)
+                                lgd_txt(m) = lgd_txt+" ("+axes{l}.varUnits+")";
+                            end
+                            legend(lgd_txt);
+                        elseif plot_obj.getPlotProp('dimNb') == 3
+                            if axes{1}.varIsIC && axes{2}.varIsIC
+                                for l=1:1:length(res_2)
+                                    % 2D interpolation
+                                    interpZGrid = interp2(y0_mesh_X, y0_mesh_Y, res_2{l}, y0_mesh_qX, y0_mesh_qY, 'makima');
+                                    % plotting surface
+                                    surf(y0_mesh_qX,y0_mesh_qY,interpZGrid);
+                                end
+                            elseif axes{1}.varIsIC || axes{2}.varIsIC
+                                for l=1:1:length(res_2)
+                                    % 2D interpolation
+                                    interpZGrid = interp2(y0_mesh_X, y0_mesh_Y, res_2{l}, y0_mesh_qX, y0_mesh_qY, 'makima');
+                                    % plotting surface
+                                    surf(y0_mesh_qX,y0_mesh_qY,interpZGrid);
+                                end
+                            else
+                                % plotting lines in 3D
+                                plot3(y0_span_x,y0_span_y,y0_span_z);
+                            
+                                for l=1:1:length(plot_obj.axes)
+                                    if l == 1
+                                        xlabel(axes{l}.title+" ("+axes{l}.varUnits+")");
+                                        if ~axes{l}.useDefR, xlim([axes{l}.loDispLim,axes{l}.upDispLim]); end
+                                    elseif l == 2
+                                        ylabel(axes{l}.title+" ("+axes{l}.varUnits+")");
+                                        if ~axes{l}.useDefR, ylim([axes{l}.loDispLim,axes{l}.upDispLim]); end
+                                    elseif l == 3
+                                        zlabel(axes{l}.title);
+                                        if ~axes{l}.useDefR, zlim([axes{l}.loDispLim,axes{l}.upDispLim]); end
+                                    end
+                                end
+                            end
+
+                            lgd_txt = axes{end}.varNames;
+                            for m=1:1:length(lgd_txt)
+                                lgd_txt(m) = lgd_txt+" ("+axes{l}.varUnits+")";
+                            end
+                            legend(lgd_txt);
                         end
-                    end
-                    legend(axes{end}.varNames);
-                    hold(ax,"off");
-
-                    if ~plot_obj.getPlotProp("display")
-                        close(fig);
-                    end
-                    if plot_obj.getPlotProp("download") == true
-                        plot_obj.downloadPlot(fig);
+    
+                        title(plot_obj.title)
+                        hold(ax,"off");
+    
+                        if ~plot_obj.getPlotProp("display")
+                            close(fig);
+                        end
+                        if plot_obj.getPlotProp("download") == true
+                            plot_obj.downloadPlot(fig);
+                        end
                     end
                 end
             end
@@ -3129,7 +3163,7 @@ classdef ODESys < handle
         % varName: string, addVar: boolean
         function axes = updateAxVars(sys,plotName,axesDir,varName,addVar)
             plot = sys.getPlotByName(plotName);
-            if contains(varName,"~")
+            if contains(varName,'~')
                 varIsIC = true;
             else
                 varIsIC = false;
@@ -3138,7 +3172,7 @@ classdef ODESys < handle
             if plot.getPlotProp("dimNb") == 2
                 if axesDir == "X"
                     axesDir = 1;
-                    plot.updateAx(axesDir,"varNames",varName);
+                    plot.updateAx(axesDir,"varNames",{varName});
                     plot.updateAx(axesDir,"varIsIC",varIsIC);
                 else
                     if axesDir == "Y_l"
@@ -3153,7 +3187,6 @@ classdef ODESys < handle
                             else
                                 varNames = [plot.getAxProp(axesDir,"varNames"),{varName}];
                             end
-                            test4 = varNames
                             plot.updateAx(axesDir,"varNames",varNames);
                         end
                     else
@@ -3169,17 +3202,21 @@ classdef ODESys < handle
             else
                 if axesDir == "X"
                     axesDir = 1;
-                    plot.updateAx(axesDir,"varNames",varName);
+                    plot.updateAx(axesDir,"varNames",{varName});
                     plot.updateAx(axesDir,"varIsIC",varIsIC);
                 elseif axesDir == "Y"
                     axesDir = 2;
-                    plot.updateAx(axesDir,"varNames",varName);
+                    plot.updateAx(axesDir,"varNames",{varName});
                     plot.updateAx(axesDir,"varIsIC",varIsIC);
                 elseif axesDir == "Z"
                     axesDir = 3;
                     if addVar
                         if ~any(strcmp(plot.getAxProp(axesDir,"varNames"),varName))
-                            varNames = [plot.getAxProp(axesDir,"varNames"),{varName}];
+                            if strcmp(plot.getAxProp(axesDir,"varNames"),'')
+                                varNames = {varName};
+                            else
+                                varNames = [plot.getAxProp(axesDir,"varNames"),{varName}];
+                            end
                             plot.updateAx(axesDir,"varNames",varNames);
                         end
                     else
@@ -3252,17 +3289,43 @@ classdef ODESys < handle
             plot.setVarICEvalData(axisName,varName,varUnits,evaltVal,loEvalLim,upEvalLim,nbEvalPts);
         end
 
-        % sys: ODESys class ref, filePath: string, colNames: {}
-        function setImportedData(sys,filePath,importedData,colNames)
+        % sys: ODESys class ref, plotName: string, axisName: string
+        function data = getSysVarInitCondTData(sys,plotName,axisName)
+            plot = sys.getPlotByName(plotName);
+            axes = plot.getPlotProp('axes');
+            try
+                for k=1:1:length(axes)
+                    if strcmp(axes{k}.title,axisName)
+                        data = cell(length(axes{k}.varNames),5);
+                        for l=1:1:length(axes{k}.varNames)
+                            data{l,1} = char(axes{k}.varNames(l));
+                            data{l,2} = axes{k}.varUnits{l};
+                            data{l,3} = axes{k}.evaltVal{l};
+                            data{l,4} = axes{k}.loEvalLim{l};
+                            data{l,5} = axes{k}.upEvalLim{l};
+                            data{l,6} = axes{k}.nbEvalPts{l};
+                        end
+                        break;
+                    end
+                end
+            catch err
+                err
+            end
+        end
+
+        % sys: ODESys class ref, filePath: string, sheetName: string, colNames: {}
+        function setImportedData(sys,filePath,sheetName,importedData,colNames)
             sys.importedDataPath = filePath;
+            sys.importedSheet = sheetName;
             sys.importedData = importedData;
             sys.importedDataColNames = colNames;
         end
 
         % sys: ODESys class ref
-        function [importedData,path,colNames] = getUserImportedData(sys)
+        function [importedData,path,sheetName,colNames] = getUserImportedData(sys)
             importedData = sys.importedData;
             path = sys.importedDataPath;
+            sheetName = sys.importedSheet;
             colNames = sys.importedDataColNames;
         end
 
@@ -4037,356 +4100,6 @@ classdef ODESys < handle
             for k=1:1:length(subfuncs)
                 res{k+length(comps),1} = char(subfuncs{k}.getSubFuncName());
                 res{k+length(comps),2} = subfuncs{k}.getSubFuncSym();
-            end
-        end
-
-        % sys: ODESys class ref
-        function runModelAndExportData(sys)
-            % compile model
-            sys.compileModel();
-
-            % generate data based on existing plots
-            tEnd = sys.model_runtime;
-            tSmooth = linspace(0,tEnd,100);
-            sysVar = sys.getModelVarNames("plot");
-            for k=1:1:length(sys.plots)
-                plot_obj = sys.plots{k};
-                axes = plot_obj.axes;
-                if length(axes) == 3
-                    if axes{1}.varIsIC && axes{2}.varIsIC
-                        y0_span_x = linspace(axes{1}.loEvalLim,axes{1}.upEvalLim,axes{1}.nbEvalPts);
-                        y0_span_y = linspace(axes{2}.loEvalLim,axes{2}.upEvalLim,axes{2}.nbEvalPts);
-                        % maybe remove these and just use y0_mesh_X and
-                        % y0_mesh_Y for the interpolation query points
-                        % as well?
-                        y0_span_qx = linspace(axes{1}.loEvalLim,axes{1}.upEvalLim,axes{1}.nbEvalPts*5);
-                        y0_span_qy = linspace(axes{2}.loEvalLim,axes{2}.upEvalLim,axes{2}.nbEvalPts*5);
-                        [y0_mesh_X,y0_mesh_Y] = meshgrid(y0_span_x,y0_span_y);
-                        % [y0_mesh_qX,y0_mesh_qY] = meshgrid(y0_span_qx,y0_span_qy);
-
-                        res_1 = cell(length(y0_span_y),length(y0_span_x));
-
-                        % creating array that maps y0 to variable name
-                        y0_2_name = [];
-                        y0_other_phase = [];
-                        comps = [sys.getSpecies('comp'),sys.getChemicals('comp'),sys.environs.(sys.activeEnv).getAllEnvComps()];
-                        ext_ct = 0;
-                        for l=1:1:length(comps)
-                            y0_2_name(l+ext_ct) = string([comps{l}.getName(),' (Liquid Phase)']); %#ok<AGROW>
-                            if comps{l}.is_vol
-                                ext_ct = ext_ct + 1;
-                                % helperName = ['Gas Phase Partial Pressure of ',char(comps{l}.getName()),' in Equilibrium with Liquid Phase'];
-                                % [~,~,helperIdx] = sys.getHelperFunc(helperName);
-                                % eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
-                                % % ### FIXME?: unable to access initial conditions for
-                                % % variables inputted from Simulink, will assume 0 for
-                                % % all
-                                % sys.y0(k+ext_ct) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
-
-                                y0_2_name(l+ext_ct) = string([comps{l}.getName(),' (Gas Phase)']); %#ok<AGROW>
-                                y0_other_phase(end+1) = l; %#ok<AGROW>
-                            end
-                            solvents = {};
-                            if ~isempty(comps{k}.sorpFuncParams)
-                                for m=1:1:length(comps{k}.sorpFuncParams)
-                                    if ~any(strcmp(solvents,comps{k}.sorpFuncParams{l}.solventName))
-                                        ext_ct = ext_ct + 1;
-                                        % helperName = [char(comps{k}.name),' Concentration in ',comps{k}.sorpFuncParams{l}.solventName,' Phase in Equilibrium with Liquid Phase'];
-                                        % [~,~,helperIdx] = sys.getHelperFunc(helperName);
-                                        % eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
-                                        % sys.y0(k+ext_ct) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
-
-                                        y0_2_name(l+ext_ct) = string([comps{l}.getName(),' (',comps{k}.sorpFuncParams{l}.solventName,' Phase)']); %#ok<AGROW>
-                                        y0_other_phase(end+1) = l; %#ok<AGROW>
-                                        solvents{end+1} = comps{k}.sorpFuncParams{l}.solventName; %#ok<AGROW>
-                                    end
-                                end
-                            end
-                        end
-
-                        y0_var_num_x = strcmp(y0_2_name,erase(axes{1}.getPlotProp("varNames"),"~(IC)"));
-                        y0_var_num_y = strcmp(y0_2_name,erase(axes{2}.getPlotProp("varNames"),"~(IC)"));
-
-                        multiple_x = length(find(y0_other_phase(y0_var_num_x) == y0_other_phase));
-                        multiple_y = length(find(y0_other_phase(y0_var_num_y) == y0_other_phase));
-
-                        for l=1:1:length(y0_span_y)
-                            for m=1:1:length(y0_span_x)
-                                y0_1 = sys.y0;
-                                % ### FIXME: need to write logic to edit the
-                                % changes in initial conditions when there are
-                                % chemical solutes in different phases
-                                y0_1(y0_var_num_x) = y0_span_(m);
-                                if multiple_x
-                                    first_x_idx = find(y0_other_phase(y0_var_num_x) == y0_other_phase,1);
-                                    % setting comp
-                                    comp = comps{y0_other_phase(first_x_idx)};
-                                    if first_x_idx + 1 == y0_var_num_x
-                                        helperName = ['Liquid Phase Concentration of ',char(comp.name),' in Equilibrium with Gas Phase'];
-                                        [~,~,helperIdx] = sys.getHelperFunc(helperName);
-                                        eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
-                                        y0_1(first_x_idx) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
-                                    elseif first_x_idx ~= y0_var_num_x
-                                        for n=1:1:length(comp.sorpFuncParams)
-                                            if contains(axes{1}.getPlotProp("varNames"),comp.sorpFuncParams{n}.solventName)
-                                                solventName = comp.sorpFuncParams{n}.solventName;
-                                            end
-                                        end
-                                        helperName = [char(comp.name),' Concentration in Liquid Phase in Equilibrium with ',solventName];
-                                        [~,~,helperIdx] = sys.getHelperFunc(helperName);
-                                        eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
-                                        y0_1(first_x_idx) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
-                                    end
-
-                                    % now update the other phases
-                                    ext_ct = 0;
-                                    if comp.is_vol
-                                        ext_ct = ext_ct + 1;
-                                        helperName = ['Gas Phase Partial Pressure of ',char(comp.getName()),' in Equilibrium with Liquid Phase'];
-                                        [~,~,helperIdx] = sys.getHelperFunc(helperName);
-                                        eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
-                                        % ### FIXME?: unable to access initial conditions for
-                                        % variables inputted from Simulink, will assume 0 for
-                                        % all
-                                        y0_1(first_x_idx+ext_ct) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
-                                    end
-                                    solvents = {};
-                                    if ~isempty(comp.sorpFuncParams)
-                                        for n=1:1:length(comp.sorpFuncParams)
-                                            if ~any(strcmp(solvents,comp.sorpFuncParams{n}.solventName))
-                                                ext_ct = ext_ct + 1;
-                                                helperName = [char(comp.name),' Concentration in ',comp.sorpFuncParams{n}.solventName,' Phase in Equilibrium with Liquid Phase'];
-                                                [~,~,helperIdx] = sys.getHelperFunc(helperName);
-                                                eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
-                                                y0_1(first_x_idx+ext_ct) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
-                                                solvents{end+1} = comp.sorpFuncParams{n}.solventName; %#ok<AGROW>
-                                            end
-                                        end
-                                    end
-                                end
-                                y0_1(y0_var_num_y) = y0_span_y(l);
-                                if multiple_y
-                                    first_y_idx = find(y0_other_phase(y0_var_num_y) == y0_other_phase,1);
-                                    % setting comp
-                                    comp = comps{y0_other_phase(first_y_idx)};
-                                    if first_y_idx + 1 == y0_var_num_y
-                                        helperName = ['Liquid Phase Concentration of ',char(comp.name),' in Equilibrium with Gas Phase'];
-                                        [~,~,helperIdx] = sys.getHelperFunc(helperName);
-                                        eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
-                                        y0_1(first_y_idx) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
-                                    elseif first_y_idx ~= y0_var_num_y
-                                        for n=1:1:length(comp.sorpFuncParams)
-                                            if contains(axes{1}.getPlotProp("varNames"),comp.sorpFuncParams{n}.solventName)
-                                                solventName = comp.sorpFuncParams{n}.solventName;
-                                            end
-                                        end
-                                        helperName = [char(comp.name),' Concentration in Liquid Phase in Equilibrium with ',solventName];
-                                        [~,~,helperIdx] = sys.getHelperFunc(helperName);
-                                        eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
-                                        y0_1(first_y_idx) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
-                                    end
-
-                                    % now update the other phases
-                                    ext_ct = 0;
-                                    if comp.is_vol
-                                        ext_ct = ext_ct + 1;
-                                        helperName = ['Gas Phase Partial Pressure of ',char(comp.getName()),' in Equilibrium with Liquid Phase'];
-                                        [~,~,helperIdx] = sys.getHelperFunc(helperName);
-                                        eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
-                                        % ### FIXME?: unable to access initial conditions for
-                                        % variables inputted from Simulink, will assume 0 for
-                                        % all
-                                        y0_1(first_y_idx+ext_ct) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
-                                    end
-                                    solvents = {};
-                                    if ~isempty(comp.sorpFuncParams)
-                                        for n=1:1:length(comp.sorpFuncParams)
-                                            if ~any(strcmp(solvents,comp.sorpFuncParams{n}.solventName))
-                                                ext_ct = ext_ct + 1;
-                                                helperName = [char(comp.name),' Concentration in ',comp.sorpFuncParams{n}.solventName,' Phase in Equilibrium with Liquid Phase'];
-                                                [~,~,helperIdx] = sys.getHelperFunc(helperName);
-                                                eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
-                                                y0_1(first_y_idx+ext_ct) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
-                                                solvents{end+1} = comp.sorpFuncParams{n}.solventName; %#ok<AGROW>
-                                            end
-                                        end
-                                    end
-                                end
-
-                                [tRes,yRes] = sys.runModel(tSmooth,y0_1);
-                                fRes = sys.calculateHelperVals(tRes,yRes);
-                                res_1{l,m} = [yRes,fRes,tRes];
-                            end
-                        end
-
-                        res_2 = cell(length(axes{3}.getPlotProp("varNames")),1);
-                        evalt = sys.plots{k}.getPlotProp("evaltVal");
-                        for l=1:1:length(axes{3}.getPlotProp("varNames"))
-                            yVarIdx = strcmp(sysVar(:,1),axes{3}.varNames{l});
-                            res_2{l} = zeros(size(res_1));
-                            for m=1:1:size(res_2,1)
-                                for n=1:1:size(res_2,2)
-                                    % ### FIXME: add more methods for
-                                    % interpolation?
-                                    res_2{l}(m,n) = interp1(res_1{m,n}(:,end),res_1{m,n}(:,yVarIdx),evalt,'makima');
-                                end
-                            end
-                        end
-
-                        % ### FIXME: need to properly do this
-                        dataT = table(y0_span_x,y0_span_y,'VariableNames',{axes{1}.getPlotProp("title"),axes{2}.getPlotProp("title")});
-                        for l=1:1:length(res_2)
-                            dataT = [dataT,table(y0_span_x,res_2{l},'VariableNames',{['Columns: ',axes{2}.getPlotProp("title"),'/Rows: ',axes{1}.getPlotProp("title")], ...
-                                y0_span_y})]; %#ok<AGROW>
-                        end
-                    elseif axes{1}.varIsIC || axes{2}.varIsIC
-                        if axes{1}.varIsIC
-                            y0_span = linspace(axes{1}.loEvalLim,axes{1}.upEvalLim,axes{1}.nbEvalPts);
-                            ICax = 1;
-                            ICax_obj = axes{1};
-                            nonICAx = 2;
-                            nonICAx_obj = axes{2};
-                        else
-                            y0_span = linspace(axes{2}.loEvalLim,axes{2}.upEvalLim,axes{2}.nbEvalPts);
-                            ICax = 2;
-                            ICax_obj = axes{2};
-                            nonICAx = 1;
-                            nonICAx_obj = axes{1};
-                        end
-
-                        res_1 = cell(length(y0_span),1);
-
-                        % creating array that maps y0 to variable name
-                        y0_2_name = [];
-                        y0_other_phase = [];
-                        comps = [sys.getSpecies('comp'),sys.getChemicals('comp'),sys.environs.(sys.activeEnv).getAllEnvComps()];
-                        ext_ct = 0;
-                        for l=1:1:length(comps)
-                            y0_2_name(l+ext_ct) = string([comps{l}.getName(),' (Liquid Phase)']); %#ok<AGROW>
-                            if comps{l}.is_vol
-                                ext_ct = ext_ct + 1;
-                                y0_2_name(l+ext_ct) = string([comps{l}.getName(),' (Gas Phase)']); %#ok<AGROW>
-                                y0_other_phase(end+1) = l; %#ok<AGROW>
-                            end
-                            solvents = {};
-                            if ~isempty(comps{k}.sorpFuncParams)
-                                for m=1:1:length(comps{k}.sorpFuncParams)
-                                    if ~any(strcmp(solvents,comps{k}.sorpFuncParams{l}.solventName))
-                                        ext_ct = ext_ct + 1;
-                                        y0_2_name(l+ext_ct) = string([comps{l}.getName(),' (',comps{k}.sorpFuncParams{l}.solventName,' Phase)']); %#ok<AGROW>
-                                        y0_other_phase(end+1) = l; %#ok<AGROW>
-                                        solvents{end+1} = comps{k}.sorpFuncParams{l}.solventName; %#ok<AGROW>
-                                    end
-                                end
-                            end
-                        end
-
-                        y0_var_num = strcmp(y0_2_name,erase(plot_obj.getAxProp(ICax,"varNames"),"~(IC)"));
-
-                        multiple_num = length(find(y0_other_phase(y0_var_num) == y0_other_phase));
-
-                        for l=1:1:length(y0_span)
-                            y0_1 = sys.y0;
-                            y0_1(y0_var_num) = y0_span(l);
-                            if multiple_num
-                                first_idx = find(y0_other_phase(y0_var_num) == y0_other_phase,1);
-                                % setting comp
-                                comp = comps{y0_other_phase(first_idx)};
-                                if first_idx + 1 == y0_var_num
-                                    helperName = ['Liquid Phase Concentration of ',char(comp.name),' in Equilibrium with Gas Phase'];
-                                    [~,~,helperIdx] = sys.getHelperFunc(helperName);
-                                    eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
-                                    y0_1(first_idx) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
-                                elseif first_idx ~= y0_var_num
-                                    for m=1:1:length(comp.sorpFuncParams)
-                                        if contains(axes{1}.getPlotProp("varNames"),comp.sorpFuncParams{m}.solventName)
-                                            solventName = comp.sorpFuncParams{m}.solventName;
-                                        end
-                                    end
-                                    helperName = [char(comp.name),' Concentration in Liquid Phase in Equilibrium with ',solventName];
-                                    [~,~,helperIdx] = sys.getHelperFunc(helperName);
-                                    eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
-                                    y0_1(first_idx) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
-                                end
-
-                                % now update the other phases
-                                ext_ct = 0;
-                                if comp.is_vol
-                                    ext_ct = ext_ct + 1;
-                                    helperName = ['Gas Phase Partial Pressure of ',char(comp.getName()),' in Equilibrium with Liquid Phase'];
-                                    [~,~,helperIdx] = sys.getHelperFunc(helperName);
-                                    eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
-                                    y0_1(first_idx+ext_ct) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
-                                end
-                                solvents = {};
-                                if ~isempty(comp.sorpFuncParams)
-                                    for m=1:1:length(comp.sorpFuncParams)
-                                        if ~any(strcmp(solvents,comp.sorpFuncParams{m}.solventName))
-                                            ext_ct = ext_ct + 1;
-                                            helperName = [char(comp.name),' Concentration in ',comp.sorpFuncParams{m}.solventName,' Phase in Equilibrium with Liquid Phase'];
-                                            [~,~,helperIdx] = sys.getHelperFunc(helperName);
-                                            eqFunc = sys.f{helperIdx+length(sys.environs.(sys.activeEnv).subfuncs),3};
-                                            y0_1(first_idx+ext_ct) = eqFunc(0,sys.y0,sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
-                                            solvents{end+1} = comp.sorpFuncParams{m}.solventName; %#ok<AGROW>
-                                        end
-                                    end
-                                end
-
-                                [tRes,yRes] = sys.runModel(tSmooth,y0_1);
-                                fRes = sys.calculateHelperVals(tRes,yRes);
-                                res_1{l,1} = [yRes,fRes,tRes];
-                            end
-                        end
-
-                        res_2 = {};
-                        nonICVarIdx = strcmp(sysVar(:,1),nonICAx_obj.varNames);
-                        for l=1:1:length(axes{3}.getPlotProp("varNames"))
-                            zVarIdx = strcmp(sysVar(:,1),axes{3}.varNames{l});
-                            res_2{l} = zeros(size(res_1)); %#ok<AGROW>
-                            for m=1:1:size(res_2,1)
-                                % ### FIXME: add more methods for
-                                % interpolation?
-                                res_2{l}(m,1) = interp1(res_1{m,1}(:,nonICVarIdx),res_1{m,1}(:,zVarIdx), ...
-                                    linspace(min(res_1{m,1}(:,nonICVarIdx)),max((res_1{m,1}(:,nonICVarIdx)),size(res_1{m,1},1))),'makima');
-                            end
-                        end
-
-                        % ### DEBUG: need to try this
-                        dataT = table(y0_span_x,y0_span_y,'VariableNames',{axes{1}.getPlotProp("title"),axes{2}.getPlotProp("title")});
-                        for l=1:1:length(res_2)
-                            dataT = [dataT,table(y0_span_x,res_2{l},'VariableNames',{['Columns: ',axes{2}.getPlotProp("title"),'/Rows: ',axes{1}.getPlotProp("title")], ...
-                                y0_span_y})]; %#ok<AGROW>
-                        end
-                    else
-                        [tRes,yRes] = sys.runModel(tSmooth);
-                        fRes = sys.calculateHelperVals(tRes,yRes);
-                        res_1{1,1} = [yRes,fRes,tRes];
-
-                        xVarIdx = strcmp(sysVar(:,1),axes{1}.varNames);
-                        yVarIdx = strcmp(sysVar(:,1),axes{2}.varNames);
-                        zVarIdx = zeros(size(axes{3}.varNames));
-                        for l=1:1:length(axes{3}.varNames)
-                            zVarIdx(l) = strcmp(sysVar(:,1),axes{2}.varNames{l});
-                        end
-
-                        y0_span_x = res_1{1,1}(:,xVarIdx);
-                        y0_span_y = res_1{1,1}(:,yVarIdx);
-                        y0_span_z = res_1{1,1}(:,zVarIdx);
-
-                        % creating data export table
-                        dataT = table(y0_span_x,y0_span_y,y0_span_z,'VariableNames',{sysVar(xVarIdx,1),sysVar(yVarIdx,1),sysVar(zVarIdx,1)});
-                    end
-                else
-                    [tRes,yRes] = sys.runModel(tSmooth);
-                    fRes = sys.calculateHelperVals(tRes,yRes);
-                    res_1{1,1} = [yRes,fRes,tRes];
-
-                    % ### FIXME: export data with different time units
-                    dataT = table(res_1{1,1},'VariableNames',{sysVar(end,1),sysVar(1:end-1,1)});
-                end
-
-                % write table
-                writetable(dataT,sys.data_export_dir,'Sheet',sys.plots{k}.getPlotProp('title'));
             end
         end
 
