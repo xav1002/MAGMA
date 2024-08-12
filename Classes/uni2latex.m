@@ -5,6 +5,8 @@ function latex_out = uni2latex(eqn)
         return;
     end
 
+    test = eqn
+
     num_left_paren = regexp(eqn,'\(');
     num_right_paren = regexp(eqn,'\)');
     if length(num_left_paren) ~= length(num_right_paren), return; end
@@ -47,7 +49,7 @@ function latex_out = uni2latex(eqn)
             end
         end
     end
-
+    
     % correcting subscripts
     while ~isempty(regexp(eqn,'_[^{]','once'))
         underscore_idx = regexp(eqn,'_[^{]','once');

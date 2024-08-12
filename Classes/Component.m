@@ -369,7 +369,7 @@ classdef Component < handle
                     paramVal = 1;
                     offset = offset + 1;
                 end
-                comp.funcParams{1} = comp.createNewParam(locNum, paramStr{k}, paramStr{k}, paramVal, '', comp.funcParams{1}, true, defaultParamVals);
+                comp.funcParams{1} = comp.createNewParam(locNum, paramStr{k}, paramStr{k}, paramVal, '', comp.funcParams{1}, 'true', defaultParamVals);
                 locNum = locNum + 1;
             end
         end
@@ -384,21 +384,21 @@ classdef Component < handle
                 case 'Liquid'
                     comp.funcParams{end+1} = comp.createFuncParamObj(funcVal,funcName);
                     for k=1:1:length(paramStr)
-                        comp.funcParams{end} = comp.createNewParam(locNum, paramStr{k}, paramStr{k}, 1, '', comp.funcParams{end}, true, defaultParamVals);
+                        comp.funcParams{end} = comp.createNewParam(locNum, paramStr{k}, paramStr{k}, 1, '', comp.funcParams{end}, 'true', defaultParamVals);
                         locNum = locNum + 1;
                     end
 
                 case 'Gas'
                     comp.gasBulkFuncParams{end+1} = comp.createFuncParamObj(funcVal,funcName);
                     for k=1:1:length(paramStr)
-                        comp.gasBulkFuncParams{end} = comp.createNewParam(locNum, paramStr{k}, paramStr{k}, 1, '', comp.gasBulkFuncParams{end}, true, defaultParamVals);
+                        comp.gasBulkFuncParams{end} = comp.createNewParam(locNum, paramStr{k}, paramStr{k}, 1, '', comp.gasBulkFuncParams{end}, 'true', defaultParamVals);
                         locNum = locNum + 1;
                     end
 
                 case 'Suspended Solid'
                     comp.sorpFuncParams{end+1} = comp.createFuncParamObj(funcVal,funcName);
                     for k=1:1:length(paramStr)
-                        comp.sorpFuncParams{end} = comp.createNewParam(locNum, paramStr{k}, paramStr{k}, 1, '', comp.sorpFuncParams{end}, true, defaultParamVals);
+                        comp.sorpFuncParams{end} = comp.createNewParam(locNum, paramStr{k}, paramStr{k}, 1, '', comp.sorpFuncParams{end}, 'true', defaultParamVals);
                         locNum = locNum + 1;
                     end
             end
@@ -418,7 +418,7 @@ classdef Component < handle
             % sets parameter syms
             locNum = 1;
             for k=1:1:length(paramStr)
-                comp.sorpVolFuncParams{end} = comp.createNewParam(locNum, paramStr{k}, paramStr{k}, 1, '', comp.sorpVolFuncParams{end}, true, defaultParamVals);
+                comp.sorpVolFuncParams{end} = comp.createNewParam(locNum, paramStr{k}, paramStr{k}, 1, '', comp.sorpVolFuncParams{end}, 'true', defaultParamVals);
                 locNum = locNum + 1;
             end
         end
@@ -463,7 +463,7 @@ classdef Component < handle
                     else
                         paramVal = 1;
                     end
-                    comp.funcParams{idx} = comp.createNewParam(locNum, paramStr{k}, paramStr{k}, paramVal, '', comp.funcParams{idx}, true, defaultParamVals);
+                    comp.funcParams{idx} = comp.createNewParam(locNum, paramStr{k}, paramStr{k}, paramVal, '', comp.funcParams{idx}, 'true', defaultParamVals);
                     locNum = locNum + 1;
                 end
             elseif strcmp(phaseA,'Gas')
@@ -490,7 +490,7 @@ classdef Component < handle
                     else
                         paramVal = 1;
                     end
-                    comp.gasBulkFuncParams{idx} = comp.createNewParam(locNum, paramStr{k}, paramStr{k}, paramVal, '', comp.gasBulkFuncParams{end}, true, defaultParamVals);
+                    comp.gasBulkFuncParams{idx} = comp.createNewParam(locNum, paramStr{k}, paramStr{k}, paramVal, '', comp.gasBulkFuncParams{end}, 'true', defaultParamVals);
                     locNum = locNum + 1;
                 end
             else
@@ -503,7 +503,7 @@ classdef Component < handle
                 comp.sorpFuncParams{idx} = comp.reviseFuncParamObj(funcVal,phaseA,comp.sorpFuncParams{idx},funcType);
                 locNum = 1;
                 for k=1:1:length(paramStr)
-                    comp.sorpFuncParams{idx} = comp.createNewParam(locNum, paramStr{k}, paramStr{k}, 1, '', comp.sorpFuncParams{end}, true, defaultParamVals);
+                    comp.sorpFuncParams{idx} = comp.createNewParam(locNum, paramStr{k}, paramStr{k}, 1, '', comp.sorpFuncParams{end}, 'true', defaultParamVals);
                     locNum = locNum + 1;
                 end
             end
@@ -1361,23 +1361,23 @@ classdef Component < handle
             if strcmp(sym,"R")
                 val = 8.314;
                 unit = 'kPa*L/mol*K';
-                editable = false;
+                editable = 'false';
             elseif strcmp(sym,"tau")
                 val = 1;
                 unit = 's';
-                editable = false;
+                editable = 'false';
             elseif strcmp(sym,"pi")
                 val = pi;
                 unit = '';
-                editable = false;
+                editable = 'false';
             elseif strcmp(sym,"K_w")
                 val = 1E-14;
                 unit = 'mol/L';
-                editable = false;
+                editable = 'false';
             elseif any(strcmp(sym,paramNames))
                 val = defaultParamVals.(sym);
                 unit = 'g/mol';
-                editable = false;
+                editable = 'false';
             end
 
             param = struct( ...

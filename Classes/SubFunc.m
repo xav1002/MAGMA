@@ -49,12 +49,12 @@ classdef SubFunc < handle
                 else
                     paramVal = 1;
                 end
-                subf.updateParams(funcParams(k),funcParams(k),paramVal,"",true,defaultParamVals);
+                subf.updateParams(k,funcParams(k),funcParams(k),paramVal,"",'true',defaultParamVals);
             end
         end
 
         % subf: SubFunc class ref, name: string, sym: string, val: string, unit: string
-        function updateParams(subf,name,sym,val,unit,editable,defaultParamVals)
+        function updateParams(subf,num,name,sym,val,unit,editable,defaultParamVals)
             paramNames = fields(defaultParamVals);
             if strcmp(unit,"mg/L")
                 val = val./1000;
@@ -71,19 +71,19 @@ classdef SubFunc < handle
             if strcmp(sym,"R")
                 val = 8.314;
                 unit = 'kPa*L/mol*K';
-                editable = false;
+                editable = 'false';
             elseif strcmp(sym,"tau")
                 val = 1;
                 unit = 's';
-                editable = false;
+                editable = 'false';
             elseif strcmp(sym,"pi")
                 val = pi;
                 unit = '';
-                editable = false;
+                editable = 'false';
             elseif strcmp(sym,"K_w")
                 val = 1E-14;
                 unit = 'mol/L';
-                editable = false;
+                editable = 'false';
             elseif any(strcmp(sym,paramNames))
                 if contains(sym,'C_p_')
                     unit = 'kJ/kg';
@@ -93,10 +93,12 @@ classdef SubFunc < handle
                     unit = 'g/mol';
                 end
                 val = defaultParamVals.(sym);
-                editable = false;
+                editable = 'false';
             end
 
             newParam = struct( ...
+                'num',num, ...
+                'func',subf.funcName, ...
                 'name',name, ...
                 'sym',sym, ...
                 'val',val, ...
@@ -132,9 +134,9 @@ classdef SubFunc < handle
                 if any(funcIdx)
                     paramVals = subf.getSubFuncParamVals();
                     paramUnits = subf.getSubFuncParamUnits();
-                    subf.updateParams(paramSyms(k),paramSyms(k),paramVals(funcIdx),paramUnits(funcIdx),true,defaultParamVals);
+                    subf.updateParams(k,paramSyms(k),paramSyms(k),paramVals(funcIdx),paramUnits(funcIdx),'true',defaultParamVals);
                 else
-                    subf.updateParams(paramSyms(k),paramSyms(k),1,"",true,defaultParamVals);
+                    subf.updateParams(k,paramSyms(k),paramSyms(k),1,"",'true',defaultParamVals);
                 end
             end
         end
@@ -259,7 +261,7 @@ classdef SubFunc < handle
         function paramEditable = getSubFuncParamEditable(subf)
             paramEditable = {};
             for k=1:1:length(subf.params)
-                paramEditable{k} = subf.params{k}.editable; %#ok<AGROW>
+                paramEditable{k} = subf.params{k}.editable;
             end
         end
     end

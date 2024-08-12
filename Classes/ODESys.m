@@ -1,6 +1,6 @@
 classdef ODESys < handle
     properties
-        updateConsoleFunc = 1;
+        updateConsoleFunc;
 
         save_type = "file";
         save_file_name = "";
@@ -97,13 +97,17 @@ classdef ODESys < handle
             'MSE', 0, ...
             'ErrorModelInfo', [] ...
         );
+
+        % callbacks from MAGMA.mlapp
+        SubplotABPushed;
     end
 
     methods
-        function sys = ODESys(updateConsoleFunc)
+        function sys = ODESys(updateConsoleFunc,SubplotABPushed)
             disp('ODESys init');
 
             sys.updateConsoleFunc = updateConsoleFunc;
+            sys.SubplotABPushed = SubplotABPushed;
             sys.solver.Solver = 'ode45';
 
             % set default values
@@ -173,6 +177,8 @@ classdef ODESys < handle
             % appear in any names - throw error if user tries to use "~"
             % in names
             sys.species.(specName) = Component(name,num,initConc,initConcUnit,"Biological Solute",false,0,0,'',0,'',sys.getDefaultParamVals());
+
+            sys.updateStrmAvailComps();
         end
 
         % sys: ODESys class ref, num: number, name: string
@@ -206,7 +212,7 @@ classdef ODESys < handle
                     sys.addRmHelperFuncs(HConstHelpers{k}.funcName,HConstHelpers{k}.funcSym,HConstHelpers{k}.funcVal,true);
                     [~,~,helperIdx] = sys.getHelperFunc(HConstHelpers{k}.getSubFuncName());
                     for l=1:1:length(paramNames)
-                        sys.helperFuncs{helperIdx}.updateParams(paramNames(l),paramSyms(l),paramVals(l),paramUnits(l),true,sys.getDefaultParamVals());
+                        sys.helperFuncs{helperIdx}.updateParams(l,paramNames(l),paramSyms(l),paramVals(l),paramUnits(l),'true',sys.getDefaultParamVals());
                     end
                 end
 
@@ -221,6 +227,8 @@ classdef ODESys < handle
 
             % updates IOFuncs
             sys.updateIOFunc();
+
+            sys.updateStrmAvailComps();
         end
 
         % sys: ODESys class ref, name: string, field: string, val: number | string
@@ -255,7 +263,7 @@ classdef ODESys < handle
                     if ~prev_is_vol, sys.addRmHelperFuncs(HConstHelpers{k}.funcName,HConstHelpers{k}.funcSym,HConstHelpers{k}.funcVal,true); end
                     [~,~,helperIdx] = sys.getHelperFunc(HConstHelpers{k}.getSubFuncName());
                     for l=1:1:length(paramNames)
-                        sys.helperFuncs{helperIdx}.updateParams(paramNames(l),paramSyms(l),paramVals(l),paramUnits(l),true,sys.getDefaultParamVals());
+                        sys.helperFuncs{helperIdx}.updateParams(l,paramNames(l),paramSyms(l),paramVals(l),paramUnits(l),'true',sys.getDefaultParamVals());
                     end
                 end
 
@@ -321,6 +329,7 @@ classdef ODESys < handle
             lgtAttnModelName = params.lgtAttnModel;
             lgtBioAttn = params.lgtBioAttn;
             lgtChemAttn = params.lgtChemAttn;
+            set_params = {};
 
             if ~lgtBioAttn && ~lgtChemAttn
                 newLgtMdlLaTeX = "I=I_{0}";
@@ -368,6 +377,7 @@ classdef ODESys < handle
                                 case "Beer-Lambert"
                                     newLgtMdlLaTeX = "I = \frac{\int_0^L I_0\,exp(-A\,l\,"+compSyms+") dl}{L}";
                                     lgtAttnModel = "integral(@(l)I_0*exp(-A*l*"+compSyms+"),0,L)/L";
+                                    set_params = {'L',params.tkD,'m'};
                                 case "Model 1"
                                     newLgtMdlLaTeX = "I=\frac{\int_0^L I_0\,exp(-A\,(l+B\,"+compSyms+")) dl}{L}";
                                     lgtAttnModel = "integral(@(l)I_0*exp(-(A*(l+B*"+compSyms+"))),0,L)/L";
@@ -387,7 +397,12 @@ classdef ODESys < handle
                 end
             end
 
-            sys.updateHelperFuncs("val",'Light Intensity','I',lgtAttnModel);
+            light_helper = sys.updateHelperFuncs("val",'Light Intensity','I',lgtAttnModel);
+            syms = light_helper.getSubFuncParamSyms();
+            test = size(set_params)
+            for k=1:1:size(set_params,1)
+                light_helper.updateParams(find(strcmp(syms,set_params{k,1})),set_params{k,1},set_params{k,1},set_params{k,2},set_params{k,3},'false',sys.getDefaultParamVals());
+            end
             sys.updateHelperFuncs("latex",'Light Intensity','I',newLgtMdlLaTeX);
             newLgtMdlLaTeX = "$" + newLgtMdlLaTeX + "$";
         end
@@ -436,6 +451,8 @@ classdef ODESys < handle
             % creates Species field name, removes from ODESys Map
             specName = regexprep(name, ' ', '_');
             sys.species = rmfield(sys.species, specName);
+
+            sys.updateStrmAvailComps();
         end
 
         % sys: ODESys class ref, name: string
@@ -472,6 +489,8 @@ classdef ODESys < handle
             sys.updateIOFunc();
 
             sys.chemicals = rmfield(sys.chemicals, chemName);
+
+            sys.updateStrmAvailComps();
         end
 
         % sys: ODESys class ref
@@ -705,13 +724,15 @@ classdef ODESys < handle
         
         % sys: ODESys class ref, prop: string, funcName: string,
         % funcSym: string,  funcVal: string
-        function updateHelperFuncs(sys,prop,funcName,funcSym,funcVal)
+        function helper_obj = updateHelperFuncs(sys,prop,funcName,funcSym,funcVal)
             switch prop
                 case "name"
                     for k=1:1:length(sys.helperFuncs)
                         if strcmp(sys.helperFuncs{k}.getSubFuncSym(),funcSym) && ...
                                 strcmp(sys.helperFuncs{k}.getSubFuncVal(),funcVal)
                             sys.helperFuncs{k}.setSubFuncName(funcName);
+                            helper_obj = sys.helperFuncs{k};
+                            break;
                         end
                     end
                 case "sym"
@@ -719,6 +740,8 @@ classdef ODESys < handle
                         if strcmp(sys.helperFuncs{k}.getSubFuncName(),funcName) && ...
                                 strcmp(sys.helperFuncs{k}.getSubFuncVal(),funcVal)
                             sys.helperFuncs{k}.setSubFuncSym(funcSym);
+                            helper_obj = sys.helperFuncs{k};
+                            break;
                         end
                     end
                 case "val"
@@ -727,6 +750,8 @@ classdef ODESys < handle
                                 strcmp(sys.helperFuncs{k}.getSubFuncSym(),funcSym)
                             sys.helperFuncs{k}.setSubFuncVal(funcVal);
                             sys.helperFuncs{k}.initParams(sys.getModelVarNames(),sys.getDefaultParamVals());
+                            helper_obj = sys.helperFuncs{k};
+                            break;
                         end
                     end
                 case "latex"
@@ -734,6 +759,8 @@ classdef ODESys < handle
                         if strcmp(sys.helperFuncs{k}.getSubFuncName(),funcName) && ...
                                 strcmp(sys.helperFuncs{k}.getSubFuncSym(),funcSym)
                             sys.helperFuncs{k}.setSubFuncLaTeX(funcVal);
+                            helper_obj = sys.helperFuncs{k};
+                            break;
                         end
                     end
             end
@@ -804,13 +831,27 @@ classdef ODESys < handle
 
             funcs = comp.getGovFuncs(phase,phaseName);
             existFunc = "";
+            allow_0 = true;
             for k=1:1:length(funcs)
-                if isempty(char(existFunc))
-                    operator = "";
+                if allow_0 && k == length(funcs)
+                    if isempty(char(existFunc))
+                        operator = "";
+                    else
+                        operator = "+";
+                    end
+                    existFunc = existFunc + operator + funcs{k};
+
+                    allow_0 = false;
                 else
-                    operator = "+";
+                    if ~strcmp(funcs{k},'0')
+                        if isempty(char(existFunc))
+                            operator = "";
+                        else
+                            operator = "+";
+                        end
+                        existFunc = existFunc + operator + funcs{k};
+                    end
                 end
-                existFunc = existFunc + operator + funcs{k};
             end
             existFunc = uni2latex(char(existFunc));
             existFuncUnicode = funcs{1};
@@ -862,7 +903,7 @@ classdef ODESys < handle
                 grthParams = sys.getGrthParamsByHelperFuncName(helperFuncName);
                 if isempty(grthParams), break; end
                 if any(strcmp(grthParams(:,3),paramSym))
-                    sys.helperFuncs{k}.updateParams(newParamName,paramSym,newVal,newUnit,true,sys.getDefaultParamVals());
+                    sys.helperFuncs{k}.updateParams(k,newParamName,paramSym,newVal,newUnit,'true',sys.getDefaultParamVals());
                 end
             end
         end
@@ -906,12 +947,12 @@ classdef ODESys < handle
                 for k=1:1:length(sys.helperFuncs)
                     helperFuncName = sys.helperFuncs{k}.getSubFuncName();
                     grthParams = sys.getGrthParamsByHelperFuncName(helperFuncName);
-                    if any(strcmp(grthParams(:,3),paramSym))
+                    if ~isempty(grthParams) && any(strcmp(grthParams(:,3),paramSym))
                         idx = strcmp(grthParams(:,3),paramSym);
                         newVal = grthParams(idx,5);
                         newParamName = grthParams(idx,4);
                         newUnit = grthParams(idx,6);
-                        sys.helperFuncs{k}.updateParams(newParamName,paramSym,newVal,newUnit,true,sys.getDefaultParamVals());
+                        sys.helperFuncs{k}.updateParams(k,newParamName,paramSym,newVal,newUnit,'true',sys.getDefaultParamVals());
                     end
                 end
             end
@@ -1100,7 +1141,6 @@ classdef ODESys < handle
                     if strcmp(helpers{k}.getSubFuncName(),'Light Intensity')
                         helperFuncVal = helpers{k}.getSubFuncLaTeX();
                     else
-                        test = char(helpers{k}.getSubFuncVal())
                         helperFuncVal = uni2latex(char(helpers{k}.getSubFuncVal()));
                     end
                 end
@@ -1149,7 +1189,7 @@ classdef ODESys < handle
             end
 
             if any(strcmp(names_req,"chems"))
-                vars = sys.getModelChemVarNames(chems,vars);
+                vars = sys.getModelChemVarNames(chems,vars,names_req);
             end
 
             if any(strcmp(names_req,"helpers"))
@@ -1291,7 +1331,7 @@ classdef ODESys < handle
         end
 
         % sys: ODESys class ref, chems: {}, vars: {}
-        function vars = getModelChemVarNames(sys,chems,vars)
+        function vars = getModelChemVarNames(sys,chems,vars,names_req)
             % Chemical Concentrations
             if length(chems) > 0 %#ok<ISMT> 
                 for k=1:1:length(chems)
@@ -1381,6 +1421,7 @@ classdef ODESys < handle
                     paramSyms = subfuncs{k}.getSubFuncParamSyms();
                     paramVals = subfuncs{k}.getSubFuncParamVals();
                     paramUnits = subfuncs{k}.getSubFuncParamUnits();
+                    paramEditable = subfuncs{k}.getSubFuncParamEditable();
                     params = cell(length(paramNums),6);
                     for l=paramNums
                         val = unit_standardization(paramVals(l),paramUnits(l));
@@ -1390,6 +1431,7 @@ classdef ODESys < handle
                         params{l,4} = char(paramNames(l));
                         params{l,5} = val;
                         params{l,6} = char(paramUnits(l));
+                        params{l,7} = paramEditable{l};
                     end
                 end
             end
@@ -1687,14 +1729,45 @@ classdef ODESys < handle
                 end
 
                 % ### STARTHERE: calculate values for v() array
-                % comps_v = [sys.getSpecies('comp'),sys.getChemicals('comp')];
+                % comps_v = [sys.getSpecies('comp'),sys.getChemicals('comp'),{ ...
+                %     sys.environs.(sys.activeEnv).getH3OComp(),sys.environs.(sys.activeEnv).getOHComp()}];
                 % for k=1:1:length(sys.var_in_key)
                 %     switch sys.var_in_key{k}
                 %         case 'dP_o'
+                %             sys.IO_flowrates.dP_o = 0;
+                %             for l=1:1:length(sys.output_streams)
+                %                 [~,~,~,~,flowrate,flowrateU] = sys.output_streams{l}.getCompsData();
+                %                 if strcmp(sys.output_streams{l}.getPhase(),'G')
+                %                     switch flowrateU
+                %                         case 'bar'
+                %                         case 'kPa'
+                %                             flowrate = flowrate .* 1E-2;
+                %                         case 'MPa'
+                %                             flowrate = flowrate .* 1E1;
+                %                         case 'Pa'
+                %                             flowrate = flowrate .* 1E-5;
                 % 
-                % 
+                %                     end
+                %                     sys.v(k) = sys.v(k) + flowrate;
+                %                 end
+                %             end
+                %             sys.IO_flowrates.L_o = sys.v(k);
+                %             sys.IO_flowrates.L_o_idx = k;
                 %         case 'L_i'
                 %             sys.IO_flowrates.L_i = 0;
+                %             for l=1:1:length(sys.input_streams)
+                %                 [~,~,~,~,flowrate,flowrateU] = sys.input_streams{l}.getCompsData();
+                %                 if strcmp(sys.input_streams{l}.getPhase(),'L') && strcmp(solventName,'Water (H2O)')
+                %                     switch flowrateU
+                %                         case 'L/s'
+                %                         case 'm^3/s'
+                %                             flowrate = flowrate .* 1E3;
+                %                         case 'mL/s'
+                %                             flowrate = flowrate .* 1E-3;
+                %                     end
+                %                     sys.v(k) = sys.v(k) + flowrate;
+                %                 end
+                %             end
                 % 
                 %             sys.IO_flowrates.L_i = sys.v(k);
                 %             sys.IO_flowrates.L_i_idx = k;
@@ -1704,7 +1777,11 @@ classdef ODESys < handle
                 %                 [~,~,~,solventName,flowrate,flowrateU] = sys.output_streams{l}.getCompsData();
                 %                 if strcmp(sys.output_streams{l}.getPhase(),'L') && strcmp(solventName,'Water (H2O)')
                 %                     switch flowrateU
-
+                %                         case 'L/s'
+                %                         case 'm^3/s'
+                %                             flowrate = flowrate .* 1E3;
+                %                         case 'mL/s'
+                %                             flowrate = flowrate .* 1E-3;
                 %                     end
                 %                     sys.v(k) = sys.v(k) + flowrate;
                 %                 end
@@ -1712,23 +1789,17 @@ classdef ODESys < handle
                 %             sys.IO_flowrates.L_o = sys.v(k);
                 %             sys.IO_flowrates.L_o_idx = k;
                 %         case 'D_i'
+                %             % this should be mass flow
                 %             for l=1:1:length(sys.input_streams)
                 %                 if strcmp(sys.input_streams{l}.getPhase(),'G')
-                %                     [compsData,basis,basisU,~,flowrate,flowrateU] = sys.input_streams{l}.getCompsData();
-                %                     if strcmp(basis,'flow')
-                %                         flowrate_sum = sum(double(string(compsData(:,2))));
-                %                         switch basisU
-                %                             case 'MPa/s'
-                %                                 flowrate = flowrate_sum .* 1E6;
-                %                             case 'kPa/s'
-                %                                 flowrate = flowrate_sum .* 1000;
-                %                             case 'Pa/s'
+                %                     [compsData,~,~,~,flowrate,flowrateU] = sys.input_streams{l}.getCompsData();
+                %                     flowrate_sum = sum(double(string(compsData(:,2))));
+                %                     switch flowrateU
+                %                         case 'kg/s'
+                %                             flowrate = flowrate_sum .* 1E6;
+                %                         case 'g/s'
+                %                             flowrate = flowrate_sum .* 1000;
                 % 
-                %                         end
-                %                     elseif strcmp(basis,'frac')
-                %                         switch flowrateU
-
-                %                         end
                 %                     end
                 %                     sys.v(k) = sys.v(k) + flowrate;
                 %                 end
@@ -1755,7 +1826,7 @@ classdef ODESys < handle
                 %             end
                 %     end
                 % end
-    
+                % 
                 % converting to function_handle
                 sys.dydt = str2func(sys.dydt');
                 
@@ -2246,6 +2317,11 @@ classdef ODESys < handle
                                         linspace(min(res_1{m,1}(:,nonICVarIdx)),max((res_1{m,1}(:,nonICVarIdx)),size(res_1{m,1},1))),'makima');
                                 end
                             end
+
+                            % export data
+                            if export_data
+
+                            end
                         else
                             [tRes,yRes] = sys.runModel(tSmooth,sys.y0);
                             fRes = sys.calculateHelperVals(tRes,yRes);
@@ -2275,6 +2351,7 @@ classdef ODESys < handle
 
                         if export_data
                             % ### FIXME: export data with different time units
+                            % ### FIXME: add the units to the column titles
                             dataT = table(res_1{1,1},'VariableNames',{sysVar(end,1),sysVar(1:end-1,1)});
                         end
                     end
@@ -2313,19 +2390,19 @@ classdef ODESys < handle
                                 yVarIdx(l) = find(strcmp(sysVar(:,1),axes{2}.varNames{l}));
                             end
                             try
-                                yyaxis(ax,'left');
+                                % yyaxis(ax,'left');
                                 plot(res_1{1,1}(:,xVarIdx),res_1{1,1}(:,yVarIdx),'LineWidth',2);
                                 ylabel(axes{2}.title);
                                 if ~axes{2}.useDefR, ylim([axes{2}.loDispLim,axes{2}.upDispLim]); end
                             catch err
                                 err
                             end
-    
-                            yVarIdx = zeros(size(axes{3}.varNames));
-                            for l=1:1:length(axes{3}.varNames)
-                                yVarIdx(l) = find(strcmp(sysVar(:,1),axes{3}.varNames{l}));
-                            end
+
                             try
+                                yVarIdx = zeros(size(axes{3}.varNames));
+                                for l=1:1:length(axes{3}.varNames)
+                                    yVarIdx(l) = find(strcmp(sysVar(:,1),axes{3}.varNames{l}));
+                                end
                                 yyaxis(ax,'right');
                                 plot(res_1{1,1}(:,xVarIdx),res_1{1,1}(:,yVarIdx),'LineWidth',2);
                                 ylabel(axes{3}.title);
@@ -2337,11 +2414,18 @@ classdef ODESys < handle
                             xlabel(axes{1}.title+" ("+axes{1}.varUnits+")");
                             if ~axes{1}.useDefR, xlim([axes{1}.loDispLim,axes{1}.upDispLim]); end
 
-                            lgd_txt = axes{end}.varNames;
-                            for m=1:1:length(lgd_txt)
-                                lgd_txt(m) = lgd_txt+" ("+axes{l}.varUnits+")";
+                            try
+                                lgd_txt = "";
+                                for l=2:1:3
+                                    for m=1:1:length(axes{l}.varNames)
+                                        lgd_txt(end+1) = string(axes{l}.varNames{m})+" ("+string(axes{l}.varUnits{m})+")"; %#ok<AGROW>
+                                    end
+                                end
+                                lgd_txt(1) = [];
+                                legend(lgd_txt);
+                            catch err
+                                err
                             end
-                            legend(lgd_txt);
                         elseif plot_obj.getPlotProp('dimNb') == 3
                             if axes{1}.varIsIC && axes{2}.varIsIC
                                 for l=1:1:length(res_2)
@@ -2360,25 +2444,27 @@ classdef ODESys < handle
                             else
                                 % plotting lines in 3D
                                 plot3(y0_span_x,y0_span_y,y0_span_z);
-                            
-                                for l=1:1:length(plot_obj.axes)
-                                    if l == 1
-                                        xlabel(axes{l}.title+" ("+axes{l}.varUnits+")");
-                                        if ~axes{l}.useDefR, xlim([axes{l}.loDispLim,axes{l}.upDispLim]); end
-                                    elseif l == 2
-                                        ylabel(axes{l}.title+" ("+axes{l}.varUnits+")");
-                                        if ~axes{l}.useDefR, ylim([axes{l}.loDispLim,axes{l}.upDispLim]); end
-                                    elseif l == 3
-                                        zlabel(axes{l}.title);
-                                        if ~axes{l}.useDefR, zlim([axes{l}.loDispLim,axes{l}.upDispLim]); end
-                                    end
+                            end
+
+
+                            for l=1:1:length(plot_obj.axes)
+                                if l == 1
+                                    xlabel(axes{l}.title+" ("+axes{l}.varUnits{1}+")");
+                                    if ~axes{l}.useDefR, xlim([axes{l}.loDispLim,axes{l}.upDispLim]); end
+                                elseif l == 2
+                                    ylabel(axes{l}.title+" ("+axes{l}.varUnits{1}+")");
+                                    if ~axes{l}.useDefR, ylim([axes{l}.loDispLim,axes{l}.upDispLim]); end
+                                elseif l == 3
+                                    zlabel(axes{l}.title);
+                                    if ~axes{l}.useDefR, zlim([axes{l}.loDispLim,axes{l}.upDispLim]); end
                                 end
                             end
 
-                            lgd_txt = axes{end}.varNames;
-                            for m=1:1:length(lgd_txt)
-                                lgd_txt(m) = lgd_txt+" ("+axes{l}.varUnits+")";
+                            lgd_txt = "";
+                            for m=1:1:length(axes{3}.varNames)
+                                lgd_txt(end+1) = string(axes{3}.varNames{m})+" ("+string(axes{3}.varUnits{m})+")"; %#ok<AGROW>
                             end
+                            lgd_txt(1) = [];
                             legend(lgd_txt);
                         end
     
@@ -2614,36 +2700,37 @@ classdef ODESys < handle
             end
 
             % ### STARTHERE: calculate values for v() array
-            comps_v = [sys.getSpecies('comp'),sys.getChemicals('comp')];
-            for k=1:1:length(sys.var_in_key)
-                switch sys.var_in_key{k}
-                    case 'dP_o'
-
-
-                    case 'L_i'
-
-
-                    case 'L_o'
-
-
-                    case 'D_i'
-
-                    otherwise
-                        if contains(sys.var_in_key{k},'L_s_i_')
-
-                        elseif contains(sys.var_in_key{k},'L_s_o_')
-
-                        elseif contains(sys.var_in_key{k},'D_i_')
-
-                        elseif contains(sys.var_in_key{k},'_i') && contains(sys.var_in_key{k},'C_') && ~contains(sys.var_in_key{k},'D_') && ~contains(sys.var_in_key{k},'L_s_')
-
-                        elseif contains(sys.var_in_key{k},'_i') && contains(sys.var_in_key{k},'Y_')
-
-                        elseif contains(sys.var_in_key{k},'_i') && contains(sys.var_in_key{k},'S_') && ~contains(sys.var_in_key{k},'D_') && ~contains(sys.var_in_key{k},'L_s_')
-
-                        end
-                end
-            end
+            % comps_v = [sys.getSpecies('comp'),sys.getChemicals('comp'),{ ...
+            %     sys.environs.(sys.activeEnv).getH3OComp(),sys.environs.(sys.activeEnv).getOHComp()}];
+            % for k=1:1:length(sys.var_in_key)
+            %     switch sys.var_in_key{k}
+            %         case 'dP_o'
+            % 
+            % 
+            %         case 'L_i'
+            % 
+            % 
+            %         case 'L_o'
+            % 
+            % 
+            %         case 'D_i'
+            % 
+            %         otherwise
+            %             if contains(sys.var_in_key{k},'L_s_i_')
+            % 
+            %             elseif contains(sys.var_in_key{k},'L_s_o_')
+            % 
+            %             elseif contains(sys.var_in_key{k},'D_i_')
+            % 
+            %             elseif contains(sys.var_in_key{k},'_i') && contains(sys.var_in_key{k},'C_') && ~contains(sys.var_in_key{k},'D_') && ~contains(sys.var_in_key{k},'L_s_')
+            % 
+            %             elseif contains(sys.var_in_key{k},'_i') && contains(sys.var_in_key{k},'Y_')
+            % 
+            %             elseif contains(sys.var_in_key{k},'_i') && contains(sys.var_in_key{k},'S_') && ~contains(sys.var_in_key{k},'D_') && ~contains(sys.var_in_key{k},'L_s_')
+            % 
+            %             end
+            %     end
+            % end
 
             % converting to function_handle
             sys.dydt = str2func(sys.dydt');
@@ -2943,7 +3030,7 @@ classdef ODESys < handle
         function updateEnvSubFuncParam(sys,funcName,paramName,paramSym,paramVal,paramUnit)
             for k=1:1:length(sys.environs.(sys.activeEnv).subfuncs)
                 if sys.environs.(sys.activeEnv).subfuncs{k}.getSubFuncName() == funcName
-                    sys.environs.(sys.activeEnv).subfuncs{k}.updateParams(paramName,paramSym,paramVal,paramUnit,true,sys.getDefaultParamVals());
+                    sys.environs.(sys.activeEnv).subfuncs{k}.updateParams(k,paramName,paramSym,paramVal,paramUnit,'true',sys.getDefaultParamVals());
                 end
             end
         end
@@ -3009,6 +3096,7 @@ classdef ODESys < handle
                             sys.plots{k}.subplotGroup = sys.plots{k}.subplotGroup - 1;
                             sys.subplot_row_ct(k) = [];
                             sys.subplot_col_ct(k) = [];
+                            sys.subplot_ct = sys.subplot_ct - 1;
                         end
                     end
                 end
@@ -3022,11 +3110,6 @@ classdef ODESys < handle
         function axes = updatePlotNameAx(sys,plotName,title,dimNb)
             plot = sys.getPlotByName(plotName);
             plot.updatePlot("title",title);
-            % if dimNb < length(plot.getPlotProp("axes"))
-            %     plot.removeZAxis();
-            % elseif dimNb > length(plot.getPlotProp("axes"))
-            %     plot.addZAxis();
-            % end
             plot.updatePlot("dimNb",dimNb);
             axes = plot.getAllAxProps();
         end
@@ -3097,7 +3180,7 @@ classdef ODESys < handle
 
         % sys: ODESys class ref
         function [group,slot] = getNextSubplotSlot(sys)
-            filled_slots = cell(sys.subplot_ct+1,1);
+            filled_slots = cell(sys.subplot_ct,1);
             for k=1:1:length(filled_slots)
                 filled_slots{k} = [];
             end
@@ -3105,9 +3188,11 @@ classdef ODESys < handle
                 group = 1;
                 slot = 1;
             else
+                group = 0;
+                slot = 0;
                 for k=1:1:length(sys.plots)
-                    [group,slot] = sys.plots{k}.getSubplotGroupAndSlot();
-                    filled_slots{group} = [filled_slots{group},slot];
+                    [plot_group,plot_slot] = sys.plots{k}.getSubplotGroupAndSlot();
+                    filled_slots{plot_group} = [filled_slots{plot_group},plot_slot];
                 end
                 for k=1:1:length(filled_slots), filled_slots{k} = sort(filled_slots{k}); end
                 for k=1:1:length(filled_slots)
@@ -3115,10 +3200,16 @@ classdef ODESys < handle
                         group = k;
                         non_intersects = setxor(linspace(1,sys.subplot_row_ct(k)*sys.subplot_col_ct(k),sys.subplot_row_ct(k)*sys.subplot_col_ct(k)),filled_slots{k});
                         slot = non_intersects(1);
+                        break;
                     end
                 end
     
-                % if all slots are full, throw an error
+                % if all slots are full, create a new subplot group
+                if group == 0
+                    sys.SubplotABPushed();
+                    group = sys.subplot_ct;
+                    slot = 1;
+                end
             end
         end
 
@@ -3633,15 +3724,15 @@ classdef ODESys < handle
         end
 
         % sys: ODESys class ref, strmName: string
-        function strm = getStrmByName(sys,strm)
+        function strm = getStrmByName(sys,strmName)
             for k=1:1:length(sys.input_streams)
-                if strcmp(strm,sys.input_streams{k}.getName())
+                if strcmp(strmName,sys.input_streams{k}.getName())
                     strm = sys.input_streams{k};
                     return;
                 end
             end
             for k=1:1:length(sys.output_streams)
-                if strcmp(strm,sys.output_streams{k}.getName())
+                if strcmp(strmName,sys.output_streams{k}.getName())
                     strm = sys.output_streams{k};
                     return;
                 end
@@ -3670,11 +3761,13 @@ classdef ODESys < handle
         % sys: ODESys class ref, strmName: string, dir: string,
         % phase: string
         function addStrm(sys,strmName,dir,phase)
+            comps = [sys.getSpecies('comp'),sys.getChemicals('comp'),{ ...
+                sys.environs.(sys.activeEnv).getH3OComp(),sys.environs.(sys.activeEnv).getOHComp()}];
             strmNum = length(sys.input_streams) + length(sys.output_streams) + 1;
             if strcmp(dir,'in')
-                sys.input_streams{end+1} = Stream(strmName,phase,dir,strmNum);
+                sys.input_streams{end+1} = Stream(strmName,phase,dir,strmNum,comps);
             elseif strcmp(dir,'out')
-                sys.output_streams{end+1} = Stream(strmName,phase,dir,strmNum);
+                sys.output_streams{end+1} = Stream(strmName,phase,dir,strmNum,comps);
             end
 
             sys.inportCt = length(sys.input_streams);
@@ -3686,7 +3779,7 @@ classdef ODESys < handle
         % sys: ODESys class ref, strmName: string, dir: string, phase:
         % string
         function removeStrm(sys,strmName,dir,phase)
-            if dir == "in"
+            if strcmp(dir,'in')
                 for k=1:1:length(sys.input_streams)
                     if strcmp(sys.input_streams{k}.getName(),strmName) && ...
                             strcmp(sys.input_streams{k}.getPhase(),phase)
@@ -3694,7 +3787,7 @@ classdef ODESys < handle
                         return;
                     end
                 end
-            elseif dir == "out"
+            elseif strcmp(dir,'out')
                 for k=1:1:length(sys.output_streams)
                     if strcmp(sys.output_streams{k}.getName(),strmName) && ...
                             strcmp(sys.output_streams{k}.getPhase(),phase)
@@ -3741,6 +3834,15 @@ classdef ODESys < handle
                         return;
                     end
                 end
+            end
+        end
+
+        % sys: ODESys class ref
+        function updateStrmAvailComps(sys)
+            comps = [sys.getSpecies('comp'),sys.getChemicals('comp'),{ ...
+                sys.environs.(sys.activeEnv).getH3OComp(),sys.environs.(sys.activeEnv).getOHComp()}];
+            for k=1:1:length(sys.input_streams)
+                sys.input_streams{k}.updateAvailComps(comps);
             end
         end
 
@@ -3914,21 +4016,23 @@ classdef ODESys < handle
                             % adding function to P_comp for bub flow input
                             % to bulk gas phase
                             sys.addModel(P_comp.getName(), ...
-                            "(R*T)/((V_m-V_tot)*"+chems{k}.MW_sym+")*(D_i_+"+chems{k}.getSym()+"-(P_i*Y_i_"+chems{k}.sym+"/"+chems{k}.h_const_sym+"-"+chems{k}.sym+"_bubf))/tau*V", ...
+                            ... % "(R*T)/((V_m-V_tot)*"+chems{k}.MW_sym+")*(D_i_"+chems{k}.getSym()+"-(P_i*Y_i_"+chems{k}.sym+"/"+chems{k}.h_const_sym+"-"+chems{k}.sym+"_bubf)/tau*V", ...
+                                "(R*T)/((V_m-V_tot)*"+chems{k}.MW_sym+")*D_i_"+chems{k}.getSym(), ...
                                 'Gas Flow In','Main');
                             % adding function to chem for bub flow input
                             % to bulk gas phase
                             sys.addModel(chems{k}.getName(), ...
-                            "(R*T)/((V_m-V_tot)*"+chems{k}.MW_sym+")*(D_i_+"+chems{k}.getSym()+"-(P_i*Y_i_"+chems{k}.sym+"/"+chems{k}.h_const_sym+"-"+chems{k}.sym+"_bubf))/tau*V", ...
+                            ... % "(R*T)/((V_m-V_tot)*"+chems{k}.MW_sym+")*(D_i_"+chems{k}.getSym()+"-(P_i*Y_i_"+chems{k}.sym+"/"+chems{k}.h_const_sym+"-"+chems{k}.sym+"_bubf)/tau*V", ...
+                                "(R*T)/((V_m-V_tot)*"+chems{k}.MW_sym+")*D_i_"+chems{k}.getSym(), ...
                                 'Gas Flow In','Gas');
                             % adding helper function for final bub
                             % concentration
-                            C_bub_f_val = chems{k}.sym+"+(P_i*Y_i_"+chems{k}.number+"/"+chems{k}.h_const_sym+"-"+chems{k}.sym+")*exp(-tau_"+chems{k}.sym+"*k_"+chems{k}.sym+")";
-                            sys.addRmHelperFuncs([char(chems{k}.name),' Bubble Final Concentration'],char(chems{k}.sym+"_bubf"),C_bub_f_val,true);
+                            % C_bub_f_val = chems{k}.sym+"+(P_i*Y_i_"+chems{k}.number+"/"+chems{k}.h_const_sym+"-"+chems{k}.sym+")*exp(-tau_"+chems{k}.sym+"*k_"+chems{k}.sym+")";
+                            % sys.addRmHelperFuncs([char(chems{k}.name),' Bubble Final Concentration'],char(chems{k}.sym+"_bubf"),C_bub_f_val,true);
                             % adding function to chem for bub to liq
-                            sys.addModel(chems{k}.getName(), ...
-                            "(P_i*Y_i_"+chems{k}.sym+"/"+chems{k}.h_const_sym+"-"+chems{k}.sym+"_bubf))/tau*V", ...
-                                'Gas Flow In','Liquid');
+                            % sys.addModel(chems{k}.getName(), ...
+                            % "(P_i*Y_i_"+chems{k}.sym+"/"+chems{k}.h_const_sym+"-"+chems{k}.sym+"_bubf)/tau*V", ...
+                            %     'Gas Flow In','Liquid');
                         end
                     end
                 else
@@ -3936,19 +4040,21 @@ classdef ODESys < handle
                         if chems{k}.is_vol
                             % removing function from P_comp for bub flow input
                             % to bulk gas phase
-                            P_comp.removeModel("(R*T)/((V_m-V_tot)*"+chems{k}.MW_sym+")*(D_i_+"+chems{k}.getSym()+"-(P_i*Y_i_"+chems{k}.sym+"/"+chems{k}.h_const_sym+"-"+chems{k}.sym+"_bubf))/tau*V", ...
+                            % P_comp.removeModel("(R*T)/((V_m-V_tot)*"+chems{k}.MW_sym+")*(D_i_"+chems{k}.getSym()+"-(P_i*Y_i_"+chems{k}.sym+"/"+chems{k}.h_const_sym+"-"+chems{k}.sym+"_bubf)/tau*V", ...
+                            P_comp.removeModel("(R*T)/((V_m-V_tot)*"+chems{k}.MW_sym+")*D_i_"+chems{k}.getSym(), ...
                                 'Gas Flow In','Main');
                             % removing function from chem for bub flow input
                             % to bulk gas phase
-                            chems{k}.removeModel("(R*T)/((V_m-V_tot)*"+chems{k}.MW_sym+")*(D_i_+"+chems{k}.getSym()+"-(P_i*Y_i_"+chems{k}.sym+"/"+chems{k}.h_const_sym+"-"+chems{k}.sym+"_bubf))/tau*V", ...
+                            % chems{k}.removeModel("(R*T)/((V_m-V_tot)*"+chems{k}.MW_sym+")*(D_i_"+chems{k}.getSym()+"-(P_i*Y_i_"+chems{k}.sym+"/"+chems{k}.h_const_sym+"-"+chems{k}.sym+"_bubf)/tau*V", ...
+                            chems{k}.removeModel("(R*T)/((V_m-V_tot)*"+chems{k}.MW_sym+")*D_i_"+chems{k}.getSym(), ...
                                 'Gas Flow In','Gas');
                             % removing helper function for final bub
                             % concentration
-                            C_bub_f_val = chems{k}.sym+"+(P_i*Y_i_"+chems{k}.number+"/"+chems{k}.h_const_sym+"-"+chems{k}.sym+")*exp(-tau_"+chems{k}.sym+"*k_"+chems{k}.sym+")";
-                            sys.addRmHelperFuncs([char(chems{k}.name),' Bubble Final Concentration'],char(chems{k}.sym+"_bubf"),C_bub_f_val,false);
+                            % C_bub_f_val = chems{k}.sym+"+(P_i*Y_i_"+chems{k}.number+"/"+chems{k}.h_const_sym+"-"+chems{k}.sym+")*exp(-tau_"+chems{k}.sym+"*k_"+chems{k}.sym+")";
+                            % sys.addRmHelperFuncs([char(chems{k}.name),' Bubble Final Concentration'],char(chems{k}.sym+"_bubf"),C_bub_f_val,false);
                             % removing function from chem for bub to liq
-                            chems{k}.removeModel("(P_i*Y_i_"+chems{k}.sym+"/"+chems{k}.h_const_sym+"-"+chems{k}.sym+"_bubf))/tau*V", ...
-                                'Gas Flow In','Liquid');
+                            % chems{k}.removeModel("(P_i*Y_i_"+chems{k}.sym+"/"+chems{k}.h_const_sym+"-"+chems{k}.sym+"_bubf)/tau*V", ...
+                            %     'Gas Flow In','Liquid');
                         end
                     end
                 end
@@ -4016,7 +4122,7 @@ classdef ODESys < handle
                 paramVals = sorpHelpers{k}.getSubFuncParamVals();
                 paramUnits = sorpHelpers{k}.getSubFuncParamUnits();
                 for l=1:1:length(paramNames)
-                    sys.helperFuncs{helperIdx}.updateParams(paramNames(l),paramSyms(l),paramVals(l),paramUnits(l),true,sys.getDefaultParamVals());
+                    sys.helperFuncs{helperIdx}.updateParams(l,paramNames(l),paramSyms(l),paramVals(l),paramUnits(l),'true',sys.getDefaultParamVals());
                 end
             end
             % test4 = sys.helperFuncs

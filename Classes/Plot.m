@@ -60,6 +60,12 @@ classdef Plot < handle
         % plot: Plot class ref, prop: string, val: any
         function updatePlot(plot,prop,val)
             plot.(prop) = val;
+            if strcmp(prop,"dimNb")
+                if val == 3
+                    plot.axes{2}.varNames = plot.axes{2}.varNames(1);
+                    plot.axes{2}.varUnits = plot.axes{2}.varUnits(1);
+                end
+            end
         end
 
         % plot: Plot class ref, prop: string
