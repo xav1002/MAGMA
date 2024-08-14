@@ -213,11 +213,11 @@ classdef Environment < handle
         function setDefault(env, modelVarSyms, defaultParamVals)
             envDef = EnvDefaults();
             envParamVals = {};
-            envParamVals{1} = envDef.Values.lightFunc;
-            envParamVals{2} = envDef.Values.maxVol;
+            envParamVals{1} = char(string(envDef.Values.lightFunc));
+            envParamVals{2} = char(string(envDef.Values.maxVol));
             envParamNames = env.getEnvSubfNames();
             for k=1:1:length(envParamVals)
-                env.subfuncs{k} = SubFunc(envParamVals{k},envParamNames{1,k},envParamNames{2,k},0,0);
+                env.subfuncs{k} = SubFunc(envParamVals{k},envParamNames{1,k},envParamNames{2,k},0,0,false);
                 env.subfuncs{k}.initParams(modelVarSyms,defaultParamVals);
             end
 

@@ -161,8 +161,8 @@ classdef Component < handle
             % Need to consider water density?
             funcVal = [comp.h_const_sym,'*',comp.MW_sym,'*exp(',comp.dh_const_sym,'*((1/T)-(1/298.15)))'];
             comp.h_const_helper_funcs{end+1} = SubFunc(funcVal,[char(comp.name),' Henry Constant'],['H_',char(comp.sym)],0,0);
-            comp.h_const_helper_funcs{end}.updateParams([char(comp.name),' Henry Constant at 298.15K'],comp.h_const_sym,comp.h_const,comp.h_const_u,false,defaultParamVals);
-            comp.h_const_helper_funcs{end}.updateParams([char(comp.name),' H Temperature Dependence Coefficient'],comp.dh_const_sym,comp.dh_const,comp.dh_const_u,false,defaultParamVals);
+            comp.h_const_helper_funcs{end}.updateParams(1,[char(comp.name),' Henry Constant at 298.15K'],comp.h_const_sym,comp.h_const,comp.h_const_u,false,defaultParamVals);
+            comp.h_const_helper_funcs{end}.updateParams(2,[char(comp.name),' H Temperature Dependence Coefficient'],comp.dh_const_sym,comp.dh_const,comp.dh_const_u,false,defaultParamVals);
 
             funcVal2 = [char(comp.sym),'/H_',char(comp.sym)];
             comp.h_const_helper_funcs{end+1} = SubFunc(funcVal2,['Gas Phase Partial Pressure of ',char(comp.name),' in Equilibrium with Liquid Phase'], ...
@@ -557,13 +557,18 @@ classdef Component < handle
             num = comp.number;
         end
 
-        % comp: comps class ref, phase: string, phaseName: string, dispMT: boolean
-        function funcs = getGovFuncs(comp, phase, phaseName)
+        % comp: comps class ref, phase: string, phaseName: string,
+        % only_rxns: boolean
+        function funcs = getGovFuncs(comp, phase, phaseName, only_rxns)
             funcs = {};
             if strcmp(phase,'Gas Phase')
                 fp = comp.gasBulkFuncParams;
             elseif strcmp(phase,'Liquid Phase')
-                fp = comp.funcParams;
+                if only_rxns
+                    fp = comp.funcParams(1);
+                else
+                    fp = comp.funcParams;
+                end
             elseif strcmp(phase,'Suspended Solid Phase')
                 fp = {};
                 for k=1:1:length(comp.sorpFuncParams)

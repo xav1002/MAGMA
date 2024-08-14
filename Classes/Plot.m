@@ -48,7 +48,7 @@ classdef Plot < handle
                 elseif k == 3
                     title = "Y Axis (right) Title";
                     isDV = true;
-                    plot.axes{k} = plot.createNewAxes(k,title,string(varNames(k,1)),string(varNames(:,1)),min,max, ...
+                    plot.axes{k} = plot.createNewAxes(k,title,"",string(varNames(:,1)),min,max, ...
                         true,{0},{0},{0},{50},isDV,false,ICNames);
                 end
             end

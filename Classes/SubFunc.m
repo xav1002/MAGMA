@@ -6,15 +6,20 @@ classdef SubFunc < handle
         funcLaTeX = "";
         params = {};
         lims = struct('lowerLim',0,'upperLim',0);
+        editable = true;
     end
 
     methods
-        function subf = SubFunc(funcVal,funcName,funcSym,upperLim,lowerLim)
+        function subf = SubFunc(funcVal,funcName,funcSym,upperLim,lowerLim,editable)
             subf.funcVal = funcVal;
             subf.funcName = funcName;
             subf.funcSym = funcSym;
             subf.lims.lowerLim = lowerLim;
             subf.lims.upperLim = upperLim;
+            subf.editable = editable;
+            if strcmp(subf.funcName,'Light Intensity')
+                subf.funcLaTeX = 'I=I_0';
+            end
         end
 
         % subf: SubFunc class ref, sysVars: string[]

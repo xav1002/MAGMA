@@ -34,6 +34,8 @@ classdef ODESys < handle
         editing = false; % used for tracking changes in component/function editing
 
         solver = ode;
+        max_reg_runtime = 2;
+        max_reg_runtime_u = 'min';
 
         degree = 0; % number of functions within the ODE system
         dydt = ""; % ODE system functions
@@ -45,6 +47,7 @@ classdef ODESys < handle
         v = []; % I/O values
         nonNegSysVars = {};
         solverNonNeg = [];
+        manual_console_stop_calculation = false;
 
         % sysVars = {}; % system variable names
         plots = {}; % plot objects
@@ -109,20 +112,21 @@ classdef ODESys < handle
             sys.updateConsoleFunc = updateConsoleFunc;
             sys.SubplotABPushed = SubplotABPushed;
             sys.solver.Solver = 'ode45';
+            % sys.setSolverEvents();
 
             % set default values
             sys.environs.Photo_Bioreactor_PBR = Environment("Photo_Bioreactor_PBR",sys.getModelVarNames(),sys.getDefaultParamVals(true));
             sys.checkLiqMaxVol();
 
             % adding helper functions for pH equilibrium values and pH, pOH
-            sys.addRmHelperFuncs('Equilibrium Hydrionium Concentration','H3O_eq',"(K_w/OH*(MW_OH)*(MW_H3O))",true);
-            sys.addRmHelperFuncs('Equilibrium Hydroxide Concentration','OH_eq',"(K_w/H3O*(MW_H3O)*(MW_OH))",true);
-            sys.addRmHelperFuncs('pH','pH',"-log10(H3O/MW_H3O)",true);
-            sys.addRmHelperFuncs('pOH','pOH',"-log10(OH/MW_H3O)",true);
-            sys.addRmHelperFuncs('Light Intensity','I',"I_0",true);
+            sys.addRmHelperFuncs('Equilibrium Hydrionium Concentration','H3O_eq',"(K_w/OH*(MW_OH)*(MW_H3O))",true,false);
+            sys.addRmHelperFuncs('Equilibrium Hydroxide Concentration','OH_eq',"(K_w/H3O*(MW_H3O)*(MW_OH))",true,false);
+            sys.addRmHelperFuncs('pH','pH',"-log10(H3O/MW_H3O)",true,false);
+            sys.addRmHelperFuncs('pOH','pOH',"-log10(OH/MW_H3O)",true,false);
+            sys.addRmHelperFuncs('Light Intensity','I',"I_0",true,false);
 
             % create V_tot helper
-            sys.addRmHelperFuncs('Total Solvent Volume','V_tot',"V",true);
+            sys.addRmHelperFuncs('Total Solvent Volume','V_tot',"V",true,false);
 
             sys.regSpecs.paramIGs = [];
             sys.regSpecs.params = {};
@@ -209,7 +213,7 @@ classdef ODESys < handle
                     paramSyms = HConstHelpers{k}.getSubFuncParamSyms();
                     paramVals = HConstHelpers{k}.getSubFuncParamVals();
                     paramUnits = HConstHelpers{k}.getSubFuncParamUnits();
-                    sys.addRmHelperFuncs(HConstHelpers{k}.funcName,HConstHelpers{k}.funcSym,HConstHelpers{k}.funcVal,true);
+                    sys.addRmHelperFuncs(HConstHelpers{k}.funcName,HConstHelpers{k}.funcSym,HConstHelpers{k}.funcVal,true,false);
                     [~,~,helperIdx] = sys.getHelperFunc(HConstHelpers{k}.getSubFuncName());
                     for l=1:1:length(paramNames)
                         sys.helperFuncs{helperIdx}.updateParams(l,paramNames(l),paramSyms(l),paramVals(l),paramUnits(l),'true',sys.getDefaultParamVals());
@@ -260,7 +264,7 @@ classdef ODESys < handle
                     paramSyms = HConstHelpers{k}.getSubFuncParamSyms();
                     paramVals = HConstHelpers{k}.getSubFuncParamVals();
                     paramUnits = HConstHelpers{k}.getSubFuncParamUnits();
-                    if ~prev_is_vol, sys.addRmHelperFuncs(HConstHelpers{k}.funcName,HConstHelpers{k}.funcSym,HConstHelpers{k}.funcVal,true); end
+                    if ~prev_is_vol, sys.addRmHelperFuncs(HConstHelpers{k}.funcName,HConstHelpers{k}.funcSym,HConstHelpers{k}.funcVal,true,false); end
                     [~,~,helperIdx] = sys.getHelperFunc(HConstHelpers{k}.getSubFuncName());
                     for l=1:1:length(paramNames)
                         sys.helperFuncs{helperIdx}.updateParams(l,paramNames(l),paramSyms(l),paramVals(l),paramUnits(l),'true',sys.getDefaultParamVals());
@@ -280,7 +284,7 @@ classdef ODESys < handle
                 % remove HConst helpers
                 HConstHelpers = chem.getHConstHelperFuncs();
                 for k=1:1:length(HConstHelpers)
-                    sys.addRmHelperFuncs(HConstHelpers{k}.funcName,HConstHelpers{k}.funcSym,HConstHelpers{k}.funcVal,false);
+                    sys.addRmHelperFuncs(HConstHelpers{k}.funcName,HConstHelpers{k}.funcSym,HConstHelpers{k}.funcVal,false,false);
                 end
 
                 P_comp = sys.environs.(sys.activeEnv).getPComp();
@@ -341,7 +345,7 @@ classdef ODESys < handle
                 else
                     compSyms = "(";
                     if lgtBioAttn
-                        for k=1:1:length(fields(sys.species))
+                        for k=1:1:length(fieldnames(sys.species))
                             if k == 1
                                 compSyms = compSyms+"X_"+k;
                             else
@@ -350,7 +354,7 @@ classdef ODESys < handle
                         end
                     end
                     if lgtChemAttn
-                        for k=1:1:length(fields(sys.chemicals))
+                        for k=1:1:length(fieldnames(sys.chemicals))
                             if strcmp(compSyms,"(")
                                 compSyms = compSyms+"C_"+k;
                             else
@@ -399,7 +403,6 @@ classdef ODESys < handle
 
             light_helper = sys.updateHelperFuncs("val",'Light Intensity','I',lgtAttnModel);
             syms = light_helper.getSubFuncParamSyms();
-            test = size(set_params)
             for k=1:1:size(set_params,1)
                 light_helper.updateParams(find(strcmp(syms,set_params{k,1})),set_params{k,1},set_params{k,1},set_params{k,2},set_params{k,3},'false',sys.getDefaultParamVals());
             end
@@ -478,7 +481,7 @@ classdef ODESys < handle
             if chem.is_vol
                 HConstHelpers = chem.getHConstHelperFuncs();
                 for k=1:1:length(HConstHelpers)
-                    sys.addRmHelperFuncs(HConstHelpers{k}.funcName,HConstHelpers{k}.funcSym,HConstHelpers{k}.funcVal,false);
+                    sys.addRmHelperFuncs(HConstHelpers{k}.funcName,HConstHelpers{k}.funcSym,HConstHelpers{k}.funcVal,false,false);
                 end
 
                 chem.removeModelByName('Gas MT','Liquid');
@@ -638,23 +641,23 @@ classdef ODESys < handle
             for k=1:1:length(comps)
                 defaultParamVals.(comps{k}.MW_sym) = comps{k}.MW;
             end
-            % 2. Density of each component
-            try
-                for k=1:1:length(comps)
-                    defaultParamVals.(comps{k}.den_sym) = comps{k}.den;
-                end
-            catch err
-                err.stack.line
-            end
-            % 3. Heat capacities of each component
-            try
-                for k=1:1:length(comps)
-                    defaultParamVals.(comps{k}.Cp_sym) = comps{k}.Cp;
-                    defaultParamVals.(comps{k}.Cpg_sym) = comps{k}.Cpg;
-                end
-            catch err
-                err.stack.line
-            end
+            % % 2. Density of each component
+            % try
+            %     for k=1:1:length(comps)
+            %         defaultParamVals.(comps{k}.den_sym) = comps{k}.den;
+            %     end
+            % catch err
+            %     err.stack.line
+            % end
+            % % 3. Heat capacities of each component
+            % try
+            %     for k=1:1:length(comps)
+            %         defaultParamVals.(comps{k}.Cp_sym) = comps{k}.Cp;
+            %         defaultParamVals.(comps{k}.Cpg_sym) = comps{k}.Cpg;
+            %     end
+            % catch err
+            %     err.stack.line
+            % end
         end
 
         % sys: ODESys class ref, prop: string
@@ -706,10 +709,10 @@ classdef ODESys < handle
         end
 
         % sys: ODESys class ref, funcName: string, funcSym: string,
-        % funcVal: string, add: boolean
-        function addRmHelperFuncs(sys,funcName,funcSym,funcVal,add)
+        % funcVal: string, add: boolean, editable: boolean
+        function addRmHelperFuncs(sys,funcName,funcSym,funcVal,add,editable)
             if add
-                sys.helperFuncs{end+1} = SubFunc(funcVal,funcName,funcSym,0,0);
+                sys.helperFuncs{end+1} = SubFunc(funcVal,funcName,funcSym,0,0,editable);
                 sys.helperFuncs{end}.initParams(sys.getModelVarNames(),sys.getDefaultParamVals());
             else
                 for k=1:1:length(sys.helperFuncs)
@@ -719,6 +722,25 @@ classdef ODESys < handle
                         break;
                     end
                 end
+            end
+        end
+
+        % sys: ODESys class ref
+        function helper_objs = getEditableHelperFuncs(sys,prop)
+            helper_objs = {};
+            switch prop
+                case 'name'
+                    for k=1:1:length(sys.helperFuncs)
+                        if sys.helperFuncs{k}.editable
+                            helper_objs{k} = sys.helperFuncs{k}.getSubFuncName(); %#ok<AGROW>
+                        end
+                    end
+                case 'obj'
+                    for k=1:1:length(sys.helperFuncs)
+                        if sys.helperFuncs{k}.editable
+                            helper_objs{k} = sys.helperFuncs{k}; %#ok<AGROW>
+                        end
+                    end
             end
         end
         
@@ -809,8 +831,13 @@ classdef ODESys < handle
 
         % sys: ODEsys class ref, compName: string, valName: string,
         % editing: boolean, editedFunc: string
-        function [existFunc,existFuncUnicode] = getGovFuncByCompName(sys,compName)
+        function [existFunc,existFuncUnicode] = getGovFuncByCompName(sys,compName,varargin)
             comp = sys.getCompByName(compName);
+
+            only_rxns = false;
+            if ~isempty(varargin)
+               only_rxns = varargin{1};
+            end
 
             phaseName = '';
             if any(strcmp(compName,{'Temperature','Pressure','Volume','Hydronium','Hydroxide'}))
@@ -829,7 +856,7 @@ classdef ODESys < handle
                 end
             end
 
-            funcs = comp.getGovFuncs(phase,phaseName);
+            funcs = comp.getGovFuncs(phase,phaseName,only_rxns);
             existFunc = "";
             allow_0 = true;
             for k=1:1:length(funcs)
@@ -838,6 +865,10 @@ classdef ODESys < handle
                         operator = "";
                     else
                         operator = "+";
+                        func_char = char(string(funcs{k})); 
+                        if strcmp(func_char(1),'-')
+                            operator = "";
+                        end
                     end
                     existFunc = existFunc + operator + funcs{k};
 
@@ -848,6 +879,10 @@ classdef ODESys < handle
                             operator = "";
                         else
                             operator = "+";
+                            func_char = char(string(funcs{k}));
+                            if strcmp(func_char(1),'-')
+                                operator = "";
+                            end
                         end
                         existFunc = existFunc + operator + funcs{k};
                     end
@@ -1531,11 +1566,12 @@ classdef ODESys < handle
             % ### STARTHERE: add functionality to compile I/O stream flows
             % into model: need to create code to generate v() array
 
+            sys.updateConsoleFunc('Compiling Model ...',1);
+
             try
                 sys.dydt = "@(t,y,p,f,v) [";
                 sys.param = [];
                 sys.f = {};
-                sys.v = [];
     
                 comps = [sys.getSpecies('comp'),sys.getChemicals('comp'),sys.environs.(sys.activeEnv).getAllEnvComps()];
                 sys.var_out_key = cell(length(comps),2);
@@ -1723,115 +1759,172 @@ classdef ODESys < handle
                     funcArgText = "@(t,y,p,f,v)";
                     sys.f{end+1,1} = subfuncs{k}.getSubFuncName();
                     sys.f{end,2} = subfuncs{k}.getSubFuncSym();
-                    % test = funcArgText+govFunc
                     sys.f{end,3} = str2func(funcArgText+govFunc);
                     sys.param = [sys.param,params];
                 end
 
                 % ### STARTHERE: calculate values for v() array
-                % comps_v = [sys.getSpecies('comp'),sys.getChemicals('comp'),{ ...
-                %     sys.environs.(sys.activeEnv).getH3OComp(),sys.environs.(sys.activeEnv).getOHComp()}];
-                % for k=1:1:length(sys.var_in_key)
-                %     switch sys.var_in_key{k}
-                %         case 'dP_o'
-                %             sys.IO_flowrates.dP_o = 0;
-                %             for l=1:1:length(sys.output_streams)
-                %                 [~,~,~,~,flowrate,flowrateU] = sys.output_streams{l}.getCompsData();
-                %                 if strcmp(sys.output_streams{l}.getPhase(),'G')
-                %                     switch flowrateU
-                %                         case 'bar'
-                %                         case 'kPa'
-                %                             flowrate = flowrate .* 1E-2;
-                %                         case 'MPa'
-                %                             flowrate = flowrate .* 1E1;
-                %                         case 'Pa'
-                %                             flowrate = flowrate .* 1E-5;
-                % 
-                %                     end
-                %                     sys.v(k) = sys.v(k) + flowrate;
-                %                 end
-                %             end
-                %             sys.IO_flowrates.L_o = sys.v(k);
-                %             sys.IO_flowrates.L_o_idx = k;
-                %         case 'L_i'
-                %             sys.IO_flowrates.L_i = 0;
-                %             for l=1:1:length(sys.input_streams)
-                %                 [~,~,~,~,flowrate,flowrateU] = sys.input_streams{l}.getCompsData();
-                %                 if strcmp(sys.input_streams{l}.getPhase(),'L') && strcmp(solventName,'Water (H2O)')
-                %                     switch flowrateU
-                %                         case 'L/s'
-                %                         case 'm^3/s'
-                %                             flowrate = flowrate .* 1E3;
-                %                         case 'mL/s'
-                %                             flowrate = flowrate .* 1E-3;
-                %                     end
-                %                     sys.v(k) = sys.v(k) + flowrate;
-                %                 end
-                %             end
-                % 
-                %             sys.IO_flowrates.L_i = sys.v(k);
-                %             sys.IO_flowrates.L_i_idx = k;
-                %         case 'L_o'
-                %             sys.IO_flowrates.L_o = 0;
-                %             for l=1:1:length(sys.output_streams)
-                %                 [~,~,~,solventName,flowrate,flowrateU] = sys.output_streams{l}.getCompsData();
-                %                 if strcmp(sys.output_streams{l}.getPhase(),'L') && strcmp(solventName,'Water (H2O)')
-                %                     switch flowrateU
-                %                         case 'L/s'
-                %                         case 'm^3/s'
-                %                             flowrate = flowrate .* 1E3;
-                %                         case 'mL/s'
-                %                             flowrate = flowrate .* 1E-3;
-                %                     end
-                %                     sys.v(k) = sys.v(k) + flowrate;
-                %                 end
-                %             end
-                %             sys.IO_flowrates.L_o = sys.v(k);
-                %             sys.IO_flowrates.L_o_idx = k;
-                %         case 'D_i'
-                %             % this should be mass flow
-                %             for l=1:1:length(sys.input_streams)
-                %                 if strcmp(sys.input_streams{l}.getPhase(),'G')
-                %                     [compsData,~,~,~,flowrate,flowrateU] = sys.input_streams{l}.getCompsData();
-                %                     flowrate_sum = sum(double(string(compsData(:,2))));
-                %                     switch flowrateU
-                %                         case 'kg/s'
-                %                             flowrate = flowrate_sum .* 1E6;
-                %                         case 'g/s'
-                %                             flowrate = flowrate_sum .* 1000;
-                % 
-                %                     end
-                %                     sys.v(k) = sys.v(k) + flowrate;
-                %                 end
-                %             end
-                %         otherwise
-                %             if contains(sys.var_in_key{k},'L_s_i_')
-                %                 sys.IO_flowrates.(sys.var_in_key{k}) = 0;
-                % 
-                %                 sys.IO_flowrates.(sys.var_in_key{k}) = sys.v(k);
-                %                 sys.IO_flowrates.(string(sys.var_in_key{k})+"_idx") = k;                                
-                %             elseif contains(sys.var_in_key{k},'L_s_o_')
-                %                 sys.IO_flowrates.(sys.var_in_key{k}) = 0;
-                % 
-                %                 sys.IO_flowrates.(sys.var_in_key{k}) = sys.v(k);
-                %                 sys.IO_flowrates.(string(sys.var_in_key{k})+"_idx") = k;
-                %             elseif contains(sys.var_in_key{k},'D_i_')
-                % 
-                %             elseif contains(sys.var_in_key{k},'_i') && contains(sys.var_in_key{k},'C_') && ~contains(sys.var_in_key{k},'D_') && ~contains(sys.var_in_key{k},'L_s_')
-                % 
-                %             elseif contains(sys.var_in_key{k},'_i') && contains(sys.var_in_key{k},'Y_')
-                % 
-                %             elseif contains(sys.var_in_key{k},'_i') && contains(sys.var_in_key{k},'S_') && ~contains(sys.var_in_key{k},'D_') && ~contains(sys.var_in_key{k},'L_s_')
-                % 
-                %             end
-                %     end
-                % end
-                % 
+                comps_v_specs = sys.getSpecies('comp');
+                comps_v_chems = sys.getChemicals('comp');
+                sys.v = zeros(size(sys.var_in_key));
+                for k=1:1:length(sys.var_in_key)
+                    switch sys.var_in_key{k}
+                        case 'dP_o'
+                            sys.IO_flowrates.dP_o = 0;
+                            for l=1:1:length(sys.output_streams)
+                                [~,~,~,~,flowrate,flowrateU] = sys.output_streams{l}.getCompsData();
+                                if strcmp(sys.output_streams{l}.getPhase(),'G')
+                                    switch flowrateU
+                                        case 'bar'
+                                        case 'kPa'
+                                            flowrate = flowrate .* 1E-2;
+                                        case 'MPa'
+                                            flowrate = flowrate .* 1E1;
+                                        case 'Pa'
+                                            flowrate = flowrate .* 1E-5;
+
+                                    end
+                                    sys.v(k) = sys.v(k) + flowrate;
+                                end
+                            end
+                            sys.IO_flowrates.L_o = sys.v(k);
+                            sys.IO_flowrates.L_o_idx = k;
+                        case 'L_i'
+                            sys.IO_flowrates.L_i = 0;
+                            for l=1:1:length(sys.input_streams)
+                                [~,~,~,solventName,flowrate,flowrateU] = sys.input_streams{l}.getCompsData();
+                                if strcmp(sys.input_streams{l}.getPhase(),'L') && strcmp(solventName,'Water')
+                                    switch flowrateU
+                                        case 'L/s'
+                                        case 'm^3/s'
+                                            flowrate = flowrate .* 1E3;
+                                        case 'mL/s'
+                                            flowrate = flowrate .* 1E-3;
+                                    end
+                                    sys.v(k) = sys.v(k) + flowrate;
+                                end
+                            end
+
+                            sys.IO_flowrates.L_i = sys.v(k);
+                            sys.IO_flowrates.L_i_idx = k;
+                        case 'L_o'
+                            sys.IO_flowrates.L_o = 0;
+                            for l=1:1:length(sys.output_streams)
+                                [~,~,~,solventName,flowrate,flowrateU] = sys.output_streams{l}.getCompsData();
+                                if strcmp(sys.output_streams{l}.getPhase(),'L') && strcmp(solventName,'Water')
+                                    switch flowrateU
+                                        case 'L/s'
+                                        case 'm^3/s'
+                                            flowrate = flowrate .* 1E3;
+                                        case 'mL/s'
+                                            flowrate = flowrate .* 1E-3;
+                                    end
+                                    sys.v(k) = sys.v(k) + flowrate;
+                                end
+                            end
+                            sys.IO_flowrates.L_o = sys.v(k);
+                            sys.IO_flowrates.L_o_idx = k;
+                        case 'D_i'
+                            % this should be mass flow
+                            for l=1:1:length(sys.input_streams)
+                                if strcmp(sys.input_streams{l}.getPhase(),'G')
+                                    [compsData,~,~,~,flowrate,flowrateU] = sys.input_streams{l}.getCompsData();
+                                    flowrate_sum = sum(double(string(compsData(:,2))));
+                                    switch flowrateU
+                                        case 'kg/s'
+                                            flowrate = flowrate_sum .* 1E6;
+                                        case 'g/s'
+                                            flowrate = flowrate_sum .* 1000;
+
+                                    end
+                                    sys.v(k) = sys.v(k) + flowrate;
+                                end
+                            end
+                        otherwise
+                            if strcmp(sys.var_in_key{k},'H3O_i')
+
+                            elseif strcmp(sys.var_in_key{k},'OH_i')
+
+                            elseif contains(sys.var_in_key{k},'L_s_i_')
+                                
+                                sys.IO_flowrates.(sys.var_in_key{k}) = 0;
+
+                                sys.IO_flowrates.(sys.var_in_key{k}) = sys.v(k);
+                                sys.IO_flowrates.(string(sys.var_in_key{k})+"_idx") = k;                                
+                            elseif contains(sys.var_in_key{k},'L_s_o_')
+                                sys.IO_flowrates.(sys.var_in_key{k}) = 0;
+
+                                sys.IO_flowrates.(sys.var_in_key{k}) = sys.v(k);
+                                sys.IO_flowrates.(string(sys.var_in_key{k})+"_idx") = k;
+                            elseif contains(sys.var_in_key{k},'D_i_')
+
+                            elseif contains(sys.var_in_key{k},'_i') && (contains(sys.var_in_key{k},'C_') || contains(sys.var_in_key{k},'X_')) && ...
+                                    ~contains(sys.var_in_key{k},'D_') && ~contains(sys.var_in_key{k},'L_s_')
+                                tot_mass = 0;
+                                tot_vol = 0;
+                                comp_idx = 0;
+                                var_key_char = char(string(sys.var_in_key{k}));
+
+                                if contains(sys.var_in_key{k},'C_')
+                                    comps_arr = comps_v_chems;
+                                elseif contains(sys.var_in_key{k},'X_')
+                                    comps_arr = comps_v_specs;
+                                end
+
+                                for l=1:1:length(comps_arr)
+                                    comp_sym_char = char(string(comps_arr{l}.getSym()));
+                                    if double(string(var_key_char(regexp(sys.var_in_key{k},'\d')))) == double(string(comp_sym_char(regexp(comp_sym_char,'\d'))))
+                                        comp_idx = l;
+                                        break;
+                                    end
+                                end
+
+                                if contains(sys.var_in_key{k},'C_')
+                                    comp_idx = comp_idx + length(comps_v_specs);
+                                end
+
+                                for l=1:1:length(sys.input_streams)
+                                    if strcmp(sys.input_streams{l}.getPhase(),'L')
+                                        [compsData,basis,basisU,solventName,flowrate,flowrateU] = sys.input_streams{l}.getCompsData();
+                                        conc = compsData{comp_idx,2};
+                                        if strcmp(solventName,'Water')
+                                            switch basisU
+                                                case 'g/L'
+                                                case 'kg/L'
+                                                    conc = conc .* 1E3;
+                                                case 'g/m^3'
+                                                    conc = conc .* 1E-3;
+                                            end
+                                            switch flowrateU
+                                                case 'L/s'
+                                                case 'm^3/s'
+                                                    flowrate = flowrate .* 1E3;
+                                                case 'mL/s'
+                                                    flowrate = flowrate .*1E-3;
+                                            end
+
+                                            tot_mass = tot_mass + conc.*flowrate;
+                                            tot_vol = tot_vol + flowrate;
+                                        end
+                                    end
+                                end
+                                sys.v(k) = tot_mass/tot_vol;
+                            elseif contains(sys.var_in_key{k},'_i') && contains(sys.var_in_key{k},'Y_')
+
+                            elseif contains(sys.var_in_key{k},'_i') && contains(sys.var_in_key{k},'S_') && ~contains(sys.var_in_key{k},'D_') && ~contains(sys.var_in_key{k},'L_s_')
+
+                            end
+                    end
+                end
+
                 % converting to function_handle
                 sys.dydt = str2func(sys.dydt');
                 
                 % setting initial conditions
+                sys.updateConsoleFunc('Model Compiled.',1);
+                sys.updateConsoleFunc('Setting Initial Conditions ...',1);
                 sys.setInitCond();
+                sys.updateConsoleFunc('Initial Conditions Set.',1);
 
                 % setting solver events
                 % sys.setSolverEvents();
@@ -1954,6 +2047,33 @@ classdef ODESys < handle
             end
         end
 
+        % sys: ODESys class ref
+        % function setSolverEvents(sys)
+        %     function [val,isterminal,direction] = odeEvtsWrapper(t,y,sys)
+        %         global manual_console_stop_calculation;
+        %         manual_console_stop_calculation
+        %         if manual_console_stop_calculation == 0
+        %             try
+        %                 manual_console_stop_calculation = 1;
+        %                  test = [1,2];
+        %                  test{1};
+        %             catch err
+        %                 err
+        %                 return;
+        %             end
+        %         end
+        %         val = 0;
+        %         isterminal = 1;
+        %         direction = 0;
+        %     end
+        %     function [stop,y] = responseFcn(t,y,sys)
+        %         stop = true;
+        %         sys.manual_console_stop_calculation = 1;
+        %     end
+        %     sys.solver.EventDefinition = odeEvent(EventFcn=@(t,y) odeEvtsWrapper(t,y,sys), ...
+        %         Direction="both",Response="callback",CallbackFcn=@(t,y) responseFcn(t,y,sys));
+        % end
+
         % % sys: ODESys
         % function setSolverEvents(sys)
         %     % function v = solverEvts(t,y,p)
@@ -2001,6 +2121,7 @@ classdef ODESys < handle
             % times) and plot to the same figure
 
             % running model for each plot
+            sys.updateConsoleFunc('Generating Plots ...',1);
             sys.compileModel();
 
             % finding current figures
@@ -2018,7 +2139,7 @@ classdef ODESys < handle
             for k=1:1:length(sys.plots)
                 plot_obj = sys.plots{k};
                 axes = plot_obj.axes;
-                if plot_obj.getPlotProp("display") == true || plot_obj.getPlotProp("download") == true
+                if plot_obj.getPlotProp("display") || plot_obj.getPlotProp("download") || export_data
                     if plot_obj.getPlotProp('dimNb') == 3
                         if axes{1}.varIsIC && axes{2}.varIsIC
                             % ### STARTHERE: need to update the calculation
@@ -2352,7 +2473,11 @@ classdef ODESys < handle
                         if export_data
                             % ### FIXME: export data with different time units
                             % ### FIXME: add the units to the column titles
-                            dataT = table(res_1{1,1},'VariableNames',{sysVar(end,1),sysVar(1:end-1,1)});
+                            dataT = table();
+                            varNames = sysVar(:,1);
+                            for l=1:1:size(res_1{1,1},2)
+                                dataT.(varNames{l}) = res_1{1,1}(:,l);
+                            end
                         end
                     end
 
@@ -2390,7 +2515,6 @@ classdef ODESys < handle
                                 yVarIdx(l) = find(strcmp(sysVar(:,1),axes{2}.varNames{l}));
                             end
                             try
-                                % yyaxis(ax,'left');
                                 plot(res_1{1,1}(:,xVarIdx),res_1{1,1}(:,yVarIdx),'LineWidth',2);
                                 ylabel(axes{2}.title);
                                 if ~axes{2}.useDefR, ylim([axes{2}.loDispLim,axes{2}.upDispLim]); end
@@ -2411,17 +2535,25 @@ classdef ODESys < handle
                                 err
                             end
     
-                            xlabel(axes{1}.title+" ("+axes{1}.varUnits+")");
+                            if isempty(axes{1}.varUnits{1})
+                                xlabel(axes{1}.title);
+                            else
+                                xlabel(axes{1}.title+" ("+axes{1}.varUnits{1}+")");
+                            end
                             if ~axes{1}.useDefR, xlim([axes{1}.loDispLim,axes{1}.upDispLim]); end
 
                             try
                                 lgd_txt = "";
                                 for l=2:1:3
                                     for m=1:1:length(axes{l}.varNames)
-                                        lgd_txt(end+1) = string(axes{l}.varNames{m})+" ("+string(axes{l}.varUnits{m})+")"; %#ok<AGROW>
+                                        if isempty(axes{l}.varUnits{m})
+                                            lgd_txt(end+1) = string(axes{l}.varNames{m}); %#ok<AGROW>
+                                        else
+                                            lgd_txt(end+1) = string(axes{l}.varNames{m})+" ("+string(axes{l}.varUnits{m})+")"; %#ok<AGROW>
+                                        end
                                     end
                                 end
-                                lgd_txt(1) = [];
+                                lgd_txt(strcmp(lgd_txt,"")) = [];
                                 legend(lgd_txt);
                             catch err
                                 err
@@ -2449,10 +2581,18 @@ classdef ODESys < handle
 
                             for l=1:1:length(plot_obj.axes)
                                 if l == 1
-                                    xlabel(axes{l}.title+" ("+axes{l}.varUnits{1}+")");
+                                    if isempty(axes{l}.varUnits{l})
+                                        xlabel(axes{l}.title);
+                                    else
+                                        xlabel(axes{l}.title+" ("+axes{l}.varUnits{1}+")");
+                                    end
                                     if ~axes{l}.useDefR, xlim([axes{l}.loDispLim,axes{l}.upDispLim]); end
                                 elseif l == 2
-                                    ylabel(axes{l}.title+" ("+axes{l}.varUnits{1}+")");
+                                    if isempty(axes{l}.varUnits{1})
+                                        ylabel(axes{l}.title);
+                                    else
+                                        ylabel(axes{l}.title+" ("+axes{l}.varUnits{1}+")");
+                                    end
                                     if ~axes{l}.useDefR, ylim([axes{l}.loDispLim,axes{l}.upDispLim]); end
                                 elseif l == 3
                                     zlabel(axes{l}.title);
@@ -2462,7 +2602,11 @@ classdef ODESys < handle
 
                             lgd_txt = "";
                             for m=1:1:length(axes{3}.varNames)
-                                lgd_txt(end+1) = string(axes{3}.varNames{m})+" ("+string(axes{3}.varUnits{m})+")"; %#ok<AGROW>
+                                if isempty(axes{l}.varUnits{m})
+                                    lgd_txt(end+1) = string(axes{3}.varNames{m}); %#ok<AGROW>
+                                else
+                                    lgd_txt(end+1) = string(axes{3}.varNames{m})+" ("+string(axes{3}.varUnits{m})+")"; %#ok<AGROW>
+                                end
                             end
                             lgd_txt(1) = [];
                             legend(lgd_txt);
@@ -2479,6 +2623,7 @@ classdef ODESys < handle
                         end
                     end
                 end
+                sys.updateConsoleFunc(['Plot ',char(string(k)),' of ',char(string(length(sys.plots))),' Complete.'],1);
             end
         end
 
@@ -2487,7 +2632,7 @@ classdef ODESys < handle
             try
                 % % ### QUALITY: build in timeout error with events for ODE
                 % solver
-                sys.solver.ODEFcn = @(t,y,p) sys.dydt(t,y,p,sys.f(:,3),zeros(size(sys.var_in_key)));
+                sys.solver.ODEFcn = @(t,y,p) sys.dydt(t,y,p,sys.f(:,3),sys.v);
                 sys.solver.InitialTime = 0;
                 sys.solver.InitialValue = y0;
                 sys.solver.Parameters = sys.param;
@@ -2508,13 +2653,15 @@ classdef ODESys < handle
             fRes = zeros(size(tRes,1),size(sys.f,1));
             for k=1:1:size(sys.f,1)
                 for l=1:1:length(tRes)
-                    fRes(l,k) = sys.f{k,3}(tRes(l),yRes(l,:),sys.param,sys.f(:,3),zeros(size(sys.var_in_key)));
+                    fRes(l,k) = sys.f{k,3}(tRes(l),yRes(l,:),sys.param,sys.f(:,3),sys.v);
                 end
             end
         end
 
         % sys: ODESys class ref,
         function regStats = compileRegression(sys)
+            sys.updateConsoleFunc('Compiling Model ...',1);
+
             sys.dydt = "@(t,y,p,f,v,r) [";
             sys.param = [];
             sys.reg_param_ct = 0;
@@ -2739,6 +2886,8 @@ classdef ODESys < handle
             % test5 = sys.f{1,3}
             % test2 = sys.f{7,3}
 
+            sys.updateConsoleFunc('Running Regression ...',1);
+
             sys.importedDataIdx = [];
             for k=1:1:length(sys.matchedVarsList)
                 matchIdx = strcmp(cellstr(sysVar(:,1)),sys.matchedVarsList{k}.sysVarName);
@@ -2765,7 +2914,10 @@ classdef ODESys < handle
             % various starting guesses for each parameter
             beta0 = sys.regSpecs.paramIGs;
 
+            sys.updateConsoleFunc('Model Compiled.',1);
+            sys.updateConsoleFunc('Setting Initial Conditions ...',1);
             sys.setInitCond();
+            sys.updateConsoleFunc('Initial Conditions Set.',1);
 
             % set proper reg specs based on solver
             switch sys.regSpecs.solver
@@ -2847,6 +2999,8 @@ classdef ODESys < handle
                 'ErrorModelInfo',sys.reg_analytics.ErrorModelInfo, ...
                 'IVs',sys.mat_IVs,'DVs',sys.mat_DVs,'tRes',sys.regData(:,1),'yRes',sys.regData(:,2:end), ...
                 'tResCont',sys.regDataCont(:,1),'yResCont',sys.regDataCont(:,2:end));
+
+            sys.updateConsoleFunc('Regression Complete.',1);
         end
 
         % sys: ODESys class ref, param: number[], t: number[]
@@ -2854,15 +3008,14 @@ classdef ODESys < handle
             % test = reg_param
             if varargin{1}, tspan = [0,t]; else, tspan = unique(t); end
             try
-                sys.solver.ODEFcn = @(t,y,p) sys.dydt(t,y,p,sys.f(:,3),zeros(size(sys.var_in_key)),reg_param);
+                sys.solver.ODEFcn = @(t,y,p) sys.dydt(t,y,p,sys.f(:,3),sys.v,reg_param);
                 sys.solver.InitialTime = 0;
                 sys.solver.InitialValue = sys.y0;
                 sys.solver.Parameters = sys.param;
                 S = solve(sys.solver,tspan);
                 yRes_all = S.Solution';
-                % [~,yRes_all] = ode15s(@(t,y) sys.dydt(t,y,sys.param,sys.f(:,3),zeros(size(sys.var_in_key,2)),reg_param),tspan,sys.y0,opts);
             catch err
-
+                err
             end
             if varargin{1}
                 yRes = yRes_all(end,sys.importedDataIdx-1)';
@@ -2881,7 +3034,7 @@ classdef ODESys < handle
         function SSE = fminsearchHandler(sys,IVs,reg_param)
             tspan = unique(IVs);
             try
-                sys.solver.ODEFcn = @(t,y,p) sys.dydt(t,y,p,sys.f(:,3),zeros(size(sys.var_in_key)),reg_param);
+                sys.solver.ODEFcn = @(t,y,p) sys.dydt(t,y,p,sys.f(:,3),sys.v,reg_param);
                 sys.solver.InitialTime = 0;
                 sys.solver.InitialValue = sys.y0;
                 sys.solver.Parameters = sys.param;
@@ -2890,7 +3043,6 @@ classdef ODESys < handle
             catch err
                 
             end
-            % [~,yRes_all] = ode15s(@(t,y) sys.dydt(t,y,sys.param,sys.f(:,3),zeros(size(sys.var_in_key,2)),reg_param),tspan,sys.y0,opts);
             yRes = zeros(size(table2array(sys.importedData(:,2:end))));
             for k=1:1:size(sys.importedData,2)-1
                 yRes(:,k) = yRes_all(:,sys.importedDataIdx(k));
@@ -2905,7 +3057,7 @@ classdef ODESys < handle
             % iterating over BatchFunction with ode15s
             tspan = unique(t);
             try
-                sys.solver.ODEFcn = @(t,y,p) sys.dydt(t,y,p,sys.f(:,3),zeros(size(sys.var_in_key)),reg_param);
+                sys.solver.ODEFcn = @(t,y,p) sys.dydt(t,y,p,sys.f(:,3),sys.v,reg_param);
                 sys.solver.InitialTime = 0;
                 sys.solver.InitialValue = y0;
                 sys.solver.Parameters = sys.param;
@@ -2919,7 +3071,6 @@ classdef ODESys < handle
             catch err
 
             end
-            % [tRes,yRes] = ode15s(@(t,y) sys.dydt(t,y,sys.param,sys.f(:,3),zeros(size(sys.var_in_key,2)),reg_param),tspan,y0,opts);
         end
 
         % sys: ODESys class ref
@@ -3550,6 +3701,11 @@ classdef ODESys < handle
                 end
                 sys.matchedVarsList(pairNum) = [];
             end
+            matchedVarsList = sys.getMatchedVarsList();
+        end
+
+        % sys: ODESys class ref
+        function matchedVarsList = getMatchedVarsList(sys)
             matchedVarsList = cell(length(sys.matchedVarsList),2);
             for k=1:1:size(sys.matchedVarsList,2)
                 matchedVarsList{k,1} = char(sys.matchedVarsList{k}.sysVarName);
@@ -3805,8 +3961,21 @@ classdef ODESys < handle
 
         % sys: ODESys class ref, name: string, phase: string, dir: string, compsData: {},
         % basis: string, basisU: string, solventName: string, flowrate: number, flowrateU: string
-        function updateStrm(sys,name,dir,phase,compsData,basis,basisU,solventName,flowrate,flowrateU)
-            if isempty(compsData)
+        function updateStrm(sys,name,dir,phase,compsData,basis,basisU,solventName,flowrate,flowrateU,updateCompsData)
+            if updateCompsData
+                for k=1:1:length(sys.input_streams)
+                    if strcmp(sys.input_streams{k}.getName(),name)
+                        sys.input_streams{k}.setCompsData(compsData,basis,basisU,solventName,flowrate,flowrateU);
+                        return;
+                    end
+                end
+                for k=1:1:length(sys.output_streams)
+                    if strcmp(sys.output_streams{k}.getName(),name)
+                        sys.output_streams{k}.setCompsData(compsData,basis,basisU,solventName,flowrate,flowrateU);
+                        return;
+                    end
+                end
+            else
                 for k=1:1:length(sys.input_streams)
                     if strcmp(sys.input_streams{k}.getName(),name)
                         sys.input_streams{k}.setPhase(phase);
@@ -3818,19 +3987,6 @@ classdef ODESys < handle
                     if strcmp(sys.output_streams{k}.getName(),name)
                         sys.output_streams{k}.setPhase(phase);
                         sys.output_streams{k}.setDir(dir);
-                        return;
-                    end
-                end
-            else
-                for k=1:1:length(sys.input_streams)
-                    if strcmp(sys.input_streams{k}.getName(),name)
-                        sys.input_streams{k}.setCompsData(compsData,basis,basisU,solventName,flowrate,flowrateU);
-                        return;
-                    end
-                end
-                for k=1:1:length(sys.output_streams)
-                    if strcmp(sys.output_streams{k}.getName(),name)
-                        sys.output_streams{k}.setCompsData(compsData,basis,basisU,solventName,flowrate,flowrateU);
                         return;
                     end
                 end
@@ -4028,7 +4184,7 @@ classdef ODESys < handle
                             % adding helper function for final bub
                             % concentration
                             % C_bub_f_val = chems{k}.sym+"+(P_i*Y_i_"+chems{k}.number+"/"+chems{k}.h_const_sym+"-"+chems{k}.sym+")*exp(-tau_"+chems{k}.sym+"*k_"+chems{k}.sym+")";
-                            % sys.addRmHelperFuncs([char(chems{k}.name),' Bubble Final Concentration'],char(chems{k}.sym+"_bubf"),C_bub_f_val,true);
+                            % sys.addRmHelperFuncs([char(chems{k}.name),' Bubble Final Concentration'],char(chems{k}.sym+"_bubf"),C_bub_f_val,true,false);
                             % adding function to chem for bub to liq
                             % sys.addModel(chems{k}.getName(), ...
                             % "(P_i*Y_i_"+chems{k}.sym+"/"+chems{k}.h_const_sym+"-"+chems{k}.sym+"_bubf)/tau*V", ...
@@ -4051,7 +4207,7 @@ classdef ODESys < handle
                             % removing helper function for final bub
                             % concentration
                             % C_bub_f_val = chems{k}.sym+"+(P_i*Y_i_"+chems{k}.number+"/"+chems{k}.h_const_sym+"-"+chems{k}.sym+")*exp(-tau_"+chems{k}.sym+"*k_"+chems{k}.sym+")";
-                            % sys.addRmHelperFuncs([char(chems{k}.name),' Bubble Final Concentration'],char(chems{k}.sym+"_bubf"),C_bub_f_val,false);
+                            % sys.addRmHelperFuncs([char(chems{k}.name),' Bubble Final Concentration'],char(chems{k}.sym+"_bubf"),C_bub_f_val,false,false);
                             % removing function from chem for bub to liq
                             % chems{k}.removeModel("(P_i*Y_i_"+chems{k}.sym+"/"+chems{k}.h_const_sym+"-"+chems{k}.sym+"_bubf)/tau*V", ...
                             %     'Gas Flow In','Liquid');
@@ -4114,7 +4270,7 @@ classdef ODESys < handle
             helperFuncNames = sys.getHelperFuncNames();
             for k=1:1:length(sorpHelpers)
                 if ~any(strcmp(helperFuncNames,sorpHelpers{k}.getSubFuncName()))
-                    sys.addRmHelperFuncs(sorpHelpers{k}.funcName,sorpHelpers{k}.funcSym,sorpHelpers{k}.funcVal,true);
+                    sys.addRmHelperFuncs(sorpHelpers{k}.funcName,sorpHelpers{k}.funcSym,sorpHelpers{k}.funcVal,true,false);
                 end
                 [~,~,helperIdx] = sys.getHelperFunc(sorpHelpers{k}.getSubFuncName());
                 paramNames = sorpHelpers{k}.getSubFuncParamNames();
@@ -4142,7 +4298,7 @@ classdef ODESys < handle
 
             % remove sorption helpers
             for k=1:1:length(sorpHelpers)
-                sys.addRmHelperFuncs(sorpHelpers{k}.funcName,sorpHelpers{k}.funcSym,sorpHelpers{k}.funcVal,false);
+                sys.addRmHelperFuncs(sorpHelpers{k}.funcName,sorpHelpers{k}.funcSym,sorpHelpers{k}.funcVal,false,false);
             end
         end
 
@@ -4221,6 +4377,107 @@ classdef ODESys < handle
     end
 
     methods (Static)
+        % obj: Object
+        function JSONObj = exportJSON(obj)
+            obj_copy = obj;
+
+            if isa(obj_copy,'ODESys')
+                obj_copy.solver = struct( ...
+                    'AbsoluteTolerance',obj.solver.AbsoluteTolerance, ...
+                    'RelativeTolerance',obj.solver.RelativeTolerance, ...
+                    'Solver',obj.solver.Solver, ...
+                    'SolverOptions',obj.solver.SolverOptions ...
+                );
+            end
+
+            function sub_obj = recursive_stringify(sub_obj)
+                props = properties(sub_obj);
+                for k=1:1:length(props)
+                    if isobject(sub_obj.(props{k}))
+                        sub_obj.(props{k}) = recursive_stringify(sub_obj.(props{k}));
+                    end
+                    if isa(sub_obj.(props{k}),'function_handle')
+                        sub_obj.(props{k}) = func2str(sub_obj.(props{k}));
+                    end
+                    if isa(sub_obj.(props{k}),'cell')
+                        for l=1:1:size(sub_obj.(props{k}),1)
+                            for m=1:1:size(sub_obj.(props{k}),2)
+                                if isa(sub_obj.(props{k}){l,m},'function_handle')
+                                    sub_obj.(props{k}){l,m} = func2str(sub_obj.(props{k}){l,m});
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+
+            JSONObj = jsonencode(recursive_stringify(obj_copy),"PrettyPrint",true);
+        end
+
+        % JSON_obj: string
+        function obj = importJSON(JSON_obj)
+            decoded_obj = jsondecode(JSON_obj);
+            obj_copy = decoded_obj;
+            
+            if isa(obj_copy,'ODESys')
+                obj_copy.solver = ode;
+                solver_fields = fieldnames(obj_copy.solver);
+                for n=1:1:length(solver_fields)
+                    obj_copy.solver.(solver_fields{n}) = decoded_obj.(solver_fields{n});
+                end
+            end
+
+            function sub_obj = recursive_parse(sub_obj)
+                fields = fieldnames(sub_obj);
+                for k=1:1:length(fields)
+                    if isobject(sub_obj.(fields{k}))
+                        sub_obj.(fields{k}) = recursive_parse(sub_obj.(fields{k}));
+                    end
+                    if isa(sub_obj.(fields{k}),'char') && contains(sub_obj.(fields{k}),'@(')
+                        sub_obj.(fields{k}) = str2func(sub_obj.(fields{k}));
+                    end
+                    if isa(sub_obj.(fields{k}),'cell')
+                        for l=1:1:size(sub_obj.(fields{k}),1)
+                            for m=1:1:size(sub_obj.(fields{k}),2)
+                                if isa(sub_obj.(fields{k}){l,m},'char') && contains(sub_obj.(fields{k}){l,m},'@(')
+                                    sub_obj.(fields{k}){l,m} = str2func(sub_obj.(fields{k}){l,m});
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+
+            obj = recursive_parse(obj_copy);
+            test = obj.species.test
+        end
+
+        % system: ODESys object, ODESys_struct: struct
+        function system = reinstantiateFromJSON(system,ODESys_struct)
+            ODESys_fields = fields(ODESys_struct);
+            for k=1:1:length(ODESys_fields)
+                if strcmp(ODESys_fields{k},'species')
+                    for l=1:1:length(ODESys_fields{k})
+                        
+                    end
+                elseif strcmp(ODESys_fields{k},'chemicals')
+
+                elseif strcmp(ODESys_fields{k},'environs')
+
+                elseif strcmp(ODESys_fields{k},'helperFuncs')
+
+                elseif strcmp(ODESys_fields{k},'solver')
+                    system.solver = ode;
+                    solver_fields = fieldnames(ODESys_struct.solver);
+                    for l=1:1:length(solver_fields)
+                        system.solver.(solver_fields{l}) = ODESys_struct.solver.(solver_fields{l});
+                    end
+                else
+                    system.(ODESys_fields{k}) = ODESys_struct.(ODESys_fields{k});
+                end
+            end
+        end
+
         % funcAsStr: Boolean
         function [paramVals, paramUnits] = getDefaultEnvironParams(funcAsStr)
             custDefault = EnvDefaults();
