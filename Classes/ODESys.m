@@ -1,7 +1,5 @@
 classdef ODESys < handle
     properties
-        updateConsoleFunc;
-
         save_type = "file";
         save_file_name = "";
         save_db_handle = "";
@@ -10,8 +8,6 @@ classdef ODESys < handle
         save_model_bio_names = {};
         save_model_chem_names = {};
         save_model_ref_str = "";
-
-        % test
 
         is_link = false; % used to determine whether this is an instance of MAGMA or MAGMALink UI
 
@@ -102,6 +98,7 @@ classdef ODESys < handle
         );
 
         % callbacks from MAGMA.mlapp
+        updateConsoleFunc;
         SubplotABPushed;
     end
 
@@ -112,7 +109,6 @@ classdef ODESys < handle
             sys.updateConsoleFunc = updateConsoleFunc;
             sys.SubplotABPushed = SubplotABPushed;
             sys.solver.Solver = 'ode45';
-            % sys.setSolverEvents();
 
             % set default values
             sys.environs.Photo_Bioreactor_PBR = Environment("Photo_Bioreactor_PBR",sys.getModelVarNames(),sys.getDefaultParamVals(true));
@@ -1929,6 +1925,7 @@ classdef ODESys < handle
                 % setting solver events
                 % sys.setSolverEvents();
             catch err
+                err
                 err.stack.line
             end
         end
@@ -2520,6 +2517,7 @@ classdef ODESys < handle
                                 if ~axes{2}.useDefR, ylim([axes{2}.loDispLim,axes{2}.upDispLim]); end
                             catch err
                                 err
+                                err.stack.line
                             end
 
                             try
@@ -2533,6 +2531,7 @@ classdef ODESys < handle
                                 if ~axes{3}.useDefR, ylim([axes{3}.loDispLim,axes{3}.upDispLim]); end
                             catch err
                                 err
+                                err.stack.line
                             end
     
                             if isempty(axes{1}.varUnits{1})
@@ -2546,17 +2545,18 @@ classdef ODESys < handle
                                 lgd_txt = "";
                                 for l=2:1:3
                                     for m=1:1:length(axes{l}.varNames)
-                                        if isempty(axes{l}.varUnits{m})
+                                        if (length(axes{l}.varUnits) < m) || isempty(axes{l}.varUnits{m})
                                             lgd_txt(end+1) = string(axes{l}.varNames{m}); %#ok<AGROW>
-                                        else
+                                        elseif ~isempty(axes{l}.varNames{m})
                                             lgd_txt(end+1) = string(axes{l}.varNames{m})+" ("+string(axes{l}.varUnits{m})+")"; %#ok<AGROW>
                                         end
                                     end
                                 end
-                                lgd_txt(strcmp(lgd_txt,"")) = [];
+                                lgd_txt(strcmp(lgd_txt,"")) = []
                                 legend(lgd_txt);
                             catch err
                                 err
+                                err.stack.line
                             end
                         elseif plot_obj.getPlotProp('dimNb') == 3
                             if axes{1}.varIsIC && axes{2}.varIsIC
@@ -2645,6 +2645,7 @@ classdef ODESys < handle
                 % user to modify their fermentation conditions to avoid
                 % overflow or tank draining conditions
                 err
+                err.stack.line
             end
         end
 
@@ -3016,6 +3017,7 @@ classdef ODESys < handle
                 yRes_all = S.Solution';
             catch err
                 err
+                err.stack.line
             end
             if varargin{1}
                 yRes = yRes_all(end,sys.importedDataIdx-1)';
@@ -3542,16 +3544,33 @@ classdef ODESys < handle
                         for l=1:1:length(axes{k}.varNames)
                             data{l,1} = char(axes{k}.varNames(l));
                             data{l,2} = axes{k}.varUnits{l};
-                            data{l,3} = axes{k}.evaltVal{l};
-                            data{l,4} = axes{k}.loEvalLim{l};
-                            data{l,5} = axes{k}.upEvalLim{l};
-                            data{l,6} = axes{k}.nbEvalPts{l};
+                            if isa(axes{k}.evaltVal,'cell')
+                                data{l,3} = axes{k}.evaltVal{l};
+                            else
+                                data{l,3} = axes{k}.evaltVal;
+                            end
+                            if isa(axes{k}.loEvalLim,'cell')
+                                data{l,4} = axes{k}.loEvalLim{l};
+                            else
+                                data{l,4} = axes{k}.loEvalLim;
+                            end  
+                            if isa(axes{k}.loEvalLim,'cell')
+                                data{l,5} = axes{k}.upEvalLim{l};
+                            else
+                                data{l,5} = axes{k}.upEvalLim;
+                            end    
+                            if isa(axes{k}.loEvalLim,'cell')
+                                data{l,6} = axes{k}.nbEvalPts{l};
+                            else
+                                data{l,6} = axes{k}.nbEvalPts;
+                            end     
                         end
                         break;
                     end
                 end
             catch err
                 err
+                err.stack.line
             end
         end
 
@@ -4388,6 +4407,8 @@ classdef ODESys < handle
                     'Solver',obj.solver.Solver, ...
                     'SolverOptions',obj.solver.SolverOptions ...
                 );
+
+                obj_copy.reg_analytics = [];
             end
 
             function sub_obj = recursive_stringify(sub_obj)
@@ -4449,7 +4470,6 @@ classdef ODESys < handle
             end
 
             obj = recursive_parse(obj_copy);
-            test = obj.species.test
         end
 
         % system: ODESys object, ODESys_struct: struct
@@ -4457,21 +4477,279 @@ classdef ODESys < handle
             ODESys_fields = fields(ODESys_struct);
             for k=1:1:length(ODESys_fields)
                 if strcmp(ODESys_fields{k},'species')
-                    for l=1:1:length(ODESys_fields{k})
-                        
+                    spec_names = fieldnames(ODESys_struct.(ODESys_fields{k}));
+                    for l=1:1:length(spec_names)
+                        spec = ODESys_struct.(ODESys_fields{k}).(spec_names{l});
+                        system.species.(spec.name) = Component( ...
+                            spec.name,spec.number,spec.initConc,spec.initConcUnit, ...
+                            spec.type,spec.is_vol,spec.MW,spec.h_const,spec.h_const_u, ...
+                            spec.dh_const,spec.dh_const_u,system.getDefaultParamVals());
+                        spec_fields = fieldnames(spec);
+                        for m=1:1:length(spec_fields)
+                            if contains(spec_fields{m},'uncParams')
+                                system.species.(spec.name).(spec_fields{m}) = {};
+                                for n=1:1:length(spec.(spec_fields{m}))
+                                    funcParam = spec.(spec_fields{m})(n);
+                                    system.species.(spec.name).(spec_fields{m}){n} = funcParam;
+                                    funcParam_fields = fieldnames(funcParam);
+                                    for o=1:1:length(funcParam_fields)
+                                        if strcmp(funcParam_fields{o},'params')
+                                            system.species.(spec.name).(spec_fields{m}){n}.(funcParam_fields{o}) = {};
+                                            for p=1:1:length(spec.(spec_fields{m})(n).(funcParam_fields{o}))
+                                                system.species.(spec.name).(spec_fields{m}){n}.(funcParam_fields{o}){p} = spec.(spec_fields{m})(n).(funcParam_fields{o})(p);
+                                            end
+                                        else
+                                            system.species.(spec.name).(spec_fields{m}){n}.(funcParam_fields{o}) = spec.(spec_fields{m})(n).(funcParam_fields{o});
+                                        end
+                                    end
+                                end
+                            else
+                                system.species.(spec.name).(spec_fields{m}) = spec.(spec_fields{m});
+                            end
+                        end
                     end
                 elseif strcmp(ODESys_fields{k},'chemicals')
-
+                    chem_names = fieldnames(ODESys_struct.(ODESys_fields{k}));
+                    for l=1:1:length(chem_names)
+                        chem = ODESys_struct.(ODESys_fields{k}).(chem_names{l});
+                        system.chemicals.(chem.name) = Component( ...
+                            chem.name,chem.number,chem.initConc,chem.initConcUnit, ...
+                            chem.type,chem.is_vol,chem.MW,chem.h_const,chem.h_const_u, ...
+                            chem.dh_const,chem.dh_const_u,system.getDefaultParamVals());
+                        chem_fields = fieldnames(chem);
+                        for m=1:1:length(chem_fields)
+                            if contains(chem_fields{m},'uncParams')
+                                system.chemicals.(chem.name).(chem_fields{m}) = {};
+                                for n=1:1:length(chem.(chem_fields{m}))
+                                    funcParam = chem.(chem_fields{m})(n);
+                                    system.chemicals.(chem.name).(chem_fields{m}){n} = funcParam;
+                                    funcParam_fields = fieldnames(funcParam);
+                                    for o=1:1:length(funcParam_fields)
+                                        if strcmp(funcParam_fields{o},'params')
+                                            system.chemicals.(chem.name).(chem_fields{m}){n}.(funcParam_fields{o}) = {};
+                                            for p=1:1:length(chem.(chem_fields{m})(n).(funcParam_fields{o}))
+                                                system.chemicals.(chem.name).(chem_fields{m}){n}.(funcParam_fields{o}){p} = funcParam.(funcParam_fields{o})(p);
+                                            end
+                                        else
+                                            system.chemicals.(chem.name).(chem_fields{m}){n}.(funcParam_fields{o}) = funcParam.(funcParam_fields{o});
+                                        end
+                                    end
+                                    % if ~any(strcmp(funcParam_fields{o},'params')), system.chemicals.(chem.name).(chem_fields{m}){n}.params = struct([]); end
+                                end
+                            else
+                                system.chemicals.(chem.name).(chem_fields{m}) = chem.(chem_fields{m});
+                            end
+                        end
+                    end
                 elseif strcmp(ODESys_fields{k},'environs')
+                    environ_names = fieldnames(ODESys_struct.(ODESys_fields{k}));
+                    for l=1:1:length(environ_names)
+                        environ = ODESys_struct.(ODESys_fields{k}).(environ_names{l});
+                        environ_fields = fieldnames(environ);
+                        for m=1:1:length(environ_fields)
+                            if strcmp(environ_fields{m},'subfuncs')
+                                subfuncs = ODESys_struct.(ODESys_fields{k}).(environ_names{l}).(environ_fields{m});
+                                for n=1:1:length(subfuncs)
+                                    subfunc_fields = fieldnames(subfuncs(n));
+                                    for o=1:1:length(subfunc_fields)
+                                        if strcmp(subfunc_fields{o},'params')
+                                            system.environs.(environ_names{l}).(environ_fields{m}){n}.(subfunc_fields{o}) = {};
+                                            for p=1:1:length(subfuncs(n).(subfunc_fields{o}))
+                                                system.environs.(environ_names{l}).(environ_fields{m}){n}.(subfunc_fields{o}){p} = subfuncs(n).(subfunc_fields{o})(p);
+                                            end
+                                        else
+                                            system.environs.(environ_names{l}).(environ_fields{m}){n}.(subfunc_fields{o}) = subfuncs(n).(subfunc_fields{o});
+                                        end
+                                    end
+                                end
+                            elseif any(strcmp(environ_fields{m},{'T_comp','P_comp','V_comp','SV_comps','H3O_comp','OH_comp'}))
+                                try
+                                    comp = ODESys_struct.(ODESys_fields{k}).(environ_names{l}).(environ_fields{m});
+                                    comp_fields = fieldnames(comp);
+                                    for n=1:1:length(comp_fields)
+                                        if contains(comp_fields{n},'uncParams')
+                                            system.environs.(environ_names{l}).(environ_fields{m}).(comp_fields{n}) = {};
+                                            for o=1:1:length(comp.(comp_fields{n}))
+                                                system.environs.(environ_names{l}).(environ_fields{m}).(comp_fields{n}){o} = comp.(comp_fields{n})(o);
+                                            end
 
+                                            system.environs.(environ_names{l}).(environ_fields{m}).(comp_fields{n}) = {};
+                                            for o=1:1:length(comp.(comp_fields{n}))
+                                                funcParam = comp.(comp_fields{n})(o);
+                                                system.environs.(environ_names{l}).(environ_fields{m}).(comp_fields{n}){o} = funcParam;
+                                                funcParam_fields = fieldnames(funcParam);
+                                                for p=1:1:length(funcParam_fields)
+                                                    if strcmp(funcParam_fields{p},'params')
+                                                        system.environs.(environ_names{l}).(environ_fields{m}).(comp_fields{n}){o}.(funcParam_fields{p}) = {};
+                                                        for q=1:1:length(funcParam.(funcParam_fields{p}))
+                                                            system.environs.(environ_names{l}).(environ_fields{m}).(comp_fields{n}){o}.(funcParam_fields{p}){q} = comp.(comp_fields{n})(o).(funcParam_fields{p})(q);
+                                                        end
+                                                    else
+                                                        system.environs.(environ_names{l}).(environ_fields{m}).(comp_fields{n}){o}.(funcParam_fields{p}) = comp.(comp_fields{n})(o).(funcParam_fields{p});
+                                                    end
+                                                end
+                                            end
+                                        else
+                                            system.environs.(environ_names{l}).(environ_fields{m}).(comp_fields{n}) = comp.(comp_fields{n});
+                                        end
+                                    end
+                                catch err
+                                    err
+                                    err.stack.line
+                                end
+                            elseif strcmp(environ_fields{m},'reactorSpecificParams')
+                                if isa(environ.(environ_fields{m}),'struct')
+                                    reactorSpecParamsFields = fieldnames(environ.(environ_fields{m}));
+                                    reactorSpecParamsCell = cell(length(reactorSpecParamsFields),1);
+                                    for n=1:1:length(reactorSpecParamsCell)
+                                        reactorSpecParamsCell{n} = environ.(environ_fields{m}).(reactorSpecParamsFields{n});
+                                    end
+                                    system.environs.(environ.name).(environ_fields{m}) = reactorSpecParamsCell;
+                                elseif isa(environ.(environ_fields{m}),'cell')
+                                    system.environs.(environ.name).(environ_fields{m}) = environ.(environ_fields{m});
+                                end
+                            else
+                                system.environs.(environ.name).(environ_fields{m}) = environ.(environ_fields{m});
+                            end
+                        end
+                    end
                 elseif strcmp(ODESys_fields{k},'helperFuncs')
-
+                    helper_funcs = ODESys_struct.(ODESys_fields{k});
+                    for l=1:1:length(helper_funcs)
+                        system.helperFuncs{l} = SubFunc(helper_funcs(l).funcVal, ...
+                            helper_funcs(l).funcName,helper_funcs(l).funcSym, ...
+                            helper_funcs(l).lims.upperLim,helper_funcs(l).lims.lowerLim, ...
+                            helper_funcs(l).editable);
+                        helper_fields = fieldnames(helper_funcs(l));
+                        for m=1:1:length(helper_fields)
+                            if strcmp(helper_fields{m},'params')
+                                params = helper_funcs(l).(helper_fields{m});
+                                system.helperFuncs{l}.(helper_fields{m}) = {};
+                                for n=1:1:length(params)
+                                    system.helperFuncs{l}.(helper_fields{m}){n} = params(n);
+                                end
+                            else
+                                system.helperFuncs{l}.(helper_fields{m}) = helper_funcs(l).(helper_fields{m});
+                            end
+                        end
+                    end    
+                elseif strcmp(ODESys_fields{k},'input_streams')
+                    in_strms = ODESys_struct.(ODESys_fields{k});
+                    for l=1:1:length(in_strms)
+                        comps = [system.getSpecies('comp'),system.getChemicals('comp'),{ ...
+                            system.environs.(system.activeEnv).getH3OComp(),system.environs.(system.activeEnv).getOHComp()}];
+                        system.input_streams{l} = Stream(in_strms(l).name,in_strms(l).phase,in_strms(l).dir, ...
+                            l,comps);
+                        in_strms_fields = fieldnames(in_strms);
+                        for m=1:1:length(in_strms_fields)
+                            if strcmp(in_strms_fields{m},'compsData')
+                                comps_data_row_num = length(in_strms.(in_strms_fields{m}))/2;
+                                system.input_streams{l}.(in_strms_fields{m}) = cell(comps_data_row_num,2);
+                                system.input_streams{l}.(in_strms_fields{m})((1:comps_data_row_num),1) = in_strms.(in_strms_fields{m})(1:comps_data_row_num);
+                                system.input_streams{l}.(in_strms_fields{m})((1:comps_data_row_num),2) = in_strms.(in_strms_fields{m})((comps_data_row_num+1):end);
+                            else
+                                system.input_streams{l}.(in_strms_fields{m}) = in_strms.(in_strms_fields{m});
+                            end
+                        end
+                    end
+                elseif strcmp(ODESys_fields{k},'output_streams')
+                    out_strms = ODESys_struct.(ODESys_fields{k});
+                    for l=1:1:length(out_strms)
+                        comps = [system.getSpecies('comp'),system.getChemicals('comp'),{ ...
+                            system.environs.(system.activeEnv).getH3OComp(),system.environs.(system.activeEnv).getOHComp()}];
+                        system.output_streams{l} = Stream(out_strms(l).name,out_strms(l).phase,out_strms(l).dir, ...
+                            l,comps);
+                        out_strms_fields = fieldnames(out_strms);
+                        for m=1:1:length(out_strms_fields)
+                            if strcmp(out_strms_fields{m},'compsData')
+                                comps_data_row_num = length(out_strms.(out_strms_fields{m}))/2;
+                                system.output_streams{l}.(out_strms_fields{m}) = cell(comps_data_row_num,2);
+                                system.output_streams{l}.(out_strms_fields{m})((1:comps_data_row_num),1) = out_strms.(out_strms_fields{m})(1:comps_data_row_num);
+                                system.output_streams{l}.(out_strms_fields{m})((1:comps_data_row_num),2) = out_strms.(out_strms_fields{m})((comps_data_row_num+1):end);
+                            else
+                                system.output_streams{l}.(out_strms_fields{m}) = out_strms.(out_strms_fields{m});
+                            end
+                        end
+                    end
+                elseif strcmp(ODESys_fields{k},'f')
+                    num_fs = length(ODESys_struct.(ODESys_fields{k}))./3;
+                    system.(ODESys_fields{k})(1:num_fs,1) = ODESys_struct.(ODESys_fields{k})(1:num_fs);
+                    system.(ODESys_fields{k})(1:num_fs,2) = ODESys_struct.(ODESys_fields{k})((num_fs+1):(2*num_fs));
+                    system.(ODESys_fields{k})(1:num_fs,3) = ODESys_struct.(ODESys_fields{k})((2*num_fs+1):(3*num_fs));
                 elseif strcmp(ODESys_fields{k},'solver')
                     system.solver = ode;
                     solver_fields = fieldnames(ODESys_struct.solver);
                     for l=1:1:length(solver_fields)
-                        system.solver.(solver_fields{l}) = ODESys_struct.solver.(solver_fields{l});
+                        if strcmp(solver_fields{l},'SolverOptions')
+                            solver_opt_fields = fieldnames(ODESys_struct.solver.(solver_fields{l}));
+                            for n=1:1:length(solver_opt_fields)
+                                system.solver.(solver_fields{l}).(solver_opt_fields{n}) = ODESys_struct.solver.(solver_fields{l}).(solver_opt_fields{n});
+                            end
+                        else
+                            system.solver.(solver_fields{l}) = ODESys_struct.solver.(solver_fields{l});
+                        end
                     end
+                elseif strcmp(ODESys_fields{k},'regParamList')
+                    try
+                        regParamListRowNum = length(ODESys_struct.(ODESys_fields{k}))./7;
+                        regParamListNew = cell(regParamListRowNum,7);
+                        for l=1:1:regParamListRowNum
+                            regParamListNew(:,1) = ODESys_struct.(ODESys_fields{k})(1:regParamListRowNum);
+                            regParamListNew(:,2) = ODESys_struct.(ODESys_fields{k})((regParamListRowNum+1):(2*regParamListRowNum));
+                            regParamListNew(:,2) = ODESys_struct.(ODESys_fields{k})((2*regParamListRowNum+1):(3*regParamListRowNum));
+                            regParamListNew(:,2) = ODESys_struct.(ODESys_fields{k})((3*regParamListRowNum+1):(4*regParamListRowNum));
+                            regParamListNew(:,2) = ODESys_struct.(ODESys_fields{k})((4*regParamListRowNum+1):(5*regParamListRowNum));
+                            regParamListNew(:,2) = ODESys_struct.(ODESys_fields{k})((5*regParamListRowNum+1):(6*regParamListRowNum));
+                            regParamListNew(:,2) = ODESys_struct.(ODESys_fields{k})((6*regParamListRowNum+1):(7*regParamListRowNum));
+                        end
+                        system.(ODESys_fields{k}) = regParamListNew;
+                    catch err
+                        err
+                        err.stack.line
+                    end
+                elseif strcmp(ODESys_fields{k},'matchedVarsList')
+                    system.(ODESys_fields{k}) = {};
+                    for l=1:1:length(ODESys_struct.(ODESys_fields{k}))
+                        system.(ODESys_fields{k}){l} = ODESys_struct.(ODESys_fields{k})(l);
+                    end
+                elseif strcmp(ODESys_fields{k},'plots')
+                    try
+                        plots = ODESys_struct.(ODESys_fields{k});
+                        for l=1:1:length(plots)
+                            system.plots{l} = Plot(plots(l).title,plots(l).axes(1).varNameOpts,[],plots(l).subplotGroup,plots(l).subplotSlot);
+                            plot_fields = fieldnames(plots);
+                            for m=1:1:length(plot_fields)
+                                if strcmp(plot_fields{m},'axes')
+                                    axes = plots(l).(plot_fields{m});
+                                    system.plots{l}.axes = {};
+                                    for n=1:1:length(axes)
+                                        % if ~isa(axes(n).varNames,'cell')
+                                        %     axes(n).varNames = {axes(n).varNames};
+                                        % end
+                                        % if ~isa(axes(n).evaltVal,'cell')
+                                        %     axes(n).evaltVal = {axes(n).evaltVal};
+                                        % end
+                                        % if ~isa(axes(n).loEvalLim,'cell')
+                                        %     axes(n).evaltVal = {axes(n).evaltVal};
+                                        % end
+                                        % if ~isa(axes(n).upEvalLim,'cell')
+                                        %     axes(n).evaltVal = {axes(n).evaltVal};
+                                        % end
+                                        % if ~isa(axes(n).nbEvalPts,'cell')
+                                        %     axes(n).evaltVal = {axes(n).evaltVal};
+                                        % end
+                                        system.plots{l}.(plot_fields{m}){n} = axes(n);
+                                    end
+                                else
+                                    system.plots{l}.(plot_fields{m}) = plots(l).(plot_fields{m});
+                                end
+                            end
+                        end
+                    catch err
+                        err
+                        err.stack.line
+                    end
+                elseif any(strcmp(ODESys_fields{k},{'updateConsoleFunc','SubplotABPushed'}))
                 else
                     system.(ODESys_fields{k}) = ODESys_struct.(ODESys_fields{k});
                 end

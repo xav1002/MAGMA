@@ -159,18 +159,18 @@ classdef Component < handle
             % with vapor partial pressure
             % Total 3 helpers (HConst, P*, C*)
             % Need to consider water density?
-            funcVal = [comp.h_const_sym,'*',comp.MW_sym,'*exp(',comp.dh_const_sym,'*((1/T)-(1/298.15)))'];
-            comp.h_const_helper_funcs{end+1} = SubFunc(funcVal,[char(comp.name),' Henry Constant'],['H_',char(comp.sym)],0,0);
+            funcVal = [comp.h_const_sym,'*exp(',comp.dh_const_sym,'*((1/T)-(1/298.15)))'];
+            comp.h_const_helper_funcs{end+1} = SubFunc(funcVal,[char(comp.name),' Henry Constant'],['H_',char(comp.sym)],0,0,false);
             comp.h_const_helper_funcs{end}.updateParams(1,[char(comp.name),' Henry Constant at 298.15K'],comp.h_const_sym,comp.h_const,comp.h_const_u,false,defaultParamVals);
             comp.h_const_helper_funcs{end}.updateParams(2,[char(comp.name),' H Temperature Dependence Coefficient'],comp.dh_const_sym,comp.dh_const,comp.dh_const_u,false,defaultParamVals);
 
             funcVal2 = [char(comp.sym),'/H_',char(comp.sym)];
             comp.h_const_helper_funcs{end+1} = SubFunc(funcVal2,['Gas Phase Partial Pressure of ',char(comp.name),' in Equilibrium with Liquid Phase'], ...
-                ['P_eq_',char(comp.sym)],0,0);
+                ['P_eq_',char(comp.sym)],0,0,false);
             
             funcVal3 = [comp.bulk_gas_sym,'*H_',char(comp.sym)];
             comp.h_const_helper_funcs{end+1} = SubFunc(funcVal3,['Liquid Phase Concentration of ',char(comp.name),' in Equilibrium with Gas Phase'], ...
-                [char(comp.sym),'_g_eq'],0,0);
+                [char(comp.sym),'_g_eq'],0,0,false);
         end
 
         % comp: Component class ref
@@ -282,11 +282,14 @@ classdef Component < handle
 
                 comp.h_const_u = char(string(h_const_u));
                 switch comp.h_const_u
-                    case 'kPa*L/g'
-                    case 'kPa*L/mol'
-                        comp.h_const = h_const./comp.MW;
-                    case 'kPa*m^3/kg'
+                    case 'mol/(kg*bar)'
                         comp.h_const = h_const;
+                    case 'mol/(L*bar)'
+                        comp.h_const = h_const;
+                    case 'g/(kg*bar)'
+                        comp.h_const = h_const./comp.MW;
+                    case 'g/(L*bar)'
+                        comp.h_const = h_const./comp.MW;
                 end
                 comp.dh_const_u = char(string(dh_const_u));
                 switch comp.dh_const_u
@@ -573,14 +576,14 @@ classdef Component < handle
                 fp = {};
                 for k=1:1:length(comp.sorpFuncParams)
                     if strcmp(comp.sorpFuncParams{k}.solventName,phaseName)
-                        fp{end+1} = comp.sorpFuncParams{k}; %#ok<AGROW>
+                        fp{end+1} = comp.sorpFuncParams{k};
                     end
                 end
             end
             for k=1:1:length(fp)
                 % converting piecewise expressions to latex
                 funcVal = comp.convertPWToLaTeX(fp{k});
-                funcs{end+1} = funcVal; %#ok<AGROW>
+                funcs{end+1} = funcVal;
             end
             if isempty(funcs)
                 funcs{1} = "0";
@@ -1233,7 +1236,7 @@ classdef Component < handle
                 res = {};
                 for k=1:1:length(comp.sorpHelpers)
                     if contains(comp.sorpHelpers{k}.funcName,solventName) 
-                        res{end+1} = comp.sorpHelpers{k}; %#ok<AGROW>
+                        res{end+1} = comp.sorpHelpers{k};
                     end
                 end
             elseif strcmp(comp.type,'Suspended Solid Sorbent')
@@ -1335,6 +1338,8 @@ classdef Component < handle
         function currGovFuncRaw = getMTGovFunc(comp,phaseA,phaseB)
             if strcmp(phaseA,'Liquid')
                 for k=2:1:length(comp.funcParams)
+                    % test4 = comp
+                    % test3 = comp.funcParams{k}
                     if strcmp(comp.funcParams{k}.funcName,[phaseB,' MT'])
                         currGovFuncRaw = comp.funcParams{k}.funcVal;
                     end
