@@ -26,7 +26,7 @@ classdef SubFunc < handle
         function initParams(subf,sysVars,defaultParamVals)
             vars = string(findVars(char(subf.funcVal)));
             if strcmp(subf.funcName,'Light Intensity')
-                non_params = {'integral','integral2','integral3','l','x','y','z'}';
+                non_params = {'integral','integral2','integral3','l','x','y','z','sin','cos','tan','sinh','cosh','tanh'}';
                 if ~isempty(vars)
                     funcParams = setxor(intersect([sysVars(:,2);non_params],vars),vars);
                     funcParams(contains(funcParams,",")) = [];
@@ -34,8 +34,9 @@ classdef SubFunc < handle
                     funcParams = [];
                 end
             else
+                non_params = {'sin','cos','tan','sinh','cosh','tanh'}';
                 if ~isempty(vars)
-                    funcParams = setxor(intersect(sysVars(:,2),vars),vars);
+                    funcParams = setxor(intersect([sysVars(:,2);non_params],vars),vars);
                 else
                     funcParams = [];
                 end
@@ -74,8 +75,8 @@ classdef SubFunc < handle
             end
 
             if strcmp(sym,"R")
-                val = 8.314;
-                unit = 'kPa*L/mol*K';
+                val = 0.08314;
+                unit = 'bar*L/mol*K';
                 editable = 'false';
             elseif strcmp(sym,"tau")
                 val = 1;

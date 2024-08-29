@@ -1,10 +1,5 @@
 classdef CompDefaults
     properties (Constant)
-%         Synechoccocus_elongatus_UTEX_2973 = struct(['test','']); % Species specific growth parameters for SE
-%         Microcystis_aeruginosa = struct(['test','']); % Species specific growth parameters for MA
-%         Yarrowia_lipolytico = struct(['test','']); % Species specific growth parameters for YL
-%         Custom_Species = struct(['test','']); % Species specific growth parameters for any given custom Species
-
         % defaultFuncVals = struct( ...
         %     'Biological Solute', struct( ...
         %                         'Monod', "C_1/(C_1+K_1_1)", ...
@@ -17,19 +12,6 @@ classdef CompDefaults
         %                         'Custom', "1" ...
         %                     ) ...
         % );
-
-        validFuncTypes = struct( ...
-            'spec', struct('Multiplicative', { ...
-                            'Monod', 'Linear', 'Custom' ...
-                        }, ...
-                        'Additive', { ...
-                            'Monod', 'Linear', 'Custom'}), ...
-            'chem', struct('Multiplicative', { ...
-                            'Monod', 'Linear', 'Custom' ...
-                        }, ...
-                        'Additive', { ...
-                            'Linear', 'Monod', 'Custom'}) ...
-        );
     end
 
     % Format for field - paramVal:
@@ -50,15 +32,14 @@ classdef CompDefaults
             compType = comp.getType();
             switch compType
                 case 'Biological Solute'
-
-
+                    switch funcType
+                        case 'Monod'
+                    end
                 case 'Chemical Solute'
+                    switch funcType
 
+                    end
             end
-        end
-
-        function validFuncs = getValidFuncs(comp, funcCombo)
-            validFuncs = {CompDefaults.validFuncTypes.(comp.getType()).(funcCombo)};
         end
 
         function MTFuncVal = getDefaultMTFuncVals(MTFuncName,phaseACompSym,phaseBCompSym,phaseASym,phaseBSym,compMWSym)
@@ -66,27 +47,56 @@ classdef CompDefaults
                 case "None"
                     MTFuncVal = "0";
 
-                case "First-Order with respect to Concentration Differential"
+                case "Inter-Phase Transfer based on Liquid Phase Overall Mass Transfer Coefficient and Driving Force"
                     compNum = regexp(phaseACompSym,'\d*','match');
-                    phaseANum = regexp(phaseASym,'\d*','match');
-                    phaseBNum = regexp(phaseBSym,'\d*','match');
-                    phaseLetter = "S";
+                    phaseLetter = ["S","S"];
                     if strcmp(phaseASym,"V")
-                        phaseANum = "V";
-                        phaseLetter = "C";
+                        phaseLetter(1) = "L";
                     end
-                    if strcmp(phaseBSym,"V"), phaseBNum = "V"; end
+                    if strcmp(phaseBSym,"V")
+                        phaseLetter(2) = "L";
+                    end
                     if strcmp(phaseASym,"(V_m-V_tot)")
-                        phaseANum = "V_g";
-                        phaseLetter = "P";
+                        phaseLetter(1) = "G";
                     end
-                    if strcmp(phaseBSym,"(V_m-V_tot)"), phaseBNum = "V_g"; end
+                    if strcmp(phaseBSym,"(V_m-V_tot)")
+                        phaseLetter(2) = "G";
+                    end
+
+                    % ### FIXME: need to make sure that the mass transfer
+                    % coefficient is the same for both phases
+                    if strcmp(phaseASym,"(V_m-V_tot)")
+                        MTFuncVal = "k_"+phaseLetter(1)+"_"+phaseLetter(2)+"_"+compNum{1}+"*("+"R*T"+")/("+phaseASym+"*"+compMWSym+")*("+phaseBCompSym+"-"+phaseACompSym+")";
+                    elseif strcmp(phaseASym,"V")
+                        MTFuncVal = "k_"+phaseLetter(1)+"_"+phaseLetter(2)+"_"+compNum{1}+"/"+phaseASym+"*("+phaseBCompSym+"-"+phaseACompSym+")";
+                    else
+                        MTFuncVal = "k_"+phaseLetter(1)+"_"+phaseLetter(2)+"_"+compNum{1}+"/"+phaseASym+"*("+phaseBCompSym+"-"+phaseACompSym+")";
+                    end
+
+                case "Inter-Phase Transfer based on Liquid Phase Overall Capacity Coefficient and Driving Force"
+                    compNum = regexp(phaseACompSym,'\d*','match');
+                    phaseLetter = ["S","S"];
+                    if strcmp(phaseASym,"V")
+                        phaseLetter(1) = "L";
+                    end
+                    if strcmp(phaseBSym,"V")
+                        phaseLetter(2) = "L";
+                    end
+                    if strcmp(phaseASym,"(V_m-V_tot)")
+                        phaseLetter(1) = "G";
+                    end
+                    if strcmp(phaseBSym,"(V_m-V_tot)")
+                        phaseLetter(2) = "G";
+                    end
 
                     if strcmp(phaseASym,"(V_m-V_tot)")
-                        MTFuncVal = "k_"+phaseLetter+"_"+compNum{1}+"_"+phaseANum{1}+"_"+phaseBNum{1}+"*("+"R*T"+")/("+phaseASym+"*"+compMWSym+")*("+phaseBCompSym+"-"+phaseACompSym+")";
+                        MTFuncVal = "0";
+                    elseif strcmp(phaseASym,"V")
+                        MTFuncVal = "K_"+phaseLetter(1)+"_"+phaseLetter(2)+"_"+compNum{1}+"*("+phaseBCompSym+"-"+phaseACompSym+")";
                     else
-                        MTFuncVal = "k_"+phaseLetter+"_"+compNum{1}+"_"+phaseANum{1}+"_"+phaseBNum{1}+"/"+phaseASym+"*("+phaseBCompSym+"-"+phaseACompSym+")";
+                        MTFuncVal = "K_"+phaseLetter(1)+"_"+phaseLetter(2)+"_"+compNum{1}+"/"+phaseASym+"*("+phaseBCompSym+"-"+phaseACompSym+")";
                     end
+
             end
         end
     end

@@ -33,24 +33,24 @@ function val = unit_standardization(val,unit)
         val = val .* 1E3;
     elseif strcmp(unit,'mL')
         val = val .* 1E-3;
-    elseif strcmp(unit,"kPa")
+    elseif strcmp(unit,"bar")
         % pressure
-    elseif strcmp(unit,"Pa")
-        val = val ./ 1000;
+    elseif strcmp(unit,"kPa")
+        val = val ./ 100;
     elseif strcmp(unit,"MPa")
-        val = val .* 1000;
+        val = val .* 10;
     elseif strcmp(unit,'L/s')
         % volume per time
     elseif strcmp(unit,'m^3/s')
         val = val .* 1000;
     elseif strcmp(unit,'mL/s')
         val = val ./ 1000;
-    elseif strcmp(unit,'kPa/s')
+    elseif strcmp(unit,'bar/s')
         % pressure per time
+    elseif strcmp(unit,'kPa/s')
+        val = val ./ 100;
     elseif strcmp(unit,'MPa/s')
-        val = val .* 1000;
-    elseif strcmp(unit,'Pa/s')
-        val = val ./ 1000;
+        val = val .* 10;
     elseif strcmp(unit,"m")
         % length
     elseif strcmp(unit,"cm")
@@ -61,7 +61,5 @@ function val = unit_standardization(val,unit)
         % frequency
     elseif strcmp(unit,"rad/s")
         val = val ./ (2.*pi.*60);
-    else
-        val = val;
     end
 end

@@ -5,8 +5,6 @@ function latex_out = uni2latex(eqn)
         return;
     end
 
-    % test = eqn
-
     num_left_paren = regexp(eqn,'\(');
     num_right_paren = regexp(eqn,'\)');
     if length(num_left_paren) ~= length(num_right_paren), return; end
