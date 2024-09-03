@@ -1,6 +1,6 @@
 function latex_out = uni2latex(eqn)
     % capturing first operator (usually negative?)
-    if length(eqn) == 1
+    if isscalar(eqn)
         latex_out = eqn;
         return;
     end
