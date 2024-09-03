@@ -1,6 +1,6 @@
 # MAGMA: Microbial and Algal Growth Modeling Application
 ## Installation
-1. Navigate to MAGMA/Distribution/MAGMA/MAGMA_Installer.
+1. Navigate to MAGMA/MAGMA_Distribution/MAGMA_Installer.
 2. Download "MAGMA_Installer.exe".
 3. Run "MAGMA_Installer.exe".
 ## Usage
