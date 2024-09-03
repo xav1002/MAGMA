@@ -1,5 +1,5 @@
 function latex_out = uni2latex(eqn)
-    % capturing first operator (usually negative)
+    % capturing first operator (usually negative?)
     if length(eqn) == 1
         latex_out = eqn;
         return;
