@@ -28,17 +28,85 @@ classdef CompDefaults
 %             specD.Synechoccocus_elongatus_UTEX_2973.K_NO3_n = 0.032;
         end
 
-        function defaultFuncValue = getDefaultFuncVals(comp,funcType)
-            compType = comp.getType();
-            switch compType
-                case 'Biological Solute'
-                    switch funcType
-                        case 'Monod'
-                    end
-                case 'Chemical Solute'
-                    switch funcType
+        function [expr,descr,params] = getDefaultFuncVal(comp,funcType)
+            if strcmp(comp.getType(),'Biological Solute')
+                bioName = comp.getName();
+                bioNum = comp.getNum();
+                chemName = "Substrate";
+                chemNum = 1;
+            elseif strcmp(comp.getType(),'Chemical Solute')
+                chemName = comp.getName();
+                chemNum = comp.getNum();
+                bioName = "Biological Component";
+                chemNum = 1;
+            end
+            switch funcType
+                case 'Monod'
+                    expr = char("mu_max_" + bioNum + "*(C_"+chemNum+"/(K_"+bioNum+"_"+chemNum+"+C_"+chemNum+"))");
+                    descr = "Monod model expression that relates the concentration of $\mathit{\mathbf{C_"+chemNum+"}}$ to the specific growth rate of $\mathit{\mathbf{X_"+bioNum+"}}$. $\\$" + ...
+                        "Recommended Notation: $\\$ $\mu$_max_[# biological component] $\\$ K_[# biological component]_[# chemical substrate]";
 
-                    end
+                    param_syms = ["mu_max_"+bioNum,"K_{"+bioNum+"_{"+chemNum+"}}"];
+                    params = "$" + uni2latex(char(param_syms(1))) + "$: Maximum specific growth rate of $\mathit{\mathbf{X_"+bioNum+"}}$";
+                    params = params + "$\\" + uni2latex(char(param_syms(2))) + "$: Half-saturation constant for $\mathit{\mathbf{X_"+bioNum+"}}$ growth rate with respect to $\mathit{\mathbf{C_"+chemNum+"}}$";
+                case 'Moser'
+                    expr = char("mu_max_" + bioNum + "*((C_"+chemNum+"^(n_"+bioNum+"_"+chemNum+"))/(K_"+bioNum+"_"+chemNum+"+C_"+chemNum+"^(n_"+bioNum+"_"+chemNum+")))");
+                    descr = "Moser model expression that relates the concentration of $\mathit{\mathbf{C_"+chemNum+"}}$ to the specific growth rate of $\mathit{\mathbf{X_"+bioNum+"}}$. $\\$" + ...
+                        "Recommended Notation: $\\$ $\mu$_max_[# biological component] $\\$ K_[# biological component]_[# chemical substrate] $\\$ n_[# biological component]_[# chemical substrate]";
+
+                    param_syms = ["mu_max_"+bioNum,"K_{"+bioNum+"_{"+chemNum+"}}","n_"+bioNum+"_"+chemNum+""];
+                    params = "$" + uni2latex(char(param_syms(1))) + "$: Maximum specific growth rate of $\mathit{\mathbf{X_"+bioNum+"}}$";
+                    params = params + "$\\" + uni2latex(char(param_syms(2))) + "$: Half-saturation constant for $\mathit{\mathbf{X_"+bioNum+"}}$ growth rate with respect to $\mathit{\mathbf{C_"+chemNum+"}}$";
+                    params = params + "$\\" + uni2latex(char(param_syms(3))) + "$: Exponential parameter.";
+                case 'Contois'
+                    expr = char("mu_max_" + bioNum + "*(C_"+chemNum+"/(K_" + bioNum + "_"+chemNum+"*X_"+bioNum+"+C_"+chemNum+"))");
+                    descr = "Contois model expression that relates the concentration of $\mathit{\mathbf{C_"+chemNum+"}}$ to the specific growth rate of $\mathit{\mathbf{X_"+bioNum+"}}$. $\\$" + ...
+                        "Recommended Notation: $\\$ $\mu$_max_[# biological component] $\\$ K_[# biological component]_[# chemical substrate]";
+
+                    param_syms = ["mu_max_"+bioNum,"K_{"+bioNum+"_{"+chemNum+"}}"];
+                    params = "$" + uni2latex(char(param_syms(1))) + "$: Maximum specific growth rate of $\mathit{\mathbf{X_"+bioNum+"}}$";
+                    params = params + "$\\" + uni2latex(char(param_syms(2))) + "$: Contois constant for $\mathit{\mathbf{X_"+bioNum+"}}$ growth rate with respect to $\mathit{\mathbf{C_"+chemNum+"}}$";
+                case 'Haldane'
+                    expr = char("mu_max_" + bioNum + "*(C_"+chemNum+"/(K_"+bioNum+"_"+chemNum+"+C_"+chemNum+"))*(K_i_"+bioNum+"_"+chemNum+"/(K_i_"+bioNum+"_"+chemNum+"+C_"+chemNum+"))");
+                    descr = "Haldane model expression that relates the concentration of $\mathit{\mathbf{C_"+chemNum+"}}$ to the specific growth rate of $\mathit{\mathbf{X_"+bioNum+"}}$ while considering substrate inhibition of $\mathit{\mathbf{C_"+chemNum+"}}$. $\\$" + ...
+                        "Recommended Notation: $\\$ $\mu$_max_[# biological component] $\\$ K_[# biological component]_[# chemical substrate] $\\$ K_i_[# biological component]_[# chemical substrate]";
+
+                    param_syms = ["mu_max_"+bioNum,"K_{"+bioNum+"_{"+chemNum+"}}","K_i_"+bioNum+"_"+chemNum];
+                    params = "$" + uni2latex(char(param_syms(1))) + "$: Maximum specific growth rate of $\mathit{\mathbf{X_"+bioNum+"}}$";
+                    params = params + "$\\" + uni2latex(char(param_syms(2))) + "$: Half-saturation constant for $\mathit{\mathbf{X_"+bioNum+"}}$ growth rate with respect to $\mathit{\mathbf{C_"+chemNum+"}}$";
+                    params = params + "$\\" + uni2latex(char(param_syms(3))) + "$: Inhibition constant for $\mathit{\mathbf{X_"+bioNum+"}}$ growth rate with respect to $\mathit{\mathbf{C_"+chemNum+"}}$";
+                case 'Grant'
+                    expr = char("mu_max_" + bioNum + "*(1/(K_i_"+bioNum+"_"+chemNum+"+C_"+chemNum+"))");
+                    descr = "Grant model expression that considers the inhibition effect of $\mathit{\mathbf{C_"+chemNum+"}}$ on the specific growth rate of $\mathit{\mathbf{X_"+bioNum+"}}$. $\\$" + ...
+                        "Recommended Notation: $\\$ $\mu$_max_[# biological component] $\\$ K_i_[# biological component]_[# chemical substrate]";
+
+                    param_syms = ["mu_max_"+bioNum,"K_i_"+bioNum+"_"+chemNum];
+                    params = "$" + uni2latex(char(param_syms(1))) + "$: Maximum specific growth rate of $\mathit{\mathbf{X_"+bioNum+"}}$";
+                    params = params + "$\\" + uni2latex(char(param_syms(2))) + "$: Inhibition constant for $\mathit{\mathbf{X_"+bioNum+"}}$ growth rate with respect to $\mathit{\mathbf{C_"+chemNum+"}}$";
+                case 'Andrews'
+                    expr = char("mu_max_" + bioNum + "*(C_"+chemNum+"/(K_"+bioNum+"_"+chemNum+"+C_"+chemNum+"+(C_"+chemNum+"^2)/(K_i_"+bioNum+"_"+chemNum+")))");
+                    descr = "Andrews model expression that relates the concentration of $\mathit{\mathbf{C_"+chemNum+"}}$ to the specific growth rate of $\mathit{\mathbf{X_"+bioNum+"}}$ while considering substrate inhibition of $\mathit{\mathbf{C_"+chemNum+"}}$. $\\$" + ...
+                        "Recommended Notation: $\\$ $\mu$_max_[# biological component] $\\$ K_[# biological component]_[# chemical substrate] $\\$ K_i_[# biological component]_[# chemical substrate]";
+
+                    param_syms = ["mu_max_"+bioNum,"K_{"+bioNum+"_{"+chemNum+"}}","K_i_"+bioNum+"_"+chemNum];
+                    params = "$" + uni2latex(char(param_syms(1))) + "$: Maximum specific growth rate of $\mathit{\mathbf{X_"+bioNum+"}}$";
+                    params = params + "$\\" + uni2latex(char(param_syms(2))) + "$: Half-saturation constant for $\mathit{\mathbf{X_"+bioNum+"}}$ growth rate with respect to $\mathit{\mathbf{C_"+chemNum+"}}$";
+                    params = params + "$\\" + uni2latex(char(param_syms(3))) + "$: Inhibition constant for $\mathit{\mathbf{X_"+bioNum+"}}$ growth rate with respect to $\mathit{\mathbf{C_"+chemNum+"}}$";
+                % pH Model 1
+                % pH Model 2
+                % pH Model 3
+                % Martínez-Sancho
+                % Martínez
+                % Droop
+                % Caperon and Meyer
+                % Flynn
+                % van Oorschot
+                % Bannister
+                % Chalker
+                % Grima
+                % Ogbonna
+                % Steele
+                % Aiba
             end
         end
 

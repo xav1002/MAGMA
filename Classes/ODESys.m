@@ -947,9 +947,9 @@ classdef ODESys < handle
         end
 
         % sys: ODESys class ref, compName: string, funcType: string
-        function funcVal = getDefaultFuncVal(sys,compName,funcType)
+        function [expr,descr,params] = getDefaultFuncVal(sys,compName,funcType)
             comp = sys.getCompByName(compName);
-            funcVal = CompDefaults.getDefaultFuncVals(comp,funcType);
+            [expr,descr,params] = CompDefaults.getDefaultFuncVal(comp,funcType);
         end
 
         % sys: ODESys class ref, paramSym: string,

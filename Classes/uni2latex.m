@@ -110,7 +110,7 @@ function latex_out = uni2latex(eqn)
                     prev_operator_idx = operator_idx(find((end_paren_idx < operator_idx),1))-1;
                     eqn = [eqn(1:prev_operator_idx+1),'\frac{',eqn(prev_operator_idx+2:operator_idx(end)-1),'}{',eqn(operator_idx(end)+1:end),'}'];
                 end
-            elseif length(operator_idx) == 1
+            elseif isscalar(operator_idx)
                 eqn = ['\frac{',eqn(1:operator_idx(end)-1),'}{',eqn(operator_idx(end)+1:end),'}'];
             else
                 eqn = [eqn(1:operator_idx(end-1)),'\frac{',eqn(operator_idx(end-1)+1:operator_idx(end)-1),'}{',eqn(operator_idx(end)+1:end),'}'];
