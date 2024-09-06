@@ -46,7 +46,7 @@ classdef CompDefaults
                     descr = "Monod model expression that relates the concentration of $\mathit{\mathbf{C_"+chemNum+"}}$ to the specific growth rate of $\mathit{\mathbf{X_"+bioNum+"}}$. $\\$" + ...
                         "Recommended Notation: $\\$ $\mu$_max_[# biological component] $\\$ K_[# biological component]_[# chemical substrate]";
 
-                    param_syms = ["mu_max_"+bioNum,"K_{"+bioNum+"_{"+chemNum+"}}"];
+                    param_syms = ["mu_max_{"+bioNum+"}","K_{"+bioNum+"_{"+chemNum+"}}"];
                     params = "$" + uni2latex(char(param_syms(1))) + "$: Maximum specific growth rate of $\mathit{\mathbf{X_"+bioNum+"}}$";
                     params = params + "$\\" + uni2latex(char(param_syms(2))) + "$: Half-saturation constant for $\mathit{\mathbf{X_"+bioNum+"}}$ growth rate with respect to $\mathit{\mathbf{C_"+chemNum+"}}$";
                 case 'Moser'
@@ -54,7 +54,7 @@ classdef CompDefaults
                     descr = "Moser model expression that relates the concentration of $\mathit{\mathbf{C_"+chemNum+"}}$ to the specific growth rate of $\mathit{\mathbf{X_"+bioNum+"}}$. $\\$" + ...
                         "Recommended Notation: $\\$ $\mu$_max_[# biological component] $\\$ K_[# biological component]_[# chemical substrate] $\\$ n_[# biological component]_[# chemical substrate]";
 
-                    param_syms = ["mu_max_"+bioNum,"K_{"+bioNum+"_{"+chemNum+"}}","n_"+bioNum+"_"+chemNum+""];
+                    param_syms = ["mu_max_{"+bioNum+"}","K_{"+bioNum+"_{"+chemNum+"}}","n_{"+bioNum+"_{"+chemNum+"}}"];
                     params = "$" + uni2latex(char(param_syms(1))) + "$: Maximum specific growth rate of $\mathit{\mathbf{X_"+bioNum+"}}$";
                     params = params + "$\\" + uni2latex(char(param_syms(2))) + "$: Half-saturation constant for $\mathit{\mathbf{X_"+bioNum+"}}$ growth rate with respect to $\mathit{\mathbf{C_"+chemNum+"}}$";
                     params = params + "$\\" + uni2latex(char(param_syms(3))) + "$: Exponential parameter.";
@@ -63,15 +63,15 @@ classdef CompDefaults
                     descr = "Contois model expression that relates the concentration of $\mathit{\mathbf{C_"+chemNum+"}}$ to the specific growth rate of $\mathit{\mathbf{X_"+bioNum+"}}$. $\\$" + ...
                         "Recommended Notation: $\\$ $\mu$_max_[# biological component] $\\$ K_[# biological component]_[# chemical substrate]";
 
-                    param_syms = ["mu_max_"+bioNum,"K_{"+bioNum+"_{"+chemNum+"}}"];
+                    param_syms = ["mu_max_{"+bioNum+"}","K_{"+bioNum+"_{"+chemNum+"}}"];
                     params = "$" + uni2latex(char(param_syms(1))) + "$: Maximum specific growth rate of $\mathit{\mathbf{X_"+bioNum+"}}$";
-                    params = params + "$\\" + uni2latex(char(param_syms(2))) + "$: Contois constant for $\mathit{\mathbf{X_"+bioNum+"}}$ growth rate with respect to $\mathit{\mathbf{C_"+chemNum+"}}$";
+                    params = params + "$\\" + uni2latex(char(param_syms(2))) + "$: Contois model constant for $\mathit{\mathbf{X_"+bioNum+"}}$ growth rate with respect to $\mathit{\mathbf{C_"+chemNum+"}}$";
                 case 'Haldane'
                     expr = char("mu_max_" + bioNum + "*(C_"+chemNum+"/(K_"+bioNum+"_"+chemNum+"+C_"+chemNum+"))*(K_i_"+bioNum+"_"+chemNum+"/(K_i_"+bioNum+"_"+chemNum+"+C_"+chemNum+"))");
                     descr = "Haldane model expression that relates the concentration of $\mathit{\mathbf{C_"+chemNum+"}}$ to the specific growth rate of $\mathit{\mathbf{X_"+bioNum+"}}$ while considering substrate inhibition of $\mathit{\mathbf{C_"+chemNum+"}}$. $\\$" + ...
                         "Recommended Notation: $\\$ $\mu$_max_[# biological component] $\\$ K_[# biological component]_[# chemical substrate] $\\$ K_i_[# biological component]_[# chemical substrate]";
 
-                    param_syms = ["mu_max_"+bioNum,"K_{"+bioNum+"_{"+chemNum+"}}","K_i_"+bioNum+"_"+chemNum];
+                    param_syms = ["mu_max_{"+bioNum+"}","K_{"+bioNum+"_{"+chemNum+"}}","K_i_{"+bioNum+"_{"+chemNum+"}}"];
                     params = "$" + uni2latex(char(param_syms(1))) + "$: Maximum specific growth rate of $\mathit{\mathbf{X_"+bioNum+"}}$";
                     params = params + "$\\" + uni2latex(char(param_syms(2))) + "$: Half-saturation constant for $\mathit{\mathbf{X_"+bioNum+"}}$ growth rate with respect to $\mathit{\mathbf{C_"+chemNum+"}}$";
                     params = params + "$\\" + uni2latex(char(param_syms(3))) + "$: Inhibition constant for $\mathit{\mathbf{X_"+bioNum+"}}$ growth rate with respect to $\mathit{\mathbf{C_"+chemNum+"}}$";
@@ -80,7 +80,7 @@ classdef CompDefaults
                     descr = "Grant model expression that considers the inhibition effect of $\mathit{\mathbf{C_"+chemNum+"}}$ on the specific growth rate of $\mathit{\mathbf{X_"+bioNum+"}}$. $\\$" + ...
                         "Recommended Notation: $\\$ $\mu$_max_[# biological component] $\\$ K_i_[# biological component]_[# chemical substrate]";
 
-                    param_syms = ["mu_max_"+bioNum,"K_i_"+bioNum+"_"+chemNum];
+                    param_syms = ["mu_max_{"+bioNum+"}","K_i_{"+bioNum+"_{"+chemNum+"}}"];
                     params = "$" + uni2latex(char(param_syms(1))) + "$: Maximum specific growth rate of $\mathit{\mathbf{X_"+bioNum+"}}$";
                     params = params + "$\\" + uni2latex(char(param_syms(2))) + "$: Inhibition constant for $\mathit{\mathbf{X_"+bioNum+"}}$ growth rate with respect to $\mathit{\mathbf{C_"+chemNum+"}}$";
                 case 'Andrews'
@@ -88,25 +88,47 @@ classdef CompDefaults
                     descr = "Andrews model expression that relates the concentration of $\mathit{\mathbf{C_"+chemNum+"}}$ to the specific growth rate of $\mathit{\mathbf{X_"+bioNum+"}}$ while considering substrate inhibition of $\mathit{\mathbf{C_"+chemNum+"}}$. $\\$" + ...
                         "Recommended Notation: $\\$ $\mu$_max_[# biological component] $\\$ K_[# biological component]_[# chemical substrate] $\\$ K_i_[# biological component]_[# chemical substrate]";
 
-                    param_syms = ["mu_max_"+bioNum,"K_{"+bioNum+"_{"+chemNum+"}}","K_i_"+bioNum+"_"+chemNum];
+                    param_syms = ["mu_max_{"+bioNum+"}","K_{"+bioNum+"_{"+chemNum+"}}","K_i_{"+bioNum+"_{"+chemNum+"}}"];
                     params = "$" + uni2latex(char(param_syms(1))) + "$: Maximum specific growth rate of $\mathit{\mathbf{X_"+bioNum+"}}$";
                     params = params + "$\\" + uni2latex(char(param_syms(2))) + "$: Half-saturation constant for $\mathit{\mathbf{X_"+bioNum+"}}$ growth rate with respect to $\mathit{\mathbf{C_"+chemNum+"}}$";
                     params = params + "$\\" + uni2latex(char(param_syms(3))) + "$: Inhibition constant for $\mathit{\mathbf{X_"+bioNum+"}}$ growth rate with respect to $\mathit{\mathbf{C_"+chemNum+"}}$";
-                % pH Model 1
-                % pH Model 2
-                % pH Model 3
-                % Martínez-Sancho
-                % Martínez
-                % Droop
-                % Caperon and Meyer
-                % Flynn
-                % van Oorschot
-                % Bannister
-                % Chalker
-                % Grima
-                % Ogbonna
-                % Steele
-                % Aiba
+                case 'pH Model'
+                    expr = char("mu_max_" + bioNum + "/(1+K_i_"+bioNum+"_H3O/H3O+K_"+bioNum+"_H3O*H3O)");
+                    descr = "pH model expression that relates the concentration of $\mathit{\mathbf{H_3O^+}}$ to the specific growth rate of $\mathit{\mathbf{X_"+bioNum+"}}$ while considering inhibition effect of $\mathit{\mathbf{H_3O^+}}$ on growth rate. $\\$" + ...
+                        "Recommended Notation: $\\$ $\mu$_max_[# biological component] $\\$ K_i_[# biological component]_H3O $\\$ K_[# biological component]_H3O";
+
+                    param_syms = ["mu_max_{"+bioNum+"}","K_{"+bioNum+"_{H3O}}","K_i_{"+bioNum+"_{H3O}}"];
+                    params = "$" + uni2latex(char(param_syms(1))) + "$: Maximum specific growth rate of $\mathit{\mathbf{X_"+bioNum+"}}$";
+                    params = params + "$\\" + uni2latex(char(param_syms(2))) + "$: Half-saturation constant for $\mathit{\mathbf{X_"+bioNum+"}}$ growth rate with respect to $\mathit{\mathbf{H_3O^+}}$";
+                    params = params + "$\\" + uni2latex(char(param_syms(3))) + "$: Inhibition constant for $\mathit{\mathbf{X_"+bioNum+"}}$ growth rate with respect to $\mathit{\mathbf{H_3O^+}}$";
+                % case 'pH Model 2'
+                % case 'pH Model 3'
+                case 'Light Intensity: Tamiya'
+                    expr = char("mu_max_" + bioNum + "*(I/(K_"+bioNum+"_I+I))");
+                    descr = "Tamiya model expression that relates \textbf{average light intensity} to the specific growth rate of $\mathit{\mathbf{X_"+bioNum+"}}$. $\\$" + ...
+                        "Recommended Notation: $\\$ $\mu$_max_[# biological component] $\\$ K_[# biological component]_I";
+
+                    param_syms = ["mu_max_{"+bioNum+"}","K_{"+bioNum+"_I}"];
+                    params = "$" + uni2latex(char(param_syms(1))) + "$: Maximum specific growth rate of $\mathit{\mathbf{X_"+bioNum+"}}$";
+                    params = params + "$\\" + uni2latex(char(param_syms(2))) + "$: Half-saturation constant for $\mathit{\mathbf{X_"+bioNum+"}}$ growth rate with respect to \textbf{average light intensity}";
+                case 'Light Intensity: van Oorschot'
+                    expr = char("mu_max_" + bioNum + "*exp(1-I/K_"+bioNum+"_I)");
+                    descr = "van Oorschot model expression that relates \textbf{average light intensity} to the specific growth rate of $\mathit{\mathbf{X_"+bioNum+"}}$. $\\$" + ...
+                        "Recommended Notation: $\\$ $\mu$_max_[# biological component] $\\$ K_[# biological component]_I";
+
+                    param_syms = ["mu_max_{"+bioNum+"}","K_{"+bioNum+"_I}"];
+                    params = "$" + uni2latex(char(param_syms(1))) + "$: Maximum specific growth rate of $\mathit{\mathbf{X_"+bioNum+"}}$";
+                    params = params + "$\\" + uni2latex(char(param_syms(2))) + "$: van Oorschot model constant for $\mathit{\mathbf{X_"+bioNum+"}}$ growth rate with respect to \textbf{average light intensity}";
+                % case 'Light Intensity: Chalker'
+                case 'Light Intensity: Aiba'
+                    expr = char("mu_max_" + bioNum + "*(I/(K_"+bioNum+"_I+I+(I^2)/(K_i_"+bioNum+"_I)))");
+                    descr = "Tamiya model expression that relates \textbf{average light intensity} to the specific growth rate of $\mathit{\mathbf{X_"+bioNum+"}}$. $\\$" + ...
+                        "Recommended Notation: $\\$ $\mu$_max_[# biological component] $\\$ K_[# biological component]_I";
+
+                    param_syms = ["mu_max_{"+bioNum+"}","K_{"+bioNum+"_I}","K_i_{"+bioNum+"_I}"];
+                    params = "$" + uni2latex(char(param_syms(1))) + "$: Maximum specific growth rate of $\mathit{\mathbf{X_"+bioNum+"}}$";
+                    params = params + "$\\" + uni2latex(char(param_syms(2))) + "$: Half-saturation constant for $\mathit{\mathbf{X_"+bioNum+"}}$ growth rate with respect to \textbf{average light intensity}";
+                    params = params + "$\\" + uni2latex(char(param_syms(2))) + "$: Inhibition constant for $\mathit{\mathbf{X_"+bioNum+"}}$ growth rate with respect to \textbf{average light intensity}";
             end
         end
 
