@@ -336,7 +336,7 @@ classdef ODESys < handle
             lgtAttnModelName = params.lgtAttnModel;
             lgtBioAttn = params.lgtBioAttn;
             lgtChemAttn = params.lgtChemAttn;
-            [lgtAttnModel,newLgtMdlLaTeX,set_params] = sys.getLightAttnMdlAndLaTeX(reactorType,lgtAttnModelName,lgtBioAttn,lgtChemAttn);
+            [lgtAttnModel,newLgtMdlLaTeX,set_params] = sys.getLightAttnMdlAndLaTeX(reactorType,lgtAttnModelName,lgtBioAttn,lgtChemAttn,params);
 
             light_helper = sys.updateHelperFuncs("val",'Light Intensity','I',lgtAttnModel);
             syms = light_helper.getSubFuncParamSyms();
@@ -348,7 +348,12 @@ classdef ODESys < handle
         end
 
         % sys: ODESys class ref
-        function [lgtAttnModel,newLgtMdlLaTeX,set_params] = getLightAttnMdlAndLaTeX(sys,reactorType,lgtAttnModelName,lgtBioAttn,lgtChemAttn)
+        function [lgtAttnModel,newLgtMdlLaTeX,set_params] = getLightAttnMdlAndLaTeX(sys,reactorType,lgtAttnModelName,lgtBioAttn,lgtChemAttn,varargin)
+            if isempty(varargin)
+                calculate_set_params = false;
+            else
+                calculate_set_params = true;
+            end
             set_params = {};
 
             if ~lgtBioAttn && ~lgtChemAttn
@@ -382,7 +387,9 @@ classdef ODESys < handle
 
                     switch reactorType
                         case "Vertical Continuous Stirred Tank"
-                            set_params = {'D',params.tkDiam,'m';};
+                            if calculate_set_params
+                                set_params = {'D',params.tkDiam,'m'};
+                            end
 
                             switch lgtAttnModelName
                                 case "Beer-Lambert"
@@ -409,7 +416,9 @@ classdef ODESys < handle
                                 % case "Hyperbolic"
 
                         case "Flat Panel"
-                            set_params = {'L',params.tkD,'m'};
+                            if calculate_set_params
+                                set_params = {'L',params.tkD,'m'};
+                            end
 
                             switch lgtAttnModelName
                                 case "Beer-Lambert"
@@ -4715,6 +4724,7 @@ classdef ODESys < handle
                             elseif any(strcmp(environ_fields{m},{'T_comp','P_comp','V_comp','SV_comps','H3O_comp','OH_comp'}))
                                 try
                                     comp = ODESys_struct.(ODESys_fields{k}).(environ_names{l}).(environ_fields{m});
+                                    % test = comp
                                     comp_fields = fieldnames(comp);
                                     for n=1:1:length(comp_fields)
                                         if contains(comp_fields{n},'uncParams')
