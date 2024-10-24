@@ -30,7 +30,7 @@ classdef Plot < handle
             plot.title = title;
             for k=1:1:3
                 ICNames = string.empty(0,1);
-                for l=1:1:size(DVNames,1)
+                for l=2:1:size(DVNames,1)
                     ICNames(l,1) = string(DVNames(l,1))+"~(IC)";
                 end
                 min = 0;
@@ -228,6 +228,11 @@ classdef Plot < handle
         function updateVarOpts(plot,newVarOpts)
             for k=1:1:length(plot.axes)
                 plot.axes{k}.varNameOpts = string(newVarOpts(:,1));
+                ICNames = string(size(newVarOpts(:,2)));
+                for l=1:1:length(newVarOpts(:,2))
+                    ICNames(l) = newVarOpts{l}+"~(IC)";
+                end
+                plot.axes{k}.ICNames = string(ICNames);
             end
         end
     end

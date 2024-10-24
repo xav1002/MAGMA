@@ -111,7 +111,7 @@ classdef ODESys < handle
             sys.solver.Solver = 'ode45';
 
             % set default values
-            sys.environs.Photo_Bioreactor_PBR = Environment("Photo_Bioreactor_PBR",sys.getModelVarNames(),sys.getDefaultParamVals(true));
+            sys.environs.Photo_Bioreactor_PBR = Environment("Photo_Bioreactor_PBR",sys.getModelVarNames(["specs","chems","envs","helpers"]),sys.getDefaultParamVals(true));
             sys.checkLiqMaxVol();
 
             % adding helper functions for pH equilibrium values and pH, pOH
@@ -1310,7 +1310,8 @@ classdef ODESys < handle
             end
 
             if any(strcmp(names_req,"updateModel"))
-                comps = [sys.getSpecies('comp'),sys.getChemicals('comp')];
+                comps = [sys.getSpecies('comp'),sys.getChemicals('comp'),{ ...
+                    sys.environs.(sys.activeEnv).getH3OComp(),sys.environs.(sys.activeEnv).getOHComp()}];
                 for k=1:1:length(comps)
                     if strcmp(comps{k}.getType(),'Suspended Solid Sorbent')
                         vars{end+1,1} = [char(comps{k}.getSym()),' Inlet Volumetric Flow Rate']; %#ok<AGROW>
@@ -1843,6 +1844,7 @@ classdef ODESys < handle
                 comps_v_specs = sys.getSpecies('comp');
                 comps_v_chems = sys.getChemicals('comp');
                 sys.v = zeros(size(sys.var_in_key));
+                test11 = sys.var_in_key
                 for k=1:1:length(sys.var_in_key)
                     switch sys.var_in_key{k}
                         case 'dP_o'
@@ -1877,11 +1879,11 @@ classdef ODESys < handle
                                         case 'mL/s'
                                             flowrate = flowrate .* 1E-3;
                                     end
-                                    sys.v(k) = sys.v(k) + flowrate;
+                                    sys.IO_flowrates.L_i = sys.IO_flowrates.L_i + flowrate;
                                 end
                             end
 
-                            sys.IO_flowrates.L_i = sys.v(k);
+                            sys.v(k) = sys.IO_flowrates.L_i;
                             sys.IO_flowrates.L_i_idx = k;
                         case 'L_o'
                             sys.IO_flowrates.L_o = 0;
@@ -1895,10 +1897,10 @@ classdef ODESys < handle
                                         case 'mL/s'
                                             flowrate = flowrate .* 1E-3;
                                     end
-                                    sys.v(k) = sys.v(k) + flowrate;
+                                    sys.IO_flowrates.L_o = sys.IO_flowrates.L_o + flowrate;
                                 end
                             end
-                            sys.IO_flowrates.L_o = sys.v(k);
+                            sys.v(k) = sys.IO_flowrates.L_o;
                             sys.IO_flowrates.L_o_idx = k;
                         case 'D_i'
                             % this should be mass flow
@@ -1934,7 +1936,8 @@ classdef ODESys < handle
                                 sys.IO_flowrates.(string(sys.var_in_key{k})+"_idx") = k;
                             elseif contains(sys.var_in_key{k},'D_i_')
 
-                            elseif contains(sys.var_in_key{k},'_i') && (contains(sys.var_in_key{k},'C_') || contains(sys.var_in_key{k},'X_')) && ...
+                            elseif contains(sys.var_in_key{k},'_i') && (contains(sys.var_in_key{k},'C_') || contains(sys.var_in_key{k},'X_') || ...
+                                    contains(sys.var_in_key{k},'H3O') || contains(sys.var_in_key{k},'OH')) && ...
                                     ~contains(sys.var_in_key{k},'D_') && ~contains(sys.var_in_key{k},'L_s_')
                                 tot_mass = 0;
                                 tot_vol = 0;
@@ -1984,7 +1987,11 @@ classdef ODESys < handle
                                         end
                                     end
                                 end
-                                sys.v(k) = tot_mass/tot_vol;
+                                if tot_vol ~= 0
+                                    sys.v(k) = tot_mass/tot_vol;
+                                else
+                                    sys.v(k) = 0;
+                                end
                             elseif contains(sys.var_in_key{k},'_i') && contains(sys.var_in_key{k},'Y_')
 
                             elseif contains(sys.var_in_key{k},'_i') && contains(sys.var_in_key{k},'S_') && ~contains(sys.var_in_key{k},'D_') && ~contains(sys.var_in_key{k},'L_s_')
@@ -2542,7 +2549,6 @@ classdef ODESys < handle
                             dataT = table(y0_span_x,y0_span_y,y0_span_z,'VariableNames',{sysVar(xVarIdx,1),sysVar(yVarIdx,1),sysVar(zVarIdx,1)});
                         end
                     else
-                        test = sys.y0
                         [tRes,yRes] = sys.runModel(tSmooth,sys.y0);
                         % ### STARTHERE: need to fix this, debug
                         fRes = sys.calculateHelperVals(tRes,yRes);
@@ -2719,8 +2725,6 @@ classdef ODESys < handle
                 sys.solver.InitialTime = 0;
                 sys.solver.InitialValue = y0;
                 sys.solver.Parameters = sys.param;
-                test = sys.param(83)
-                test2 = sys.f(1,:)
                 S = solve(sys.solver,tspan(1),tspan(2));
                 tRes = S.Time';
                 yRes = S.Solution';
@@ -3355,7 +3359,6 @@ classdef ODESys < handle
 
         % sys: ODESys class ref
         function updateAllPlotVarOpts(sys)
-            test = sys.getModelVarNames("plot")
             for k=1:1:length(sys.plots)
                 sys.plots{k}.updateVarOpts(sys.getModelVarNames("plot"));
             end
@@ -3529,13 +3532,13 @@ classdef ODESys < handle
                             if strcmp(plot.getAxProp(axesDir,"varNames"),'')
                                 varNames = {varName};
                             else
-                                varNames = [plot.getAxProp(axesDir,"varNames"),{varName}];
+                                varNames = [plot.getAxProp(axesDir,"varNames");{varName}];
                             end
                             plot.updateAx(axesDir,"varNames",varNames);
                         end
                     else
                         varNames = plot.getAxProp(axesDir,"varNames");
-                        if length(varNames) == 1
+                        if isscalar(varNames)
                             varNames = {''};
                         else
                             varNames(strcmp(varNames,varName)) = [];
@@ -4026,7 +4029,9 @@ classdef ODESys < handle
 
         % sys: ODESys classs ref
         function strmData = getStrmTData(sys)
-            strmData = cell(size(sys.input_streams,1)+size(sys.output_streams,1),4);
+            if isempty(sys.input_streams), input_size = 0; else, input_size = size(sys.input_streams,1); end
+            if isempty(sys.output_streams), out_size = 0; else, out_size = size(sys.output_streams,1); end
+            strmData = cell(input_size+output_size,4);
             empty = true;
             for k=1:1:length(sys.input_streams)
                 strm = sys.input_streams{k};
@@ -4036,12 +4041,12 @@ classdef ODESys < handle
                 strmData{k,4} = strm.getDir();
                 empty = false;
             end
-            for k=length(sys.input_streams)+1:1:length(sys.input_streams)+length(sys.output_streams)
-                strm = sys.output_streams{k-length(sys.input_streams)};
-                strmData{k,1} = strm.getName();
-                strmData{k,2} = strm.getSym();
-                strmData{k,3} = strm.getPhase();
-                strmData{k,4} = strm.getDir();
+            for k=1:1:length(sys.output_streams)
+                strm = sys.output_streams{k};
+                strmData{k+length(sys.input_streams),1} = strm.getName();
+                strmData{k+length(sys.input_streams),2} = strm.getSym();
+                strmData{k+length(sys.input_streams),3} = strm.getPhase();
+                strmData{k+length(sys.input_streams),4} = strm.getDir();
                 empty = false;
             end
             if empty, strmData = {}; end
@@ -4750,7 +4755,7 @@ classdef ODESys < handle
                             elseif any(strcmp(environ_fields{m},{'T_comp','P_comp','V_comp','SV_comps','H3O_comp','OH_comp'}))
                                 try
                                     comp = ODESys_struct.(ODESys_fields{k}).(environ_names{l}).(environ_fields{m});
-                                    % test = comp
+                                    test = comp
                                     comp_fields = fieldnames(comp);
                                     for n=1:1:length(comp_fields)
                                         if contains(comp_fields{n},'uncParams')
