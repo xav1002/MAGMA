@@ -181,6 +181,8 @@ classdef ODESys < handle
             sys.save_model_bio_names = fieldnames(sys.species);
 
             sys.updateStrmAvailComps();
+
+            sys.updateAllPlotVarOpts();
         end
 
         % sys: ODESys class ref, num: number, name: string
@@ -233,6 +235,8 @@ classdef ODESys < handle
             sys.save_model_chem_names = fieldnames(sys.chemicals);
 
             sys.updateStrmAvailComps();
+
+            sys.updateAllPlotVarOpts();
         end
 
         % sys: ODESys class ref, name: string, field: string, val: number | string
@@ -353,6 +357,7 @@ classdef ODESys < handle
                 calculate_set_params = false;
             else
                 calculate_set_params = true;
+                params = varargin{1};
             end
             set_params = {};
 
@@ -503,6 +508,8 @@ classdef ODESys < handle
             sys.save_model_bio_names = fieldnames(sys.species);
 
             sys.updateStrmAvailComps();
+
+            sys.updateAllPlotVarOpts();
         end
 
         % sys: ODESys class ref, name: string
@@ -543,6 +550,8 @@ classdef ODESys < handle
             sys.save_model_chem_names = fieldnames(sys.chemicals);
 
             sys.updateStrmAvailComps();
+
+            sys.updateAllPlotVarOpts();
         end
 
         % sys: ODESys class ref
@@ -2533,6 +2542,7 @@ classdef ODESys < handle
                             dataT = table(y0_span_x,y0_span_y,y0_span_z,'VariableNames',{sysVar(xVarIdx,1),sysVar(yVarIdx,1),sysVar(zVarIdx,1)});
                         end
                     else
+                        test = sys.y0
                         [tRes,yRes] = sys.runModel(tSmooth,sys.y0);
                         % ### STARTHERE: need to fix this, debug
                         fRes = sys.calculateHelperVals(tRes,yRes);
@@ -2709,6 +2719,8 @@ classdef ODESys < handle
                 sys.solver.InitialTime = 0;
                 sys.solver.InitialValue = y0;
                 sys.solver.Parameters = sys.param;
+                test = sys.param(83)
+                test2 = sys.f(1,:)
                 S = solve(sys.solver,tspan(1),tspan(2));
                 tRes = S.Time';
                 yRes = S.Solution';
@@ -3338,6 +3350,20 @@ classdef ODESys < handle
             plot = sys.getPlotByName(plotName);
             plot.updatePlot("title",title);
             plot.updatePlot("dimNb",dimNb);
+            axes = plot.getAllAxProps();
+        end
+
+        % sys: ODESys class ref
+        function updateAllPlotVarOpts(sys)
+            test = sys.getModelVarNames("plot")
+            for k=1:1:length(sys.plots)
+                sys.plots{k}.updateVarOpts(sys.getModelVarNames("plot"));
+            end
+        end
+
+        % sys: ODESys class ref, plotName
+        function axes = getAxesUIByPlotName(sys,plotName)
+            plot = sys.getPlotByName(plotName);
             axes = plot.getAllAxProps();
         end
 

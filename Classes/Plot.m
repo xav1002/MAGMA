@@ -223,6 +223,13 @@ classdef Plot < handle
                 end
             end
         end
+
+        % plot: Plot class ref, newVarOpts: string[]
+        function updateVarOpts(plot,newVarOpts)
+            for k=1:1:length(plot.axes)
+                plot.axes{k}.varNameOpts = string(newVarOpts(:,1));
+            end
+        end
     end
 
     methods (Static)
