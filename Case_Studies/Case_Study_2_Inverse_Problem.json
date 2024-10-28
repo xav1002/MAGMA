@@ -1,0 +1,4165 @@
+{
+  "save_type": "file",
+  "save_file_name": "C:\\Users\\xuvin\\matlab\\MAGMA\\CS2_fitting.json",
+  "save_db_handle": "",
+  "save_model_name": [
+    "RPET Example"
+  ],
+  "save_model_desc": [
+    "RPET utilization of TPA and EG (PETE plastic hydrolysate) as dual carbon sources."
+  ],
+  "save_model_bio_names": [
+    "RPET"
+  ],
+  "save_model_chem_names": [
+    "TPA",
+    "EG"
+  ],
+  "save_model_ref_str": "",
+  "is_link": false,
+  "species": {
+    "RPET": {
+      "number": 1,
+      "name": "RPET",
+      "initConc": 0.0957,
+      "initConcUnit": "g/L",
+      "funcParams": [
+        {
+          "funcVal": "mu_max_1*X_1*(C_1/(K_1_1+C_1))+mu_max_2*X_1*(C_2/(K_1_2+C_2))-k_d*X_1",
+          "funcName": "BioGovFunc",
+          "funcType": "",
+          "params": [
+            {
+              "locNum": 1,
+              "gloNum": 1,
+              "name": "K_1_1",
+              "sym": "K_1_1",
+              "val": 1,
+              "unit": "",
+              "editable": "true"
+            },
+            {
+              "locNum": 2,
+              "gloNum": 1,
+              "name": "K_1_2",
+              "sym": "K_1_2",
+              "val": 15,
+              "unit": "",
+              "editable": "true"
+            },
+            {
+              "locNum": 3,
+              "gloNum": 1,
+              "name": "k_d",
+              "sym": "k_d",
+              "val": 0.005,
+              "unit": "",
+              "editable": "true"
+            },
+            {
+              "locNum": 4,
+              "gloNum": 1,
+              "name": "mu_max_1",
+              "sym": "mu_max_1",
+              "val": 0.10931795965175548,
+              "unit": "",
+              "editable": "true"
+            },
+            {
+              "locNum": 5,
+              "gloNum": 1,
+              "name": "mu_max_2",
+              "sym": "mu_max_2",
+              "val": 0.01984196319033945,
+              "unit": "",
+              "editable": "true"
+            }
+          ],
+          "lims": []
+        }
+      ],
+      "sym": "X_1",
+      "type": "Biological Solute",
+      "h_const": "N/A",
+      "h_const_u": "",
+      "h_const_sym": "",
+      "dh_const": "N/A",
+      "dh_const_u": "",
+      "dh_const_sym": "",
+      "h_const_helper_funcs": [],
+      "is_vol": false,
+      "bulk_gas_sym": "",
+      "gasBulkFuncParams": [],
+      "gasBulkHelpers": [],
+      "sorped_sym": [],
+      "sorpFuncParams": [],
+      "sorpVolFuncParams": [],
+      "sorpHelpers": [],
+      "sorpTInfo": [],
+      "MW": 0,
+      "MW_sym": "MW_X_1",
+      "den": 1,
+      "den_u": "",
+      "den_sym": "",
+      "Cp": 1,
+      "Cp_u": "",
+      "Cp_sym": "",
+      "Cpg": 1,
+      "Cpg_u": "",
+      "Cpg_sym": ""
+    }
+  },
+  "chemicals": {
+    "TPA": {
+      "number": 1,
+      "name": "TPA",
+      "initConc": 43.8743,
+      "initConcUnit": "g/L",
+      "funcParams": [
+        {
+          "funcVal": "-Y_1_1*mu_max_1*X_1*(C_1/(K_1_1+C_1))",
+          "funcName": "BioGovFunc",
+          "funcType": "",
+          "params": [
+            {
+              "locNum": 1,
+              "gloNum": 1,
+              "name": "K_1_1",
+              "sym": "K_1_1",
+              "val": 1,
+              "unit": "",
+              "editable": "true"
+            },
+            {
+              "locNum": 2,
+              "gloNum": 1,
+              "name": "Y_1_1",
+              "sym": "Y_1_1",
+              "val": 7.5,
+              "unit": "",
+              "editable": "true"
+            },
+            {
+              "locNum": 3,
+              "gloNum": 1,
+              "name": "mu_max_1",
+              "sym": "mu_max_1",
+              "val": 0.10931795965175548,
+              "unit": "",
+              "editable": "true"
+            }
+          ],
+          "lims": []
+        }
+      ],
+      "sym": "C_1",
+      "type": "Chemical Solute",
+      "h_const": "N/A",
+      "h_const_u": "",
+      "h_const_sym": "",
+      "dh_const": "N/A",
+      "dh_const_u": "",
+      "dh_const_sym": "",
+      "h_const_helper_funcs": [],
+      "is_vol": false,
+      "bulk_gas_sym": "",
+      "gasBulkFuncParams": [],
+      "gasBulkHelpers": [],
+      "sorped_sym": [],
+      "sorpFuncParams": [],
+      "sorpVolFuncParams": [],
+      "sorpHelpers": [],
+      "sorpTInfo": [],
+      "MW": 0,
+      "MW_sym": "MW_C_1",
+      "den": 1,
+      "den_u": "",
+      "den_sym": "",
+      "Cp": 1,
+      "Cp_u": "",
+      "Cp_sym": "",
+      "Cpg": 1,
+      "Cpg_u": "",
+      "Cpg_sym": ""
+    },
+    "EG": {
+      "number": 2,
+      "name": "EG",
+      "initConc": 44.7263,
+      "initConcUnit": "g/L",
+      "funcParams": [
+        {
+          "funcVal": "-Y_1_2*mu_max_2*X_1*(C_2/(K_1_2+C_2))",
+          "funcName": "BioGovFunc",
+          "funcType": "",
+          "params": [
+            {
+              "locNum": 1,
+              "gloNum": 1,
+              "name": "K_1_2",
+              "sym": "K_1_2",
+              "val": 15,
+              "unit": "",
+              "editable": "true"
+            },
+            {
+              "locNum": 2,
+              "gloNum": 1,
+              "name": "Y_1_2",
+              "sym": "Y_1_2",
+              "val": 15,
+              "unit": "",
+              "editable": "true"
+            },
+            {
+              "locNum": 3,
+              "gloNum": 1,
+              "name": "mu_max_2",
+              "sym": "mu_max_2",
+              "val": 0.01984196319033945,
+              "unit": "",
+              "editable": "true"
+            }
+          ],
+          "lims": []
+        }
+      ],
+      "sym": "C_2",
+      "type": "Chemical Solute",
+      "h_const": "N/A",
+      "h_const_u": "",
+      "h_const_sym": "",
+      "dh_const": "N/A",
+      "dh_const_u": "",
+      "dh_const_sym": "",
+      "h_const_helper_funcs": [],
+      "is_vol": false,
+      "bulk_gas_sym": "",
+      "gasBulkFuncParams": [],
+      "gasBulkHelpers": [],
+      "sorped_sym": [],
+      "sorpFuncParams": [],
+      "sorpVolFuncParams": [],
+      "sorpHelpers": [],
+      "sorpTInfo": [],
+      "MW": 0,
+      "MW_sym": "MW_C_2",
+      "den": 1,
+      "den_u": "",
+      "den_sym": "",
+      "Cp": 1,
+      "Cp_u": "",
+      "Cp_sym": "",
+      "Cpg": 1,
+      "Cpg_u": "",
+      "Cpg_sym": ""
+    }
+  },
+  "environs": {
+    "Photo_Bioreactor_PBR": {
+      "name": "Photo_Bioreactor_PBR",
+      "reactorType": "Flat Panel",
+      "reactorSpecificParams": {
+        "tkH": 1,
+        "tkW": 1,
+        "tkD": 0.05,
+        "maxVol": 50,
+        "lgtAttnModel": "Beer-Lambert",
+        "lgtBioAttn": false,
+        "lgtChemAttn": false
+      },
+      "subfuncs": [
+        {
+          "funcVal": "100",
+          "funcName": "Incident Light",
+          "funcSym": "I_0",
+          "funcLaTeX": "",
+          "params": [],
+          "lims": {
+            "lowerLim": 0,
+            "upperLim": 0
+          },
+          "editable": false
+        },
+        {
+          "funcVal": "50",
+          "funcName": "Maximum Volume",
+          "funcSym": "V_m",
+          "funcLaTeX": "",
+          "params": [],
+          "lims": {
+            "lowerLim": 0,
+            "upperLim": 0
+          },
+          "editable": false
+        }
+      ],
+      "T_comp": {
+        "number": 0,
+        "name": "Temperature",
+        "initConc": 30,
+        "initConcUnit": "C",
+        "funcParams": [
+          {
+            "funcVal": "0",
+            "funcName": "TempFunc",
+            "funcType": "None",
+            "params": [],
+            "lims": []
+          }
+        ],
+        "sym": "T",
+        "type": "temp",
+        "h_const": "N/A",
+        "h_const_u": "",
+        "h_const_sym": "",
+        "dh_const": "N/A",
+        "dh_const_u": "",
+        "dh_const_sym": "",
+        "h_const_helper_funcs": [],
+        "is_vol": false,
+        "bulk_gas_sym": "",
+        "gasBulkFuncParams": [],
+        "gasBulkHelpers": [],
+        "sorped_sym": [],
+        "sorpFuncParams": [],
+        "sorpVolFuncParams": [],
+        "sorpHelpers": [],
+        "sorpTInfo": [],
+        "MW": 0,
+        "MW_sym": "MW_T",
+        "den": 1,
+        "den_u": "",
+        "den_sym": "",
+        "Cp": 1,
+        "Cp_u": "",
+        "Cp_sym": "",
+        "Cpg": 1,
+        "Cpg_u": "",
+        "Cpg_sym": ""
+      },
+      "P_comp": {
+        "number": 0,
+        "name": "Pressure",
+        "initConc": 1.01325,
+        "initConcUnit": "kPa",
+        "funcParams": [
+          {
+            "funcVal": "0",
+            "funcName": "PressFunc",
+            "funcType": "None",
+            "params": [],
+            "lims": []
+          },
+          {
+            "funcVal": "P/(V_m-V_tot)*(L_i-L_o)",
+            "funcName": "Pressure Dilution",
+            "funcType": "None",
+            "params": [],
+            "lims": []
+          }
+        ],
+        "sym": "P",
+        "type": "press",
+        "h_const": "N/A",
+        "h_const_u": "",
+        "h_const_sym": "",
+        "dh_const": "N/A",
+        "dh_const_u": "",
+        "dh_const_sym": "",
+        "h_const_helper_funcs": [],
+        "is_vol": false,
+        "bulk_gas_sym": "",
+        "gasBulkFuncParams": [],
+        "gasBulkHelpers": [],
+        "sorped_sym": [],
+        "sorpFuncParams": [],
+        "sorpVolFuncParams": [],
+        "sorpHelpers": [],
+        "sorpTInfo": [],
+        "MW": 0,
+        "MW_sym": "MW_P",
+        "den": 1,
+        "den_u": "",
+        "den_sym": "",
+        "Cp": 1,
+        "Cp_u": "",
+        "Cp_sym": "",
+        "Cpg": 1,
+        "Cpg_u": "",
+        "Cpg_sym": ""
+      },
+      "V_comp": {
+        "number": 0,
+        "name": "Volume",
+        "initConc": "49.5",
+        "initConcUnit": "L",
+        "funcParams": [
+          {
+            "funcVal": "0",
+            "funcName": "VolFunc",
+            "funcType": "None",
+            "params": [],
+            "lims": []
+          },
+          {
+            "funcVal": "0",
+            "funcName": "Liquid Flow Function",
+            "funcType": "None",
+            "params": [],
+            "lims": []
+          }
+        ],
+        "sym": "V",
+        "type": "vol",
+        "h_const": "N/A",
+        "h_const_u": "",
+        "h_const_sym": "",
+        "dh_const": "N/A",
+        "dh_const_u": "",
+        "dh_const_sym": "",
+        "h_const_helper_funcs": [],
+        "is_vol": false,
+        "bulk_gas_sym": "",
+        "gasBulkFuncParams": [],
+        "gasBulkHelpers": [],
+        "sorped_sym": [],
+        "sorpFuncParams": [],
+        "sorpVolFuncParams": [],
+        "sorpHelpers": [],
+        "sorpTInfo": [],
+        "MW": 0,
+        "MW_sym": "MW_V",
+        "den": 1,
+        "den_u": "",
+        "den_sym": "",
+        "Cp": 1,
+        "Cp_u": "",
+        "Cp_sym": "",
+        "Cpg": 1,
+        "Cpg_u": "",
+        "Cpg_sym": ""
+      },
+      "SV_comps": [],
+      "H3O_comp": {
+        "number": 0,
+        "name": "Hydronium",
+        "initConc": 1.9023E-6,
+        "initConcUnit": "M",
+        "funcParams": [
+          {
+            "funcVal": "0",
+            "funcName": "AcidFunc",
+            "funcType": "None",
+            "params": [],
+            "lims": []
+          },
+          {
+            "funcVal": "k_pH*(H3O_eq-H3O)",
+            "funcName": "pH Equilibrium",
+            "funcType": "None",
+            "params": [
+              {
+                "locNum": 1,
+                "gloNum": 1,
+                "name": "k_pH",
+                "sym": "k_pH",
+                "val": 1,
+                "unit": "",
+                "editable": "true"
+              }
+            ],
+            "lims": []
+          }
+        ],
+        "sym": "H3O",
+        "type": "acid",
+        "h_const": "N/A",
+        "h_const_u": "",
+        "h_const_sym": "",
+        "dh_const": "N/A",
+        "dh_const_u": "",
+        "dh_const_sym": "",
+        "h_const_helper_funcs": [],
+        "is_vol": false,
+        "bulk_gas_sym": "",
+        "gasBulkFuncParams": [],
+        "gasBulkHelpers": [],
+        "sorped_sym": [],
+        "sorpFuncParams": [],
+        "sorpVolFuncParams": [],
+        "sorpHelpers": [],
+        "sorpTInfo": [],
+        "MW": 19.023,
+        "MW_sym": "MW_H3O",
+        "den": 1,
+        "den_u": "",
+        "den_sym": "",
+        "Cp": 1,
+        "Cp_u": "",
+        "Cp_sym": "",
+        "Cpg": 1,
+        "Cpg_u": "",
+        "Cpg_sym": ""
+      },
+      "OH_comp": {
+        "number": 0,
+        "name": "Hydroxide",
+        "initConc": 1.7007E-6,
+        "initConcUnit": "M",
+        "funcParams": [
+          {
+            "funcVal": "0",
+            "funcName": "BaseFunc",
+            "funcType": "None",
+            "params": [],
+            "lims": []
+          },
+          {
+            "funcVal": "k_pH*(OH_eq-OH)",
+            "funcName": "pH Equilibrium",
+            "funcType": "None",
+            "params": [
+              {
+                "locNum": 1,
+                "gloNum": 1,
+                "name": "k_pH",
+                "sym": "k_pH",
+                "val": 1,
+                "unit": "",
+                "editable": "true"
+              }
+            ],
+            "lims": []
+          }
+        ],
+        "sym": "OH",
+        "type": "base",
+        "h_const": "N/A",
+        "h_const_u": "",
+        "h_const_sym": "",
+        "dh_const": "N/A",
+        "dh_const_u": "",
+        "dh_const_sym": "",
+        "h_const_helper_funcs": [],
+        "is_vol": false,
+        "bulk_gas_sym": "",
+        "gasBulkFuncParams": [],
+        "gasBulkHelpers": [],
+        "sorped_sym": [],
+        "sorpFuncParams": [],
+        "sorpVolFuncParams": [],
+        "sorpHelpers": [],
+        "sorpTInfo": [],
+        "MW": 17.007,
+        "MW_sym": "MW_OH",
+        "den": 1,
+        "den_u": "",
+        "den_sym": "",
+        "Cp": 1,
+        "Cp_u": "",
+        "Cp_sym": "",
+        "Cpg": 1,
+        "Cpg_u": "",
+        "Cpg_sym": ""
+      },
+      "K_w": 1E-14
+    }
+  },
+  "activeEnv": "Photo_Bioreactor_PBR",
+  "model_runtime": 60,
+  "currentCompName": "",
+  "currentFuncName": "",
+  "currentFuncVal": "",
+  "currentFuncCombo": "",
+  "currentFuncType": "",
+  "editing": false,
+  "solver": {
+    "AbsoluteTolerance": 1E-6,
+    "RelativeTolerance": 0.001,
+    "Solver": "ode45",
+    "SolverOptions": {
+      "InitialStep": [],
+      "MaxStep": [],
+      "NormControl": "off",
+      "OutputFcn": [],
+      "OutputSelection": []
+    }
+  },
+  "max_reg_runtime": 2,
+  "max_reg_runtime_u": "min",
+  "degree": 3,
+  "dydt": "@(t,y,p,f,v)[p(4)*y(1)*(y(2)/(p(1)+y(2)))+p(5)*y(1)*(y(3)/(p(2)+y(3)))-p(3)*y(1);-p(7)*p(8)*y(1)*(y(2)/(p(6)+y(2)));-p(10)*p(11)*y(1)*(y(3)/(p(9)+y(3)));0;0+y(5)/(f{2}(t,y,p,f,v)-f{8}(t,y,p,f,v))*(v(1)-v(2));0+0;0+p(12)*(f{3}(t,y,p,f,v)-y(7));0+p(13)*(f{4}(t,y,p,f,v)-y(8))]",
+  "param": [
+    1,
+    15,
+    0.005,
+    0.10931795965175548,
+    0.01984196319033945,
+    1,
+    7.5,
+    0.10931795965175548,
+    15,
+    15,
+    0.01984196319033945,
+    1,
+    1,
+    1E-14,
+    19.023,
+    17.007,
+    1E-14,
+    19.023,
+    17.007,
+    19.023,
+    19.023
+  ],
+  "f": [
+    "Incident Light",
+    "Maximum Volume",
+    "Equilibrium Hydrionium Concentration",
+    "Equilibrium Hydroxide Concentration",
+    "pH",
+    "pOH",
+    "Light Intensity",
+    "Total Solvent Volume",
+    "I_0",
+    "V_m",
+    "H3O_eq",
+    "OH_eq",
+    "pH",
+    "pOH",
+    "I",
+    "V_tot",
+    "@(t,y,p,f,v)100",
+    "@(t,y,p,f,v)50",
+    "@(t,y,p,f,v)(p(14)/y(8)*(p(16))*(p(15)))",
+    "@(t,y,p,f,v)(p(17)/y(7)*(p(18))*(p(19)))",
+    "@(t,y,p,f,v)-log10(y(7)/p(20))",
+    "@(t,y,p,f,v)-log10(y(8)/p(21))",
+    "@(t,y,p,f,v)f{1}(t,y,p,f,v)",
+    "@(t,y,p,f,v)y(6)"
+  ],
+  "helperFuncs": [
+    {
+      "funcVal": "(K_w/OH*(MW_OH)*(MW_H3O))",
+      "funcName": "Equilibrium Hydrionium Concentration",
+      "funcSym": "H3O_eq",
+      "funcLaTeX": "",
+      "params": [
+        {
+          "num": 1,
+          "func": "Equilibrium Hydrionium Concentration",
+          "name": "K_w",
+          "sym": "K_w",
+          "val": 1E-14,
+          "unit": "mol/L",
+          "editable": "false"
+        },
+        {
+          "num": 2,
+          "func": "Equilibrium Hydrionium Concentration",
+          "name": "MW_H3O",
+          "sym": "MW_H3O",
+          "val": 19.023,
+          "unit": "g/mol",
+          "editable": "false"
+        },
+        {
+          "num": 3,
+          "func": "Equilibrium Hydrionium Concentration",
+          "name": "MW_OH",
+          "sym": "MW_OH",
+          "val": 17.007,
+          "unit": "g/mol",
+          "editable": "false"
+        }
+      ],
+      "lims": {
+        "lowerLim": 0,
+        "upperLim": 0
+      },
+      "editable": false
+    },
+    {
+      "funcVal": "(K_w/H3O*(MW_H3O)*(MW_OH))",
+      "funcName": "Equilibrium Hydroxide Concentration",
+      "funcSym": "OH_eq",
+      "funcLaTeX": "",
+      "params": [
+        {
+          "num": 1,
+          "func": "Equilibrium Hydroxide Concentration",
+          "name": "K_w",
+          "sym": "K_w",
+          "val": 1E-14,
+          "unit": "mol/L",
+          "editable": "false"
+        },
+        {
+          "num": 2,
+          "func": "Equilibrium Hydroxide Concentration",
+          "name": "MW_H3O",
+          "sym": "MW_H3O",
+          "val": 19.023,
+          "unit": "g/mol",
+          "editable": "false"
+        },
+        {
+          "num": 3,
+          "func": "Equilibrium Hydroxide Concentration",
+          "name": "MW_OH",
+          "sym": "MW_OH",
+          "val": 17.007,
+          "unit": "g/mol",
+          "editable": "false"
+        }
+      ],
+      "lims": {
+        "lowerLim": 0,
+        "upperLim": 0
+      },
+      "editable": false
+    },
+    {
+      "funcVal": "-log10(H3O/MW_H3O)",
+      "funcName": "pH",
+      "funcSym": "pH",
+      "funcLaTeX": "",
+      "params": [
+        {
+          "num": 1,
+          "func": "pH",
+          "name": "MW_H3O",
+          "sym": "MW_H3O",
+          "val": 19.023,
+          "unit": "g/mol",
+          "editable": "false"
+        }
+      ],
+      "lims": {
+        "lowerLim": 0,
+        "upperLim": 0
+      },
+      "editable": false
+    },
+    {
+      "funcVal": "-log10(OH/MW_H3O)",
+      "funcName": "pOH",
+      "funcSym": "pOH",
+      "funcLaTeX": "",
+      "params": [
+        {
+          "num": 1,
+          "func": "pOH",
+          "name": "MW_H3O",
+          "sym": "MW_H3O",
+          "val": 19.023,
+          "unit": "g/mol",
+          "editable": "false"
+        }
+      ],
+      "lims": {
+        "lowerLim": 0,
+        "upperLim": 0
+      },
+      "editable": false
+    },
+    {
+      "funcVal": "I_0",
+      "funcName": "Light Intensity",
+      "funcSym": "I",
+      "funcLaTeX": "I=I_{0}",
+      "params": [],
+      "lims": {
+        "lowerLim": 0,
+        "upperLim": 0
+      },
+      "editable": false
+    },
+    {
+      "funcVal": "V",
+      "funcName": "Total Solvent Volume",
+      "funcSym": "V_tot",
+      "funcLaTeX": "",
+      "params": [],
+      "lims": {
+        "lowerLim": 0,
+        "upperLim": 0
+      },
+      "editable": false
+    }
+  ],
+  "y0": [
+    0.0957,
+    43.8743,
+    44.7263,
+    303.15,
+    0.010132,
+    49.5,
+    1.9023E-6,
+    1.7007E-6
+  ],
+  "v": [
+    0,
+    0
+  ],
+  "nonNegSysVars": [],
+  "solverNonNeg": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "manual_console_stop_calculation": false,
+  "plots": [
+    {
+      "title": "Plot 1",
+      "axes": [
+        {
+          "dir": 1,
+          "title": "X Axis Title",
+          "varNames": "Model Runtime",
+          "varNameOpts": [
+            "Model Runtime",
+            "RPET (Liquid Phase)",
+            "TPA (Liquid Phase)",
+            "EG (Liquid Phase)",
+            "Temperature",
+            "Pressure",
+            "Volume",
+            "Hydronium Concentration",
+            "Hydroxide Concentration",
+            "Incident Light",
+            "Maximum Volume",
+            "Equilibrium Hydrionium Concentration",
+            "Equilibrium Hydroxide Concentration",
+            "pH",
+            "pOH",
+            "Light Intensity",
+            "Total Solvent Volume"
+          ],
+          "loDispLim": 0,
+          "upDispLim": 100,
+          "useDefR": true,
+          "varUnits": [
+            ""
+          ],
+          "evaltVal": [
+            0
+          ],
+          "loEvalLim": [
+            0
+          ],
+          "upEvalLim": [
+            0
+          ],
+          "nbEvalPts": [
+            50
+          ],
+          "isDV": false,
+          "varIsIC": false,
+          "ICNames": [
+            "Model Runtime~(IC)",
+            "RPET (Liquid Phase)~(IC)",
+            "TPA (Liquid Phase)~(IC)",
+            "EG (Liquid Phase)~(IC)",
+            "Temperature~(IC)",
+            "Pressure~(IC)",
+            "Volume~(IC)",
+            "Hydronium Concentration~(IC)",
+            "Hydroxide Concentration~(IC)",
+            "Incident Light~(IC)",
+            "Maximum Volume~(IC)",
+            "Equilibrium Hydrionium Concentration~(IC)",
+            "Equilibrium Hydroxide Concentration~(IC)",
+            "pH~(IC)",
+            "pOH~(IC)",
+            "Light Intensity~(IC)",
+            "Total Solvent Volume~(IC)"
+          ]
+        },
+        {
+          "dir": 2,
+          "title": "Y Axis (left) Title",
+          "varNames": [
+            "TPA (Liquid Phase)",
+            "EG (Liquid Phase)"
+          ],
+          "varNameOpts": [
+            "Model Runtime",
+            "RPET (Liquid Phase)",
+            "TPA (Liquid Phase)",
+            "EG (Liquid Phase)",
+            "Temperature",
+            "Pressure",
+            "Volume",
+            "Hydronium Concentration",
+            "Hydroxide Concentration",
+            "Incident Light",
+            "Maximum Volume",
+            "Equilibrium Hydrionium Concentration",
+            "Equilibrium Hydroxide Concentration",
+            "pH",
+            "pOH",
+            "Light Intensity",
+            "Total Solvent Volume"
+          ],
+          "loDispLim": 0,
+          "upDispLim": 100,
+          "useDefR": true,
+          "varUnits": [
+            ""
+          ],
+          "evaltVal": [
+            0
+          ],
+          "loEvalLim": [
+            0
+          ],
+          "upEvalLim": [
+            0
+          ],
+          "nbEvalPts": [
+            50
+          ],
+          "isDV": true,
+          "varIsIC": false,
+          "ICNames": [
+            "Model Runtime~(IC)",
+            "RPET (Liquid Phase)~(IC)",
+            "TPA (Liquid Phase)~(IC)",
+            "EG (Liquid Phase)~(IC)",
+            "Temperature~(IC)",
+            "Pressure~(IC)",
+            "Volume~(IC)",
+            "Hydronium Concentration~(IC)",
+            "Hydroxide Concentration~(IC)",
+            "Incident Light~(IC)",
+            "Maximum Volume~(IC)",
+            "Equilibrium Hydrionium Concentration~(IC)",
+            "Equilibrium Hydroxide Concentration~(IC)",
+            "pH~(IC)",
+            "pOH~(IC)",
+            "Light Intensity~(IC)",
+            "Total Solvent Volume~(IC)"
+          ]
+        },
+        {
+          "dir": 3,
+          "title": "Y Axis (right) Title",
+          "varNames": [
+            "RPET (Liquid Phase)"
+          ],
+          "varNameOpts": [
+            "Model Runtime",
+            "RPET (Liquid Phase)",
+            "TPA (Liquid Phase)",
+            "EG (Liquid Phase)",
+            "Temperature",
+            "Pressure",
+            "Volume",
+            "Hydronium Concentration",
+            "Hydroxide Concentration",
+            "Incident Light",
+            "Maximum Volume",
+            "Equilibrium Hydrionium Concentration",
+            "Equilibrium Hydroxide Concentration",
+            "pH",
+            "pOH",
+            "Light Intensity",
+            "Total Solvent Volume"
+          ],
+          "loDispLim": 0,
+          "upDispLim": 100,
+          "useDefR": true,
+          "varUnits": [
+            ""
+          ],
+          "evaltVal": [
+            0
+          ],
+          "loEvalLim": [
+            0
+          ],
+          "upEvalLim": [
+            0
+          ],
+          "nbEvalPts": [
+            50
+          ],
+          "isDV": true,
+          "varIsIC": false,
+          "ICNames": [
+            "Model Runtime~(IC)",
+            "RPET (Liquid Phase)~(IC)",
+            "TPA (Liquid Phase)~(IC)",
+            "EG (Liquid Phase)~(IC)",
+            "Temperature~(IC)",
+            "Pressure~(IC)",
+            "Volume~(IC)",
+            "Hydronium Concentration~(IC)",
+            "Hydroxide Concentration~(IC)",
+            "Incident Light~(IC)",
+            "Maximum Volume~(IC)",
+            "Equilibrium Hydrionium Concentration~(IC)",
+            "Equilibrium Hydroxide Concentration~(IC)",
+            "pH~(IC)",
+            "pOH~(IC)",
+            "Light Intensity~(IC)",
+            "Total Solvent Volume~(IC)"
+          ]
+        }
+      ],
+      "subplotGroup": 1,
+      "subplotSlot": 1,
+      "dimNb": 2,
+      "downloadDir": "None Selected",
+      "fileType": ".png",
+      "display": true,
+      "download": false,
+      "hold": "on"
+    }
+  ],
+  "subplot_ct": 1,
+  "subplot_row_ct": [
+    1,
+    1
+  ],
+  "subplot_col_ct": [
+    1,
+    1
+  ],
+  "subplots": [],
+  "TLs": [],
+  "data_export_dir": "",
+  "data_export_tables": [],
+  "PBR_max_vol": 50,
+  "max_liq_vol": 1,
+  "environ_vars": {
+    "tkH": 1,
+    "tkW": 1,
+    "tkD": 0.05,
+    "maxVol": 50,
+    "lgtAttnModel": "Beer-Lambert",
+    "lgtBioAttn": false,
+    "lgtChemAttn": false
+  },
+  "var_in_key": [
+    "L_i",
+    "L_o"
+  ],
+  "var_out_key": [
+    "RPET",
+    "TPA",
+    "EG",
+    "Temperature",
+    "Pressure",
+    "Volume",
+    "Hydronium",
+    "Hydroxide",
+    "X_1",
+    "C_1",
+    "C_2",
+    "T",
+    "P",
+    "V",
+    "H3O",
+    "OH"
+  ],
+  "S_nums": [],
+  "input_streams": [],
+  "output_streams": [],
+  "has_liq_in": false,
+  "has_liq_out": false,
+  "has_gas_in": false,
+  "has_gas_out": false,
+  "inportCt": 0,
+  "outportCt": 0,
+  "IO_flowrates": {
+    "V_idx": 6,
+    "L_i": 0,
+    "L_i_idx": 1,
+    "L_o": 0,
+    "L_o_idx": 2
+  },
+  "importedDataPath": "C:\\Users\\xuvin\\matlab\\MAGMA\\raw_data\\RPET\\RPET_CS_Data_Fig5.xlsx",
+  "importedSheet": "Sheet1",
+  "importedData": [
+    {
+      "Time_hr_": 0,
+      "RPETS6": 0.09566666774451732,
+      "TPA": 43.874304893287324,
+      "EG": 44.726345861140373
+    },
+    {
+      "Time_hr_": 12,
+      "RPETS6": 0.41702499518791836,
+      "TPA": 42.126141757255766,
+      "EG": 43.455124692658949
+    },
+    {
+      "Time_hr_": 24,
+      "RPETS6": 2.3928333350022633,
+      "TPA": 36.340529538291257,
+      "EG": 40.807009717831633
+    },
+    {
+      "Time_hr_": 36,
+      "RPETS6": 5.8377666401863095,
+      "TPA": 3.0331037992842957,
+      "EG": 28.260138157124459
+    },
+    {
+      "Time_hr_": 48,
+      "RPETS6": 6.9352499324083325,
+      "TPA": 0.135870794469912,
+      "EG": 23.061997424189212
+    },
+    {
+      "Time_hr_": 60,
+      "RPETS6": 7.0705834704637525,
+      "TPA": 0.11335448847408468,
+      "EG": 4.767828123170589
+    }
+  ],
+  "importedDataColNames": [
+    "Column 1",
+    "Column 2",
+    "Column 3",
+    "Column 4"
+  ],
+  "regParamList": [
+    "mu_max_1",
+    "mu_max_2",
+    "RPET (Liquid Phase)",
+    "RPET (Liquid Phase)",
+    "BioGovFunc",
+    "BioGovFunc",
+    0.3,
+    0.3,
+    "~",
+    "~",
+    "1",
+    "2",
+    "",
+    ""
+  ],
+  "matchedVarsList": [
+    {
+      "sysVarName": "Model Runtime",
+      "sysVarNum": 1,
+      "importVarName": "Column 1",
+      "importVarNum": [
+        true,
+        false,
+        false,
+        false
+      ],
+      "sysVarUnit": "g/L"
+    },
+    {
+      "sysVarName": "RPET (Liquid Phase)",
+      "sysVarNum": 8,
+      "importVarName": "Column 2",
+      "importVarNum": [
+        false,
+        true,
+        false,
+        false
+      ],
+      "sysVarUnit": "g/L"
+    },
+    {
+      "sysVarName": "TPA (Liquid Phase)",
+      "sysVarNum": 9,
+      "importVarName": "Column 3",
+      "importVarNum": [
+        false,
+        false,
+        true,
+        false
+      ],
+      "sysVarUnit": "g/L"
+    },
+    {
+      "sysVarName": "EG (Liquid Phase)",
+      "sysVarNum": 10,
+      "importVarName": "Column 4",
+      "importVarNum": [
+        false,
+        false,
+        false,
+        true
+      ],
+      "sysVarUnit": "g/L"
+    }
+  ],
+  "regSpecs": {
+    "paramIGs": [
+      0.3,
+      0.3
+    ],
+    "params": "mu_max_1",
+    "solver": "lsqcurvefit",
+    "nlinfitSpecs": {
+      "RobustWgtFun": "",
+      "Tune": [],
+      "TolFun": 1E-8,
+      "TolX": 1E-8,
+      "MaxIter": 100,
+      "FunValCheck": "off",
+      "DerivStep": [
+        6.0554544523933429E-6,
+        6.0554544523933429E-6
+      ]
+    },
+    "lsqcurvefitSpecs": {
+      "paramBnds": [
+        [
+          0,
+          0.2
+        ],
+        [
+          0,
+          0.2
+        ]
+      ],
+      "Algorithm": "trust-region-reflective",
+      "PlotFcns": [],
+      "TolFun": 1E-6,
+      "TolX": 1E-6,
+      "MaxIter": 1000,
+      "MaxFunEvals": 1000,
+      "FunValCheck": "off"
+    },
+    "fminsearchSpecs": {
+      "PlotFcns": [],
+      "TolFun": 0.0001,
+      "TolX": 0.0001,
+      "MaxIter": 1000,
+      "MaxFunEvals": 1000,
+      "FunValCheck": "off"
+    },
+    "fminconSpecs": {
+      "paramBnds": [
+        [
+          null,
+          null
+        ],
+        [
+          null,
+          null
+        ]
+      ],
+      "Algorithm": "interior-point",
+      "PlotFcns": [],
+      "TolFun": 1E-6,
+      "TolX": 1E-6,
+      "MaxIter": 1000,
+      "MaxFunEvals": 1000,
+      "FunValCheck": "off"
+    }
+  },
+  "importedDataIdx": [
+    2,
+    3,
+    4
+  ],
+  "regData": [
+    [
+      0,
+      0.0957,
+      43.8743,
+      44.7263,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007E-6
+    ],
+    [
+      12,
+      0.38814625254226764,
+      41.865867349841423,
+      44.168461278418043,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      24,
+      1.5669907894477515,
+      33.763607580391366,
+      41.929476726542156,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      36,
+      6.0221490367161152,
+      3.1205866232205639,
+      33.367136616896452,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      48,
+      7.0376891903766943,
+      -1.1392285538726059E-8,
+      18.314711664969114,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      60,
+      7.35993115180918,
+      1.72331282040362E-7,
+      6.9730317755055564,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ]
+  ],
+  "regDataCont": [
+    [
+      0,
+      0.0957,
+      43.8743,
+      44.7263,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007E-6
+    ],
+    [
+      0.43033636482666043,
+      0.10063051727216495,
+      43.840443896319393,
+      44.716886801973324,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007E-6
+    ],
+    [
+      0.86067272965332087,
+      0.10581492760969713,
+      43.804844206934355,
+      44.706989187108213,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007E-6
+    ],
+    [
+      1.2910090944799812,
+      0.11126628783599224,
+      43.767411244984849,
+      44.696582276120608,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      1.7213454593066417,
+      0.11699834431059492,
+      43.728050585071486,
+      44.685639879237812,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      3.221345459306642,
+      0.13938969513613231,
+      43.574292169412146,
+      44.642898962770794,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      4.721345459306642,
+      0.16605750620939891,
+      43.391163164796616,
+      44.592002601374183,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      6.221345459306642,
+      0.19781997737761617,
+      43.173042131866659,
+      44.531393727260635,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      7.721345459306642,
+      0.2356559524486051,
+      42.913203022355567,
+      44.459210984238155,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      9.221345459306642,
+      0.28072631349378485,
+      42.603667730204521,
+      44.37324871950419,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      10.721345459306642,
+      0.33439198719208424,
+      42.235082289140429,
+      44.270922875445983,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      12.221345459306642,
+      0.3982916557973406,
+      41.796180533113926,
+      44.149126790011778,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      13.721345459306642,
+      0.47438305298246131,
+      41.273499135035692,
+      44.004154491361867,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      15.221345459306642,
+      0.56498409175487585,
+      40.651093046390137,
+      43.831625306230407,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      16.72134545930664,
+      0.67280883710735218,
+      39.910287732478579,
+      43.626416548553827,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      18.22134545930664,
+      0.80111396347984665,
+      39.028662899876743,
+      43.382398768497339,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      19.72134545930664,
+      0.953776710945298,
+      37.979511766786523,
+      43.092294547616191,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      21.22134545930664,
+      1.1353660923979949,
+      36.7313445781988,
+      42.747550992294926,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      22.72134545930664,
+      1.3512178085725235,
+      35.247369462260679,
+      42.33820703370332,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      24.22134545930664,
+      1.607662592771617,
+      33.483891323817623,
+      41.852484001039969,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      25.72134545930664,
+      1.9121485612908247,
+      31.389454705301244,
+      41.2765658727341,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      27.22134545930664,
+      2.2732619741133004,
+      28.904700762023516,
+      40.594500109596773,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      28.72134545930664,
+      2.7010481517230787,
+      25.960078492351876,
+      39.787818474095381,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      30.22134545930664,
+      3.2065091993888584,
+      22.479499113584538,
+      38.835559130133504,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      31.72134545930664,
+      3.8013503703489691,
+      18.38217408581141,
+      37.714301236370474,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      32.207434279515411,
+      4.0152601757288133,
+      16.908536531517392,
+      37.310478516315136,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      32.693523099724182,
+      4.2400604473228372,
+      15.359878977446307,
+      36.885341666537862,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      33.179611919932952,
+      4.4759208137245041,
+      13.735169713815129,
+      36.438010193702794,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      33.665700740141723,
+      4.7228259560350905,
+      12.0347491506249,
+      35.967630387316333,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      34.151789560350494,
+      4.9804132521236957,
+      10.261531181145502,
+      35.473425096680145,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      34.637878380559265,
+      5.2480940717061886,
+      8.420115475530098,
+      34.954620557852181,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      35.123967200768035,
+      5.5235958396807048,
+      6.5276389788036369,
+      34.410705731477613,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      35.610056020976806,
+      5.8022732698065109,
+      4.6188903424722811,
+      33.841592916698495,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      35.741848363794404,
+      5.8774281948446729,
+      4.1056691409178754,
+      33.682987541900566,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      35.873640706611994,
+      5.9518593144311573,
+      3.5984058032870463,
+      33.522583739485732,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      36.005433049429591,
+      6.0251405485151732,
+      3.1002827580891879,
+      33.360417162675638,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      36.137225392247188,
+      6.0967164587012448,
+      2.6154483273792835,
+      33.196536975530385,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      36.269017735064786,
+      6.1658904383683479,
+      2.1491041799388704,
+      33.031009445249367,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      36.400810077882383,
+      6.23168130838584,
+      1.70858038771655,
+      32.863919488702592,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      36.532602420699973,
+      6.2928573241489376,
+      1.3030764250681464,
+      32.69538336778956,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      36.664394763517571,
+      6.3479835028043743,
+      0.94330393620422082,
+      32.525555998015967,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      36.715272250963622,
+      6.3673080913647553,
+      0.81917267655242221,
+      32.459689748403179,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      36.766149738409666,
+      6.3854049338049714,
+      0.70428955130437543,
+      32.39367200609788,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      36.817027225855718,
+      6.4022013079994862,
+      0.599195646167936,
+      32.327516222582865,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      36.867904713301769,
+      6.4176451847656786,
+      0.50427661505981591,
+      32.261236611423847,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      36.91878220074782,
+      6.4317100240577938,
+      0.41972675129852921,
+      32.1948480141806,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      36.969659688193872,
+      6.4443949456501528,
+      0.34554803765467351,
+      32.128364855804058,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      37.020537175639916,
+      6.4557313972380186,
+      0.28150009260719688,
+      32.061801279741587,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      37.071414663085967,
+      6.4657901164374305,
+      0.22704787360503143,
+      31.995171407084179,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      37.115964021244025,
+      6.4736300474736161,
+      0.18663310633778213,
+      31.936785190786157,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      37.160513379402083,
+      6.4806446267736506,
+      0.1524124971315666,
+      31.878366130398216,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      37.205062737560141,
+      6.4869157855853441,
+      0.12376932173892062,
+      31.819921237783159,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      37.2496120957182,
+      6.4925352795832065,
+      0.10001327959841047,
+      31.761457193907585,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      37.294161453876256,
+      6.49759844836594,
+      0.080427412016754282,
+      31.702979984687321,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      37.338710812034314,
+      6.5021828762358167,
+      0.064428421473273531,
+      31.644494024318472,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      37.383260170192372,
+      6.5063606478698528,
+      0.051474418348563387,
+      31.586003221015805,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      37.42780952835043,
+      6.5102033061145672,
+      0.041027648248019639,
+      31.527511260327252,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      37.468938691091829,
+      6.5135094048960367,
+      0.033188206713701721,
+      31.473511589770638,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      37.510067853833235,
+      6.5166205306484342,
+      0.026804460921046835,
+      31.419515228408105,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      37.551197016574633,
+      6.51956908327817,
+      0.021632922948691374,
+      31.365523675869689,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      37.592326179316032,
+      6.522385627523378,
+      0.017443902195553744,
+      31.31153832646179,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      37.630796704054767,
+      6.5249236837368638,
+      0.014241668949086492,
+      31.261049305579331,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      37.6692672287935,
+      6.5273833935359047,
+      0.01161987689622512,
+      31.210567389702959,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      37.707737753532236,
+      6.5297778367910837,
+      0.0094802240840012389,
+      31.16009318214865,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      37.74620827827097,
+      6.5321190812726213,
+      0.0077320135742242474,
+      31.109627241245871,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      37.783674602051875,
+      6.5343576942892421,
+      0.0063334090802853711,
+      31.060487017467622,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      37.821140925832779,
+      6.5365617840053361,
+      0.0051863030426639841,
+      31.011355404859323,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      37.858607249613684,
+      6.5387370526945645,
+      0.0042478238173899062,
+      30.962232697657242,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      37.896073573394588,
+      6.5408887171715886,
+      0.0034787469317840089,
+      30.913119170370191,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      37.933085415584323,
+      6.5429953382745412,
+      0.002853494001991589,
+      30.864610657597449,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      37.970097257774057,
+      6.5450860054988942,
+      0.0023402963888868671,
+      30.81611151699833,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      38.007109099963792,
+      6.5471632645360938,
+      0.0019199968585552291,
+      30.76762191671375,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      38.044120942153526,
+      6.5492294357797789,
+      0.0015751306529842935,
+      30.719142016145714,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      38.08090710195674,
+      6.5512739192507343,
+      0.0012928248976253279,
+      30.670967478900454,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      38.117693261759953,
+      6.5533106353111057,
+      0.0010610382440834289,
+      30.6228027847761,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      38.15447942156316,
+      6.5553407307634632,
+      0.00087112236476753562,
+      30.574648047477368,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      38.191265581366373,
+      6.5573652490261871,
+      0.00071520550798515352,
+      30.526503376856482,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      38.227925895613424,
+      6.5593781485428346,
+      0.00058718502197119987,
+      30.478533526792312,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      38.264586209860468,
+      6.5613869473975672,
+      0.00048205891447101676,
+      30.430573869068688,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      38.301246524107519,
+      6.5633921631778245,
+      0.0003959055322099694,
+      30.382624493401778,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      38.33790683835457,
+      6.5653942662433353,
+      0.00032515792932069713,
+      30.334685487851893,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      38.377022225276889,
+      6.5675274509456081,
+      0.00026334029271112393,
+      30.283547627764925,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      38.416137612199208,
+      6.569657852540062,
+      0.00021326883891429287,
+      30.232421768007576,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      38.455252999121534,
+      6.5717857476298134,
+      0.00017282456363254124,
+      30.181308005072687,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      38.494368386043853,
+      6.5739113895748593,
+      0.00014006297226438352,
+      30.130206434768127,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      38.539906388679604,
+      6.57638349031628,
+      0.00010948758793666869,
+      30.070729642733042,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      38.585444391315349,
+      6.5788530190014427,
+      8.5584498735050938E-5,
+      30.01126964825913,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      38.6309823939511,
+      6.5813201451793173,
+      6.7014393233399123E-5,
+      29.951826594989789,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      38.676520396586852,
+      6.5837850305544992,
+      5.2496716322423991E-5,
+      29.892400626638974,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      38.729797478762734,
+      6.5866661429278333,
+      3.929207762475019E-5,
+      29.82289722918663,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      38.783074560938623,
+      6.5895444586258511,
+      2.9405973182786978E-5,
+      29.753417638079775,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      38.836351643114511,
+      6.5924200598572709,
+      2.2114433321267484E-5,
+      29.683962078908504,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      38.889628725290393,
+      6.5952930334001891,
+      1.6658839671976957E-5,
+      29.614530778137858,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      38.953598544270591,
+      6.5987392318439939,
+      1.1711662954090937E-5,
+      29.531196949933481,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      39.017568363250788,
+      6.6021817542751853,
+      8.2274487524845715E-6,
+      29.447898810838428,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      39.081538182230979,
+      6.6056206195794234,
+      5.8775757457870663E-6,
+      29.364636752181383,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      39.145508001211176,
+      6.6090558603160794,
+      4.2300225265857656E-6,
+      29.281411167293932,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      39.224580797748452,
+      6.6132971620374343,
+      2.6898957619697007E-6,
+      29.17858740299976,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      39.30365359428572,
+      6.617532909575198,
+      1.6993621905173936E-6,
+      29.07582071583527,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      39.382726390822995,
+      6.6217630685939728,
+      1.1578499076037016E-6,
+      28.97311185480838,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      39.46179918736027,
+      6.625987623723649,
+      8.2069937498308644E-7,
+      28.870461573170392,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      39.563382031885553,
+      6.631406538964181,
+      4.15592518327977E-7,
+      28.7386765060906,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      39.664964876410835,
+      6.6368160442496285,
+      1.9158223820019109E-7,
+      28.606990976748158,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      39.766547720936117,
+      6.642216035501991,
+      1.5496571153053763E-7,
+      28.475406605609578,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      39.8681305654614,
+      6.6476064296939184,
+      1.4943744759558952E-7,
+      28.343925023673044,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      40.004557576368995,
+      6.6548305371527752,
+      7.7227593824564142E-9,
+      28.167508241106617,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      40.140984587276591,
+      6.6620368879694727,
+      -5.1865582178479121E-8,
+      27.991283817275058,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      40.27741159818418,
+      6.6692252181913,
+      2.5590105577684613E-8,
+      27.815255784422806,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      40.413838609091776,
+      6.6763952903235158,
+      8.1584885599385612E-8,
+      27.639428207794616,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      40.59683232088814,
+      6.6859836429032731,
+      -1.9108277804213291E-7,
+      27.403907252082618,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      40.7798260326845,
+      6.6955380121261632,
+      -2.7229886532179389E-7,
+      27.168764300639822,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      40.962819744480861,
+      6.70505772523253,
+      7.8728491749678179E-8,
+      26.934009433299629,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      41.145813456277224,
+      6.714542213032539,
+      2.7716243929352411E-7,
+      26.699652837938434,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      41.2956105217649,
+      6.7222795129232642,
+      -1.0090269689799394E-7,
+      26.50811420617044,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      41.445407587252575,
+      6.7299923641722987,
+      -2.422879289437651E-7,
+      26.316855040760036,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      41.595204652740243,
+      6.7376803732779917,
+      7.1231824579968153E-8,
+      26.1258810837593,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      41.745001718227918,
+      6.7453432478000375,
+      2.7748179683999683E-7,
+      25.935198127617806,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      41.894798783715594,
+      6.7529806820805582,
+      -1.0781388139977997E-7,
+      25.744812011240768,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      42.044595849203262,
+      6.7605921921535144,
+      -2.5114847433187031E-7,
+      25.554728614392719,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      42.194392914690937,
+      6.7681773721673686,
+      7.3058372147452731E-8,
+      25.364953866285582,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      42.344189980178612,
+      6.7757359206105852,
+      2.8556181156116343E-7,
+      25.175493746364939,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      42.50070299061197,
+      6.7836045613461087,
+      -1.9851410496933842E-7,
+      24.977882080272241,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      42.657216001045335,
+      6.7914432161355158,
+      -3.6872852242041319E-7,
+      24.78062738530701,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      42.8137290114787,
+      6.7992513999706192,
+      1.0010100191136947E-7,
+      24.58373663974033,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      42.970242021912057,
+      6.807028775967197,
+      3.9586791796003516E-7,
+      24.387216881799382,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      43.123859429746325,
+      6.8146319739174217,
+      -2.3602512259516962E-7,
+      24.194700490149252,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      43.277476837580593,
+      6.8222045582945814,
+      -4.6191962272265209E-7,
+      24.002555067202394,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      43.431094245414862,
+      6.8297460446618095,
+      1.2700853319773513E-7,
+      23.810787415701558,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      43.58471165324913,
+      6.8372561369222709,
+      5.02678955495726E-7,
+      23.61940439462715,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      43.728320769629242,
+      6.844248266831217,
+      -1.2226594216823524E-7,
+      23.440844093139841,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      43.871929886009355,
+      6.8512121445025,
+      -3.6262627302956785E-7,
+      23.262631647787195,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      44.01553900238946,
+      6.8581473648578255,
+      1.1427907374237897E-7,
+      23.084772774481277,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      44.159148118769572,
+      6.8650536812903189,
+      4.34460097181612E-7,
+      22.90727323144208,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      44.296956104122117,
+      6.8716535844988345,
+      -3.825659432248276E-8,
+      22.737287057680508,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      44.434764089474655,
+      6.8782261540113572,
+      -2.2794770639264304E-7,
+      22.567642250281956,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      44.572572074827193,
+      6.8847710342465795,
+      8.4465587180496257E-8,
+      22.398343988230678,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      44.710380060179737,
+      6.8912879766012187,
+      3.0122106719426145E-7,
+      22.229397484348315,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      44.852585578580879,
+      6.8979833052771538,
+      -7.0423131047626856E-8,
+      22.0554341284009,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      44.994791096982013,
+      6.90464812464801,
+      -2.1369769764311958E-7,
+      21.881856709171149,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      45.136996615383154,
+      6.9112820420342063,
+      6.7804687057305637E-8,
+      21.708671050718774,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      45.279202133784295,
+      6.9178847578250995,
+      2.5713970344646193E-7,
+      21.535883012947657,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      45.430743389696595,
+      6.9248862499468888,
+      -1.5735572947953817E-7,
+      21.352195767688638,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      45.582284645608894,
+      6.9318513886401742,
+      -3.0513511929298379E-7,
+      21.168973920421433,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      45.7338259015212,
+      6.9387796850848753,
+      8.3632797206178933E-8,
+      20.98622467866187,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      45.8853671574335,
+      6.9456707743509014,
+      3.3120916120602307E-7,
+      20.803955293538181,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      46.039380098213037,
+      6.9526357575000262,
+      -2.5090188752808509E-7,
+      20.6192122090028,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      46.193393038992575,
+      6.9595612848405244,
+      -4.5361688221965589E-7,
+      20.434979977836534,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      46.347405979772113,
+      6.9664468183813133,
+      1.2237092983651072E-7,
+      20.251266328565986,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      46.50141892055165,
+      6.97329200342738,
+      4.8348815535061E-7,
+      20.068079034082746,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      46.6467307625543,
+      6.9797131393915812,
+      -1.9427838262367271E-7,
+      19.895730684945,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      46.792042604556954,
+      6.986097426835336,
+      -4.4571920471890716E-7,
+      19.723864431278486,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      46.9373544465596,
+      6.992444398388602,
+      1.2880088606075902E-7,
+      19.552486886897022,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      47.082666288562251,
+      6.9987537748383524,
+      5.0475555878034367E-7,
+      19.381604698582517,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      47.218150401674052,
+      7.0046022977015863,
+      -4.8304975656619276E-8,
+      19.222731723836123,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      47.353634514785846,
+      7.0104173697634433,
+      -2.6972247034096286E-7,
+      19.064300588789884,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      47.489118627897639,
+      7.0161986164084418,
+      9.8793752783520886E-8,
+      18.906316736831194,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      47.62460274100944,
+      7.0219457901214195,
+      3.540434590886653E-7,
+      18.748785632954448,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      47.7599582182129,
+      7.0276532122107929,
+      -3.6993704075466935E-8,
+      18.591861673280494,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      47.895313695416363,
+      7.0333258962373364,
+      -1.9313641689721474E-7,
+      18.435400550943733,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      48.030669172619831,
+      7.0389634748647927,
+      6.9888974759609919E-8,
+      18.279407761193859,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      48.166024649823292,
+      7.0445656712004627,
+      2.5169342031043955E-7,
+      18.123888816621037,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      48.310801576044547,
+      7.0505183197419719,
+      -1.1013511535961109E-7,
+      17.958075665428634,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      48.455578502265809,
+      7.0564296302245841,
+      -2.4338848679724676E-7,
+      17.792817716517344,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      48.600355428487063,
+      7.0622991508753934,
+      6.9406091654555555E-8,
+      17.628121761984776,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      48.745132354708318,
+      7.0681265321758753,
+      2.7307720620397854E-7,
+      17.463994611329372,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      48.897808459935554,
+      7.0742258220583185,
+      -2.2504809536449653E-7,
+      17.291536241886728,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      49.05048456516279,
+      7.0802772196267778,
+      -3.9681996358567029E-7,
+      17.119726036934061,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      49.203160670390034,
+      7.0862801800471367,
+      1.0655598068951666E-7,
+      16.948572021550543,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      49.35583677561727,
+      7.0922343198162485,
+      4.2016209120013762E-7,
+      16.778082236071768,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      49.504069751529727,
+      7.0979681087495345,
+      -2.6402319933351363E-7,
+      16.613197130641783,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      49.652302727442184,
+      7.10365486754385,
+      -5.072883628828667E-7,
+      16.448953111147219,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      49.80053570335464,
+      7.10929407983466,
+      1.3851887557814937E-7,
+      16.285357550724584,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      49.9487686792671,
+      7.11488543889796,
+      5.491353546096528E-7,
+      16.122417830505096,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      50.084941531650315,
+      7.1199794354162176,
+      -9.9488392227881922E-8,
+      15.9733190651666,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      50.221114384033534,
+      7.1250322310820877,
+      -3.5296887501411846E-7,
+      15.824785707554003,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      50.357287236416752,
+      7.1300434292011587,
+      1.1698883575757155E-7,
+      15.676823472979439,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      50.493460088799971,
+      7.1350127937222494,
+      4.3644374078234485E-7,
+      15.529438077236229,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      50.623952627913525,
+      7.1397353699587374,
+      -1.2681412062824981E-8,
+      15.388747245702636,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      50.754445167027072,
+      7.1444188437941927,
+      -1.9626690485464972E-7,
+      15.248596390587815,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      50.884937706140626,
+      7.1490628808663663,
+      8.0046871802695442E-8,
+      15.108990522129803,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      51.01543024525418,
+      7.1536672455542032,
+      2.7485165569785665E-7,
+      14.969934645255897,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      51.152580558498428,
+      7.1584634907093427,
+      -6.4977585310482645E-8,
+      14.82438236449088,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      51.289730871742677,
+      7.1632151777426891,
+      -1.9589946151512838E-7,
+      14.67944893108184,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      51.426881184986932,
+      7.1679219285540476,
+      6.19143245662767E-8,
+      14.535140116438718,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      51.564031498231181,
+      7.1725834533330861,
+      2.3530662688631547E-7,
+      14.391461678344539,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      51.712788215902208,
+      7.1775879909318707,
+      -1.7252760346416417E-7,
+      14.236343715529648,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      51.861544933573235,
+      7.1825384155711767,
+      -3.1510091746223361E-7,
+      14.081981383602145,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      52.010301651244262,
+      7.1874342461446972,
+      8.4995800965948185E-8,
+      13.928381949670703,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      52.159058368915289,
+      7.1922751330495309,
+      3.3656929215150548E-7,
+      13.775552652088967,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      52.309907378413612,
+      7.1971276465617979,
+      -2.9110577066613532E-7,
+      13.621367633483541,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      52.460756387911943,
+      7.2019226781230108,
+      -5.0631565880869028E-7,
+      13.467989444130403,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      52.611605397410266,
+      7.2066597167463753,
+      1.3559787031643489E-7,
+      13.3154255110217,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      52.762454406908589,
+      7.2113384607063766,
+      5.3409622462340922E-7,
+      13.163683220337791,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      52.9020921996195,
+      7.2156172504466252,
+      -1.9451832775476034E-7,
+      13.023957228937908,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      53.041729992330417,
+      7.2198452687942618,
+      -4.6700399988972715E-7,
+      12.884947350601646,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      53.181367785041338,
+      7.224022112770756,
+      1.3678999517499217E-7,
+      12.746659321891919,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      53.321005577752253,
+      7.2281475827019293,
+      5.3430587752021476E-7,
+      12.6090988413834,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      53.449669524767508,
+      7.2319031674652834,
+      -1.2960152586452367E-8,
+      12.48299785948686,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      53.57833347178277,
+      7.2356145158967946,
+      -2.3700675486431259E-7,
+      12.3575237486813,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      53.706997418798025,
+      7.2392813351694985,
+      9.7476399672575511E-8,
+      12.232680858067457,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      53.83566136581328,
+      7.2429034539673918,
+      3.3366387012818721E-7,
+      12.1084735023713,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      53.965742102015838,
+      7.2465198211135258,
+      -2.320610142455917E-8,
+      11.983548865087188,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      54.095822838218396,
+      7.250089932620452,
+      -1.6720788937243085E-7,
+      11.859282580573659,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      54.225903574420947,
+      7.2536135082730366,
+      6.35317953507485E-8,
+      11.735678980290725,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      54.355984310623505,
+      7.2570903518520282,
+      2.2447451653067477E-7,
+      11.612742352118145,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      54.498324646767244,
+      7.2608410882588128,
+      -1.1441014203732979E-7,
+      11.478988662524829,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      54.640664982910977,
+      7.2645352013092843,
+      -2.3748431509282114E-7,
+      11.346044152502323,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      54.783005319054709,
+      7.2681723422369746,
+      6.6199040858381662E-8,
+      11.213914237177349,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      54.925345655198448,
+      7.2717522668622907,
+      2.6213933990689242E-7,
+      11.082604258428708,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      55.076765726126034,
+      7.2754974776914185,
+      -2.5958340772118987E-7,
+      10.943824118958226,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      55.228185797053619,
+      7.2791771604425621,
+      -4.3549655947800474E-7,
+      10.805984048233491,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      55.379605867981205,
+      7.282790905384231,
+      1.1634605969701219E-7,
+      10.669090173362029,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      55.53102593890879,
+      7.2863384867175665,
+      4.5524392692608176E-7,
+      10.533148514023495,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      55.675889068891941,
+      7.2896703192025827,
+      -2.9647804326430436E-7,
+      10.403990241379447,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      55.820752198875091,
+      7.2929408955268125,
+      -5.627653230882561E-7,
+      10.275713973240602,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      55.965615328858242,
+      7.2961498629116619,
+      1.5285017169130761E-7,
+      10.148324673890734,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      56.110478458841392,
+      7.2992971076832038,
+      6.0691960675803354E-7,
+      10.021827206879685,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      56.24093074118197,
+      7.3020783387354165,
+      -6.5739343124223474E-8,
+      9.9086806928823528,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      56.371383023522554,
+      7.3048090203063119,
+      -3.3401277038785464E-7,
+      9.7962646480638362,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      56.501835305863132,
+      7.3074889217718875,
+      1.1993754264700223E-7,
+      9.6845823905330981,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      56.63228758820371,
+      7.3101179750503578,
+      4.3362043662137927E-7,
+      9.5736371647237846,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      56.757416516632333,
+      7.3125918805193848,
+      1.310204062314146E-8,
+      9.4679147367993348,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      56.882545445060963,
+      7.3150186374745418,
+      -1.6229536467324813E-7,
+      9.36287605064463,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      57.007674373489593,
+      7.3173980761204946,
+      7.5278656290059357E-8,
+      9.2585237600580879,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      57.132803301918216,
+      7.3197301177911491,
+      2.459413111909211E-7,
+      9.15486044981918,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      57.267323995942618,
+      7.322184226236943,
+      -6.1463753730228564E-8,
+      9.0441878740869388,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      57.401844689967014,
+      7.3245831962704582,
+      -1.7949703483006876E-7,
+      8.934317514158332,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      57.536365383991409,
+      7.3269268479893137,
+      5.6046497539575949E-8,
+      8.8252522967072213,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      57.670886078015812,
+      7.3292150877163325,
+      2.1414522237181904E-7,
+      8.7169950480540539,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      57.819561101776607,
+      7.3316795246592914,
+      -1.9177436944357646E-7,
+      8.59829016119778,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      57.9682361255374,
+      7.3340758664276,
+      -3.3038412772530633E-7,
+      8.480579066785829,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      58.1169111492982,
+      7.3364039006528561,
+      8.8229356998883068E-8,
+      8.363865129882587,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      58.265586173058992,
+      7.3386635601277659,
+      3.4750595643492735E-7,
+      8.24815155467125,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      58.415587798405774,
+      7.3408740407060709,
+      -3.4193903507472704E-7,
+      8.1324223668191564,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      58.565589423752556,
+      7.3430145399976672,
+      -5.7461935382931056E-7,
+      8.0177175100314724,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      58.715591049099331,
+      7.3450848587157163,
+      1.5330877846622152E-7,
+      7.9040397524106867,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      58.865592674446113,
+      7.3470850422839025,
+      6.0072107715300119E-7,
+      7.7913916856990806,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      59.001340109265257,
+      7.3488347363392723,
+      -1.8676083642927924E-7,
+      7.6903377990384589,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      59.137087544084395,
+      7.3505267358344915,
+      -4.8478679015826677E-7,
+      7.5901308317061993,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      59.272834978903532,
+      7.3521609194826087,
+      1.455181158205865E-7,
+      7.490772311554653,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      59.408582413722677,
+      7.3537373849637548,
+      5.6421785811917025E-7,
+      7.3922636427970385,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      59.532236820503243,
+      7.355123235956297,
+      2.7579297419738419E-8,
+      7.3032713358474135,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      59.6558912272838,
+      7.3564610630393972,
+      -1.9776131678466761E-7,
+      7.2149861350806317,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      59.77954563406437,
+      7.35775081611912,
+      9.6349982579101418E-8,
+      7.1274088203347779,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      59.903200040844936,
+      7.3589925590055,
+      3.090408690691551E-7,
+      7.0405400824823241,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      59.927400030633706,
+      7.3592299678647963,
+      2.67044845627995E-7,
+      7.0236222519993605,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      59.951600020422468,
+      7.3594655362444641,
+      2.3075733075272826E-7,
+      7.0067315880671455,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      59.975800010211231,
+      7.3596992642058314,
+      1.9941535773558164E-7,
+      6.9898680946320795,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ],
+    [
+      60,
+      7.35993115180918,
+      1.72331282040362E-7,
+      6.9730317755055564,
+      303.15,
+      0.010132,
+      49.5,
+      1.9023E-6,
+      1.7007000000000003E-6
+    ]
+  ],
+  "IVs": [
+    0,
+    12,
+    24,
+    36,
+    48,
+    60,
+    0,
+    12,
+    24,
+    36,
+    48,
+    60,
+    0,
+    12,
+    24,
+    36,
+    48,
+    60
+  ],
+  "DVs": [
+    0.09566666774451732,
+    0.41702499518791836,
+    2.3928333350022633,
+    5.8377666401863095,
+    6.9352499324083325,
+    7.0705834704637525,
+    43.874304893287324,
+    42.126141757255766,
+    36.340529538291257,
+    3.0331037992842957,
+    0.135870794469912,
+    0.11335448847408468,
+    44.726345861140373,
+    43.455124692658949,
+    40.807009717831633,
+    28.260138157124459,
+    23.061997424189212,
+    4.767828123170589
+  ],
+  "mat_IVs": [
+    0,
+    12,
+    24,
+    36,
+    48,
+    60
+  ],
+  "mat_DVs": [
+    [
+      0.09566666774451732,
+      43.874304893287324,
+      44.726345861140373
+    ],
+    [
+      0.41702499518791836,
+      42.126141757255766,
+      43.455124692658949
+    ],
+    [
+      2.3928333350022633,
+      36.340529538291257,
+      40.807009717831633
+    ],
+    [
+      5.8377666401863095,
+      3.0331037992842957,
+      28.260138157124459
+    ],
+    [
+      6.9352499324083325,
+      0.135870794469912,
+      23.061997424189212
+    ],
+    [
+      7.0705834704637525,
+      0.11335448847408468,
+      4.767828123170589
+    ]
+  ],
+  "reg_param_ct": 0,
+  "reg_analytics": [],
+  "updateConsoleFunc": "@(a,b)app.updateConsole(a,b)",
+  "SubplotABPushed": "@()app.SubplotABPushed()"
+}
