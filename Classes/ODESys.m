@@ -4030,7 +4030,7 @@ classdef ODESys < handle
         % sys: ODESys classs ref
         function strmData = getStrmTData(sys)
             if isempty(sys.input_streams), input_size = 0; else, input_size = size(sys.input_streams,1); end
-            if isempty(sys.output_streams), out_size = 0; else, out_size = size(sys.output_streams,1); end
+            if isempty(sys.output_streams), output_size = 0; else, output_size = size(sys.output_streams,1); end
             strmData = cell(input_size+output_size,4);
             empty = true;
             for k=1:1:length(sys.input_streams)
