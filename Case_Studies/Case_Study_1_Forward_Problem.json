@@ -1,6 +1,6 @@
 {
   "save_type": "file",
-  "save_file_name": "C:\\Users\\xuvin\\matlab\\MAGMA\\CS1_forward.json",
+  "save_file_name": "C:\\Users\\xuvin\\matlab\\MAGMA\\Case_Studies\\Case_Study_1_Forward_Problem.json",
   "save_db_handle": "",
   "save_model_name": [
     "S2973_MA_Competitive_Coculture"
@@ -12,7 +12,8 @@
     "S2973",
     "MA",
     "S2973_d",
-    "MA_d"
+    "MA_d",
+    "-"
   ],
   "save_model_chem_names": [
     "N",
@@ -1110,7 +1111,7 @@
               "gloNum": 1,
               "name": "Y_1_4",
               "sym": "Y_1_4",
-              "val": 1E-5,
+              "val": 5E-6,
               "unit": "",
               "editable": "true"
             },
@@ -1119,7 +1120,7 @@
               "gloNum": 1,
               "name": "alpha_2_4",
               "sym": "alpha_2_4",
-              "val": 1E-5,
+              "val": 5E-6,
               "unit": "",
               "editable": "true"
             },
@@ -1128,7 +1129,7 @@
               "gloNum": 1,
               "name": "beta_2_4",
               "sym": "beta_2_4",
-              "val": 1E-5,
+              "val": 5E-6,
               "unit": "",
               "editable": "true"
             },
@@ -1831,9 +1832,9 @@
     0.025,
     1,
     200,
-    1E-5,
-    1E-5,
-    1E-5,
+    5E-6,
+    5E-6,
+    5E-6,
     50,
     0.1927,
     0.025,
