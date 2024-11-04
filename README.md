@@ -4,7 +4,7 @@
 2. Download "MAGMA_Installer.exe".
 3. Run "MAGMA_Installer.exe".
 ## Usage
-Documentation for MAGMA is hosted on GitHub Wiki.
+Installation instructions and usage documentation for MAGMA is hosted on GitHub Wiki.
 ## Troubleshooting
 Please report software bugs using the "Issues" section of this repository.
 ## Disclaimer
