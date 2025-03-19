@@ -390,6 +390,9 @@ classdef ODESys < handle
                     end
                     compSyms = compSyms + ")";
 
+                    test = reactorType
+                    test2 = lgtAttnModelName
+
                     switch reactorType
                         case "Vertical Continuous Stirred Tank"
                             if calculate_set_params
@@ -3025,6 +3028,7 @@ classdef ODESys < handle
                     [sys.reg_analytics.beta,sys.reg_analytics.R,sys.reg_analytics.J, ...
                         sys.reg_analytics.CovB,sys.reg_analytics.MSE,sys.reg_analytics.ErrorModelInfo] = ...
                         nlinfit(sys.IVs,sys.DVs,@(reg_param,t) sys.nlinfitHandler(reg_param,t,false),beta0,nlinfitSpecs);
+                    sys.reg_analytics.CovB = [];
 
                 case "lsqcurvefit"
                     lsqcurvefitSpecs = optimset;
@@ -4755,7 +4759,6 @@ classdef ODESys < handle
                             elseif any(strcmp(environ_fields{m},{'T_comp','P_comp','V_comp','SV_comps','H3O_comp','OH_comp'}))
                                 try
                                     comp = ODESys_struct.(ODESys_fields{k}).(environ_names{l}).(environ_fields{m});
-                                    test = comp
                                     comp_fields = fieldnames(comp);
                                     for n=1:1:length(comp_fields)
                                         if contains(comp_fields{n},'uncParams')
@@ -4863,7 +4866,7 @@ classdef ODESys < handle
                         end
                     end
                 elseif strcmp(ODESys_fields{k},'f')
-                    num_fs = length(ODESys_struct.(ODESys_fields{k}))./3;
+                    num_fs = length(ODESys_struct.(ODESys_fields{k}))/3;
                     system.(ODESys_fields{k})(1:num_fs,1) = ODESys_struct.(ODESys_fields{k})(1:num_fs);
                     system.(ODESys_fields{k})(1:num_fs,2) = ODESys_struct.(ODESys_fields{k})((num_fs+1):(2*num_fs));
                     system.(ODESys_fields{k})(1:num_fs,3) = ODESys_struct.(ODESys_fields{k})((2*num_fs+1):(3*num_fs));
@@ -4881,8 +4884,9 @@ classdef ODESys < handle
                         end
                     end
                 elseif strcmp(ODESys_fields{k},'regParamList')
+                    enableRegressionButtons();
                     try
-                        regParamListRowNum = length(ODESys_struct.(ODESys_fields{k}))./7;
+                        regParamListRowNum = length(ODESys_struct.(ODESys_fields{k}))/7;
                         regParamListNew = cell(regParamListRowNum,7);
                         for l=1:1:regParamListRowNum
                             regParamListNew(:,1) = ODESys_struct.(ODESys_fields{k})(1:regParamListRowNum);
