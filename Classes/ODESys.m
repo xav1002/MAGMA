@@ -1,3 +1,6 @@
+% Fix: lsqcurvefit default lims
+% Fix: plot removal errors (add try catch)
+
 classdef ODESys < handle
     properties
         save_type = "file";
@@ -389,9 +392,6 @@ classdef ODESys < handle
                         end
                     end
                     compSyms = compSyms + ")";
-
-                    test = reactorType
-                    test2 = lgtAttnModelName
 
                     switch reactorType
                         case "Vertical Continuous Stirred Tank"
@@ -1847,7 +1847,6 @@ classdef ODESys < handle
                 comps_v_specs = sys.getSpecies('comp');
                 comps_v_chems = sys.getChemicals('comp');
                 sys.v = zeros(size(sys.var_in_key));
-                test11 = sys.var_in_key
                 for k=1:1:length(sys.var_in_key)
                     switch sys.var_in_key{k}
                         case 'dP_o'
@@ -3028,7 +3027,6 @@ classdef ODESys < handle
                     [sys.reg_analytics.beta,sys.reg_analytics.R,sys.reg_analytics.J, ...
                         sys.reg_analytics.CovB,sys.reg_analytics.MSE,sys.reg_analytics.ErrorModelInfo] = ...
                         nlinfit(sys.IVs,sys.DVs,@(reg_param,t) sys.nlinfitHandler(reg_param,t,false),beta0,nlinfitSpecs);
-                    sys.reg_analytics.CovB = [];
 
                 case "lsqcurvefit"
                     lsqcurvefitSpecs = optimset;
@@ -3040,11 +3038,19 @@ classdef ODESys < handle
                     lsqcurvefitSpecs.MaxIter = sys.regSpecs.lsqcurvefitSpecs.MaxIter;
                     lsqcurvefitSpecs.MaxFunEvals = sys.regSpecs.lsqcurvefitSpecs.MaxFunEvals;
                     lsqcurvefitSpecs.FunValCheck = sys.regSpecs.lsqcurvefitSpecs.FunValCheck;
+                    if isnan(sys.regSpecs.lsqcurvefitSpecs.paramBnds(:,1))
+                        sys.regSpecs.lsqcurvefitSpecs.paramBnds(:,1) = -Inf;
+                    end
+                    if isnan(sys.regSpecs.lsqcurvefitSpecs.paramBnds(:,2))
+                        sys.regSpecs.lsqcurvefitSpecs.paramBnds(:,2) = Inf;
+                    end
                     [sys.reg_analytics.beta,~,sys.reg_analytics.R,~,~,~,sys.reg_analytics.J] = ...
                         lsqcurvefit(@(reg_param,t) sys.nlinfitHandler(reg_param,t,false),beta0,sys.IVs,sys.DVs, ...
                         sys.regSpecs.lsqcurvefitSpecs.paramBnds(:,1),sys.regSpecs.lsqcurvefitSpecs.paramBnds(:,2), ...
                         [],[],[],[],[],lsqcurvefitSpecs);
                     sys.reg_analytics.MSE = mean(sys.reg_analytics.R.^2,"all");
+                    sys.reg_analytics.CovB = [];
+                    sys.reg_analytics.ErrorModelInfo = [];
 
                 case "fminsearch"
                     fminsearchSpecs = optimset;
@@ -3069,6 +3075,12 @@ classdef ODESys < handle
                     fminconSpecs.MaxIter = sys.regSpecs.fminconSpecs.MaxIter;
                     fminconSpecs.MaxFunEvals = sys.regSpecs.fminconSpecs.MaxFunEvals;
                     fminconSpecs.FunValCheck = sys.regSpecs.fminconSpecs.FunValCheck;
+                    if isnan(sys.regSpecs.fminconSpecs.paramBnds(:,1))
+                        sys.regSpecs.fminconSpecs.paramBnds(:,1) = -Inf;
+                    end
+                    if isnan(sys.regSpecs.fminconSpecs.paramBnds(:,2))
+                        sys.regSpecs.fminconSpecs.paramBnds(:,2) = Inf;
+                    end
                     sys.reg_analytics.beta = lsqcurvefit(@(reg_param) sys.fminsearchHandler(sys.IVs,reg_param),beta0, ...
                             [],[],[],[],sys.regSpecs.fminconSpecs.paramBnds(:,1),sys.regSpecs.fminconSpecs.paramBnds(:,2), ...
                             [],fminconSpecs);
@@ -3706,7 +3718,7 @@ classdef ODESys < handle
                 paramList = sys.getGrthParamsByFuncName(compName);
                 cancel = false;
                 if updateType == "Add"
-                    for k=1:1:size(sys.regParamList)
+                    for k=1:1:size(sys.regParamList,1)
                         if strcmp(sys.regParamList{k,1},paramSym)
                             cancel = true;
                         end
@@ -4545,23 +4557,28 @@ classdef ODESys < handle
             end
 
             function sub_obj = recursive_stringify(sub_obj)
-                props = properties(sub_obj);
-                for k=1:1:length(props)
-                    if isobject(sub_obj.(props{k}))
-                        sub_obj.(props{k}) = recursive_stringify(sub_obj.(props{k}));
-                    end
-                    if isa(sub_obj.(props{k}),'function_handle')
-                        sub_obj.(props{k}) = func2str(sub_obj.(props{k}));
-                    end
-                    if isa(sub_obj.(props{k}),'cell')
-                        for l=1:1:size(sub_obj.(props{k}),1)
-                            for m=1:1:size(sub_obj.(props{k}),2)
-                                if isa(sub_obj.(props{k}){l,m},'function_handle')
-                                    sub_obj.(props{k}){l,m} = func2str(sub_obj.(props{k}){l,m});
+                try
+                    props = properties(sub_obj);
+                    for k=1:1:length(props)
+                        if isobject(sub_obj.(props{k}))
+                            sub_obj.(props{k}) = recursive_stringify(sub_obj.(props{k}));
+                        end
+                        if isa(sub_obj.(props{k}),'function_handle')
+                            sub_obj.(props{k}) = func2str(sub_obj.(props{k}));
+                        end
+                        if isa(sub_obj.(props{k}),'cell')
+                            for l=1:1:size(sub_obj.(props{k}),1)
+                                for m=1:1:size(sub_obj.(props{k}),2)
+                                    if isa(sub_obj.(props{k}){l,m},'function_handle')
+                                        sub_obj.(props{k}){l,m} = func2str(sub_obj.(props{k}){l,m});
+                                    end
                                 end
                             end
                         end
                     end
+                catch err
+                    err
+                    err.stack.line
                 end
             end
 
@@ -4884,7 +4901,6 @@ classdef ODESys < handle
                         end
                     end
                 elseif strcmp(ODESys_fields{k},'regParamList')
-                    enableRegressionButtons();
                     try
                         regParamListRowNum = length(ODESys_struct.(ODESys_fields{k}))/7;
                         regParamListNew = cell(regParamListRowNum,7);
@@ -4907,6 +4923,8 @@ classdef ODESys < handle
                     for l=1:1:length(ODESys_struct.(ODESys_fields{k}))
                         system.(ODESys_fields{k}){l} = ODESys_struct.(ODESys_fields{k})(l);
                     end
+                % elseif strcmp(ODESys_fields{k},'regSpecs')
+                %     system.(ODESys_fields{k}) = 
                 elseif strcmp(ODESys_fields{k},'importedData')
                     importedData = ODESys_struct.(ODESys_fields{k});
                     try

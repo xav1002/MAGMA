@@ -8,6 +8,7 @@ function latex_out = uni2latex(eqn)
     num_left_paren = regexp(eqn,'\(');
     num_right_paren = regexp(eqn,'\)');
     if length(num_left_paren) ~= length(num_right_paren), return; end
+    if regexp(eqn,'[`~!@#$%&?><,:;\|{}[]]','once'), return; end
     if regexp(eqn(end),'[+\-\*/^=]','once'), return; end
     % if strcmp(eqn(1),'-') && ~strcmp(eqn(2),'(')
     %     leadOperator = '-';
