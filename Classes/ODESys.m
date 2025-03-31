@@ -3000,8 +3000,9 @@ classdef ODESys < handle
                 % else
                 %     sys.DVs((1:1:size(sys.importedData,1))+((k-2).*size(sys.importedData,1)),1) = sys.importedData{:,k};
                 % end
-                sys.DVs((1:1:size(sys.importedData,1))+((k-2).*size(sys.importedData,1)),1) = unit_standardization(sys.importedData{:,k},comps{sys.importedDataIdx(k-1)-1}.getInitConcUnit());
+                sys.DVs((1:1:size(sys.importedData,1))+((k-2).*size(sys.importedData,1)),1) = unit_standardization(sys.importedData{:,sys.importedDataIdx(k-1)},comps{sys.importedDataIdx(k-1)-1}.getInitConcUnit());
             end
+            test5 = sys.importedDataIdx
             % ### FIXME: upgrade later to allow automatic testing of
             % various starting guesses for each parameter
             beta0 = sys.regSpecs.paramIGs;
@@ -3797,6 +3798,12 @@ classdef ODESys < handle
             regParamList = sys.regParamList;
         end
 
+        % sys: ODESys class ref
+        function regParamList = clearRegParamList(sys)
+            sys.regParamList = {};
+            regParamList = sys.regParamList;
+        end
+
         % sys: ODESys class ref, sysVar: string, importVar: string, importVarNum: num, match:
         % boolean
         function matchedVarsList = updateVarMatch(sys,sysVar,importVar,importVarNum,match)
@@ -3840,17 +3847,23 @@ classdef ODESys < handle
                 sys.matchedVarsList(pairNum) = [];
             end
             matchedVarsList = sys.getMatchedVarsList();
+
+            test8 = matchedVarsList
         end
 
-        % sys: ODESys class ref fv
-        %               fvfvfvfvffv
-        %                                                                            f                                                                                                                                                                                                                                                                                                                                   
+        % sys: ODESys class ref                                                                                                                                                                                                                                                                                                                              
         function matchedVarsList = getMatchedVarsList(sys)
             matchedVarsList = cell(length(sys.matchedVarsList),2);
             for k=1:1:size(sys.matchedVarsList,2)
                 matchedVarsList{k,1} = char(sys.matchedVarsList{k}.sysVarName);
                 matchedVarsList{k,2} = char(sys.matchedVarsList{k}.importVarName);
             end
+        end
+
+        % sys: ODESys class ref
+        function matchedVarsList = clearMatchedVarsList(sys)
+            sys.matchedVarsList = {};
+            matchedVarsList = sys.matchedVarsList;
         end
 
         % sys: ODESys class ref, DVIdx: number, varName: string

@@ -1,5 +1,6 @@
 % func: string
 function [vars,idx] = findVars(func)
+    func = erase(func,' ');
     func = erase(func,'exp');
     func = erase(func,'log10');
     idx = regexp(func,'[^+\-\*/\^()]');
